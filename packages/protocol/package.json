@@ -10,6 +10,9 @@
     "test": "vp test",
     "bench": "vp test bench --run --reporter=verbose"
   },
+  "dependencies": {
+    "@gamez/kernel": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:",
     "vite-plus": "catalog:"

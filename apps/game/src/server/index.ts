@@ -8,6 +8,7 @@ import { CLOSE_UNAUTHORIZED } from "../shared/codec.ts";
 export { RelayDO } from "./do/relay.ts";
 export { ChunkDO } from "./do/chunk.ts";
 export { CharacterDO } from "./do/character.ts";
+export { InstanceDO } from "./do/instance.ts";
 
 export default {
   async fetch(request, env) {

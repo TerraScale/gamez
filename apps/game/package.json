@@ -14,8 +14,10 @@
   "dependencies": {
     "@gamez/assets": "workspace:*",
     "@gamez/classic.town": "workspace:*",
+    "@gamez/kernel": "workspace:*",
     "@gamez/protocol": "workspace:*",
     "@gamez/sync": "workspace:*",
+    "@gamez/ui-host": "workspace:*",
     "@gamez/world": "workspace:*",
     "pixi.js": "^8.14.0"
   },

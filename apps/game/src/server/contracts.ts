@@ -15,6 +15,7 @@ export interface Env {
   RELAY: DurableObjectNamespace<import("./do/relay.ts").RelayDO>;
   CHUNK: DurableObjectNamespace<import("./do/chunk.ts").ChunkDO>;
   CHARACTER: DurableObjectNamespace<import("./do/character.ts").CharacterDO>;
+  INSTANCE: DurableObjectNamespace<import("./do/instance.ts").InstanceDO>;
   DB: D1Database;
   SYNC_QUEUE: Queue<ReplicationBatch>;
   AUTH_SECRET: string;
@@ -97,3 +98,22 @@ export const RELAY_HEADERS = {
 export const PHASE0_MODE: ModeId = "classic";
 export const PHASE0_CHUNK = "classic:0:0";
 export const WALK_SPEED = 4; // tiles per second
+
+/**
+ * InstanceDO: generic host for instanced modes (phase 1: "duel", "steps";
+ * later dungeons/arenas). Name format: "<mode>:<accountId>" — one live
+ * instance per player per mode; `join` with fresh=true replaces it.
+ *
+ * It loads the mode from the shared catalog (src/shared/catalog.ts) with the
+ * kernel, persists the SimSnapshot plus lastSeq in its SQLite after every
+ * successful action (one transaction), runs fixed-tick modes with a DO alarm,
+ * and talks to clients over hibernatable WebSockets using the
+ * InstanceClientMessage / InstanceServerMessage protocol.
+ * Players may only act on instances they belong to; maxPlayers comes from
+ * the mode's ModeSpec.instance (default 1).
+ */
+export const INSTANCE_HEADERS = {
+  accountId: "x-gamez-account-id",
+  name: "x-gamez-name",
+  mode: "x-gamez-mode",
+} as const;

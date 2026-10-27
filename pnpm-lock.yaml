@@ -196,12 +196,18 @@ importers:
       '@gamez/classic.town':
         specifier: workspace:*
         version: link:../../modules/classic.town
+      '@gamez/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
       '@gamez/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
       '@gamez/sync':
         specifier: workspace:*
         version: link:../../packages/sync
+      '@gamez/ui-host':
+        specifier: workspace:*
+        version: link:../../packages/ui-host
       '@gamez/world':
         specifier: workspace:*
         version: link:../../packages/world
@@ -269,7 +275,20 @@ importers:
         specifier: 'catalog:'
         version: 1.4.0(@types/node@26.6.5)(@vitest/ui@5.0.5)(typescript@7.0.2)
 
+  packages/kernel:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.4.0(@types/node@26.6.5)(@vitest/ui@5.0.5)(typescript@7.0.2)
+
   packages/protocol:
+    dependencies:
+      '@gamez/kernel':
+        specifier: workspace:*
+        version: link:../kernel
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -283,6 +302,28 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20261023.1
         version: 5.20261026.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.4.0(@types/node@26.6.5)(@vitest/ui@5.0.5)(typescript@7.0.2)
+
+  packages/ui-host:
+    dependencies:
+      '@gamez/assets':
+        specifier: workspace:*
+        version: link:../assets
+      '@gamez/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@gamez/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@gamez/world':
+        specifier: workspace:*
+        version: link:../world
+    devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
