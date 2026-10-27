@@ -116,7 +116,10 @@ const res = sim.dispatch("steps.attack", { target: 3 }, "player-1");
 - `snapshot()` is plain JSON. `createSim(loaded, { seed, from })` resumes it exactly, but only when `from.contentHash` equals `loaded.contentHash` (module ids and versions plus the registry hash). Clients and the server must load the same modules.
 - `hash()` is `stableHash(snapshot())`. Equal hashes mean identical state.
 
-Rollback currently snapshots the whole world before each `dispatch()`/`step()` call. That is fine for the small test modes; large real-time worlds may need a journal later.
+Rollback uses an undo log, not a snapshot. Each `dispatch()`/`step()` call is a world transaction: the world records what it overwrites, and copies a live value once before `get()`/`read()`/`getResource()` first hands it out. A throw replays the log in reverse. The cost scales with what the call touched, not the world size (see `docs/bench/2026-10-kernel-rollback.md`). Two consequences:
+
+- Mutate only values you got from the world in the same call. A value cached across calls and mutated later is not rolled back.
+- Do not assign one live value into another (`a.items = world.read(b, Inv).items`). Use `add`/`update`/`setResource`, which clone.
 
 ## Determinism rules
 

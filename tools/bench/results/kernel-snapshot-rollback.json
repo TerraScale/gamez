@@ -1,0 +1,79 @@
+{
+  "dispatch": [
+    {
+      "name": "event mode, world of 1 entity",
+      "unit": "dispatches",
+      "unitsPerCall": 20000,
+      "iterations": 23,
+      "medianMs": 62.04731300000003,
+      "meanMs": 67.1007896956522,
+      "minMs": 42.026711999999975,
+      "throughput": 322334.6674174269
+    },
+    {
+      "name": "event mode, world of 1001 entities",
+      "unit": "dispatches",
+      "unitsPerCall": 2000,
+      "iterations": 3,
+      "medianMs": 2554.4414340000003,
+      "meanMs": 2517.8956150000004,
+      "minMs": 2352.4249500000005,
+      "throughput": 782.9500310242775
+    },
+    {
+      "name": "event mode, 1001 entities, rejected dispatch (rollback)",
+      "unit": "dispatches",
+      "unitsPerCall": 2000,
+      "iterations": 3,
+      "medianMs": 5434.598015000003,
+      "meanMs": 5467.368120000002,
+      "minMs": 5392.487646000001,
+      "throughput": 368.0124996328728
+    }
+  ],
+  "step": [
+    {
+      "name": "fixed mode, 1000 entities, step(100)",
+      "unit": "ticks",
+      "unitsPerCall": 100,
+      "iterations": 71,
+      "medianMs": 20.014780000004976,
+      "meanMs": 21.236387830986363,
+      "minMs": 18.4573240000027,
+      "throughput": 4996.307728587331
+    },
+    {
+      "name": "fixed mode, 1000 entities, 20x step(1)",
+      "unit": "ticks",
+      "unitsPerCall": 20,
+      "iterations": 32,
+      "medianMs": 47.30901549999908,
+      "meanMs": 47.81668950000062,
+      "minMs": 45.877274000005855,
+      "throughput": 422.7524032919347
+    }
+  ],
+  "classic": [
+    {
+      "name": "classic-like, systems only (no sim, no rollback)",
+      "unit": "ticks",
+      "unitsPerCall": 20,
+      "iterations": 200,
+      "medianMs": 5.238955500000884,
+      "meanMs": 5.398617564999695,
+      "minMs": 4.673161999999138,
+      "throughput": 3817.5548542064585
+    },
+    {
+      "name": "classic-like, sim.step(1)",
+      "unit": "ticks",
+      "unitsPerCall": 20,
+      "iterations": 44,
+      "medianMs": 42.689580000002024,
+      "meanMs": 45.92502140909032,
+      "minMs": 41.053171999999904,
+      "throughput": 468.49840171768034
+    }
+  ],
+  "classicEntities": 466
+}

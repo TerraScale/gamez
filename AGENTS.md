@@ -125,7 +125,7 @@ Applies to everything the kernel runs: `data*`, `setup`, systems, actions. That 
 
 ## 7. Recipe: create a new module
 
-Example: an illustrative `steps.regen` module that heals the player 1 HP every 5 turns and makes potions stronger.
+Example: a `steps.regen` module that heals the hero 1 HP every 5 turns, adds a monster and buffs an existing one. It uses the real `steps` APIs (`modules/steps/src/components.ts`).
 
 **1. Decide where it lives.** Add to an existing mode package (for example `modules/steps/src/regen.ts`) or create a new package `modules/<name>/` when several modes will reuse it. For a new package, copy the shape of `packages/protocol`: `package.json` exporting `./src/index.ts`, `"test": "vp test"`, and a `tsconfig` extending `../../tsconfig.base.json`. Then run `node_modules/.bin/vp install`.
 
@@ -133,6 +133,15 @@ Example: an illustrative `steps.regen` module that heals the player 1 HP every 5
 
 ```ts
 import { ActionError, defineComponent, defineModule } from "@gamez/kernel";
+import {
+  Actor,
+  Health,
+  Player,
+  Position,
+  chebyshev,
+  heroEntity,
+  type MonsterProto,
+} from "@gamez/mode-steps"; // inside modules/steps use "./components.ts"
 
 // Components are owned by the module that defines them; others import the handle.
 export const Regen = defineComponent<{ every: number; amount: number }>("steps.regen");
@@ -143,17 +152,22 @@ export const regenModule = defineModule({
   deps: ["steps.core", "steps.combat"], // must load first and be in the mode
 
   data(reg) {
-    reg.define("steps.item", "potion.large", { heal: 12, weight: 1 });
+    // New content: an original monster.
+    reg.define<MonsterProto>("steps.monster", "steps.mirelurk", {
+      name: "Mirelurk",
+      hp: 7,
+      dmg: 2,
+    });
   },
   dataUpdates(reg) {
     // Patch another module's prototype instead of copying it.
-    reg.patch<{ heal: number }>("steps.item", "potion.small", (p) => {
-      p.heal += 2;
+    reg.patch<MonsterProto>("steps.monster", "steps.gloomcap", (m) => {
+      m.hp += 2;
     });
   },
 
   setup(world) {
-    for (const e of world.query(PlayerTag)) world.add(e, Regen, { every: 5, amount: 1 });
+    for (const e of world.query(Player)) world.add(e, Regen, { every: 5, amount: 1 });
   },
 
   systems: [
@@ -165,6 +179,7 @@ export const regenModule = defineModule({
           const r = world.read(e, Regen);
           if (ctx.tick % r.every !== 0) continue;
           const h = world.read(e, Health);
+          if (h.hp >= h.max) continue;
           world.update(e, Health, { hp: Math.min(h.max, h.hp + r.amount) });
           ctx.emit({ type: "steps.regen", entity: e, amount: r.amount });
         }
@@ -176,12 +191,20 @@ export const regenModule = defineModule({
     {
       name: "steps.rest",
       parse(_world, payload) {
-        if (payload !== null && typeof payload !== "object")
+        if (payload !== undefined && (payload === null || typeof payload !== "object"))
           throw new ActionError("bad_payload", "expected {}");
         return {};
       },
       apply(world, _p, ctx) {
-        if (isEnemyAdjacent(world)) throw new ActionError("not_safe", "Enemies nearby");
+        const hero = world.read(heroEntity(world), Position);
+        const threatened = world
+          .query(Actor, Position)
+          .some(
+            (e) =>
+              world.read(e, Actor).kind === "steps.monster" &&
+              chebyshev(world.read(e, Position), hero) <= 1,
+          );
+        if (threatened) throw new ActionError("not_safe", "Enemies nearby");
         ctx.emit({ type: "steps.rest" });
       },
     },

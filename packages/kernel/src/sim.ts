@@ -1,6 +1,11 @@
 /**
  * The simulation runner: setup, atomic action dispatch with rollback, the
  * tick policy (fixed or event) and state hashing.
+ *
+ * dispatch() and step() run as one world transaction (WorldImpl.begin()):
+ * the world journals what they touch, and a throw rolls back the journal plus
+ * the saved RNG state and tick. Rollback costs what the call touched, not the
+ * size of the world.
  */
 import { cloneJson, stableHash } from "./hash.ts";
 import { createRng } from "./rng.ts";
@@ -16,7 +21,6 @@ import type {
   SimContext,
   SimSnapshot,
   World,
-  WorldSnapshot,
 } from "./types.ts";
 import { WorldImpl } from "./world.ts";
 
@@ -30,8 +34,8 @@ function systemError(id: string, err: unknown): Error {
   return new Error(`System "${id}" failed: ${errorMessage(err)}`, { cause: err });
 }
 
+/** Non-world state saved at the start of a transaction. */
 interface Saved {
-  world: WorldSnapshot;
   rng: RngState;
   tick: number;
 }
@@ -97,7 +101,7 @@ class SimImpl implements Sim {
         tick: this.currentTick,
       };
     }
-    const saved = this.save();
+    const saved = this.begin();
     const events: GameEvent[] = [];
     this.events = events;
     this.actor = actor;
@@ -108,9 +112,10 @@ class SimImpl implements Sim {
         this.runSystems();
         this.currentTick++;
       }
+      this.impl.commit();
       return { ok: true, events, tick: this.currentTick };
     } catch (err) {
-      this.load(saved);
+      this.rollback(saved);
       const code = err instanceof ActionError ? err.code : "internal";
       return {
         ok: false,
@@ -133,7 +138,7 @@ class SimImpl implements Sim {
     }
     if (!Number.isSafeInteger(n) || n < 0)
       throw new RangeError(`step(${n}): n must be a non-negative integer`);
-    const saved = this.save();
+    const saved = this.begin();
     const events: GameEvent[] = [];
     this.events = events;
     try {
@@ -141,9 +146,10 @@ class SimImpl implements Sim {
         this.runSystems();
         this.currentTick++;
       }
+      this.impl.commit();
       return events;
     } catch (err) {
-      this.load(saved);
+      this.rollback(saved);
       throw err;
     } finally {
       this.events = null;
@@ -193,7 +199,9 @@ class SimImpl implements Sim {
     }
     if (!Number.isSafeInteger(from.tick) || from.tick < 0)
       throw new TypeError(`Snapshot tick ${from.tick} is invalid`);
-    this.load({ world: from.world, rng: from.rng, tick: from.tick });
+    this.impl.load(from.world);
+    this.rng.setState(from.rng);
+    this.currentTick = from.tick;
   }
 
   private runSystems(): void {
@@ -217,15 +225,19 @@ class SimImpl implements Sim {
     ) {
       throw new TypeError("ctx.emit(): event must be an object with a non-empty string type");
     }
-    this.events.push(cloneJson(event, `event ${event.type}`));
+    this.events.push(cloneJson(event, () => `event ${event.type}`));
   }
 
-  private save(): Saved {
-    return { world: this.world.snapshot(), rng: this.rng.getState(), tick: this.currentTick };
+  /** Opens the world transaction and saves RNG and tick. */
+  private begin(): Saved {
+    const saved = { rng: this.rng.getState(), tick: this.currentTick };
+    this.impl.begin();
+    return saved;
   }
 
-  private load(s: Saved): void {
-    this.impl.load(s.world);
+  /** Undoes everything since begin(). */
+  private rollback(s: Saved): void {
+    this.impl.rollback();
     this.rng.setState(s.rng);
     this.currentTick = s.tick;
   }

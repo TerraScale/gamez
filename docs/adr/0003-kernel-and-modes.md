@@ -39,6 +39,8 @@ The bench ([`docs/bench/2026-10-phase1.md`](../bench/2026-10-phase1.md) §1) mea
 
 Bench §2: `dispatch()` snapshots the whole world to be able to roll back, so throughput falls from about 465k/s with 1 entity to about 830/s with 1001 entities. That is fine for steps and duel, whose worlds are tens of entities. It must change (undo log or copy-on-write of touched components) before classic's real-time sim moves onto the kernel. That change will get its own ADR.
 
+**Update (2026-10-27): replaced by an undo log.** `dispatch()` and `step()` now run as a world transaction. The world logs what each call overwrites: replaced values by reference, live values copied once before `get()`/`read()`/`getResource()` hands them out. A throw replays the log in reverse; success drops it. The public API, events, `snapshot()` and the pinned steps/duel hashes are unchanged, and validation stays on. Results ([`docs/bench/2026-10-kernel-rollback.md`](../bench/2026-10-kernel-rollback.md)): dispatch at 1001 entities went from 783/s to 868k/s, and a classic-like 20 Hz `step(1)` (about 300 monsters plus projectiles and loot) from 2.13 ms to 0.53 ms. Of that, 0.29 ms is the systems themselves. The rule that follows: mutate only values obtained in the same call.
+
 ## 2. Determinism rules and the lint guard
 
 Sim code is everything the kernel runs: `data*`, `setup`, systems, actions and overrides. It must give the same result on every JS engine:
