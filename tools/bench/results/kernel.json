@@ -1,0 +1,36 @@
+{
+  "dispatch": [
+    {
+      "name": "event mode, world of 1 entity",
+      "unit": "dispatches",
+      "unitsPerCall": 20000,
+      "iterations": 35,
+      "medianMs": 43.05175499999996,
+      "meanMs": 43.78062251428571,
+      "minMs": 41.257975000000215,
+      "throughput": 464557.1359402194
+    },
+    {
+      "name": "event mode, world of 1001 entities",
+      "unit": "dispatches",
+      "unitsPerCall": 2000,
+      "iterations": 3,
+      "medianMs": 2404.155033000001,
+      "meanMs": 2461.1065956666666,
+      "minMs": 2273.122926,
+      "throughput": 831.8931069533897
+    }
+  ],
+  "step": [
+    {
+      "name": "fixed mode, 1000 entities, step(100)",
+      "unit": "ticks",
+      "unitsPerCall": 100,
+      "iterations": 71,
+      "medianMs": 18.34387499999866,
+      "meanMs": 21.34966309859161,
+      "minMs": 17.19882200000029,
+      "throughput": 5451.4108932822155
+    }
+  ]
+}

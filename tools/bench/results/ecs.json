@@ -1,0 +1,216 @@
+{
+  "create": [
+    {
+      "name": "kernel World (read + mutate), create 10,000",
+      "unit": "entities",
+      "unitsPerCall": 10000,
+      "iterations": 19,
+      "medianMs": 51.884963000000084,
+      "meanMs": 52.84536210526318,
+      "minMs": 33.39389899999992,
+      "throughput": 192734.06825017845
+    },
+    {
+      "name": "kernel World (read + mutate), create 50,000",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 5,
+      "medianMs": 234.76147900000024,
+      "meanMs": 233.927658,
+      "minMs": 217.11057600000004,
+      "throughput": 212982.13068422503
+    },
+    {
+      "name": "kernel World (update(), cloning), create 10,000",
+      "unit": "entities",
+      "unitsPerCall": 10000,
+      "iterations": 16,
+      "medianMs": 63.352667999999994,
+      "meanMs": 62.50658037500011,
+      "minMs": 39.274734999999964,
+      "throughput": 157846.5487830757
+    },
+    {
+      "name": "kernel World (update(), cloning), create 50,000",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 5,
+      "medianMs": 411.8421419999995,
+      "meanMs": 401.5521894,
+      "minMs": 365.15996500000074,
+      "throughput": 121405.73996917503
+    },
+    {
+      "name": "bitecs (AoS arrays), create 10,000",
+      "unit": "entities",
+      "unitsPerCall": 10000,
+      "iterations": 93,
+      "medianMs": 9.356670000001031,
+      "meanMs": 10.82573876344086,
+      "minMs": 7.790108000001055,
+      "throughput": 1068756.2989823194
+    },
+    {
+      "name": "bitecs (AoS arrays), create 50,000",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 13,
+      "medianMs": 82.92014899999958,
+      "meanMs": 81.93492192307727,
+      "minMs": 49.291541999999026,
+      "throughput": 602989.7510193844
+    },
+    {
+      "name": "bitecs (SoA typed arrays), create 10,000",
+      "unit": "entities",
+      "unitsPerCall": 10000,
+      "iterations": 82,
+      "medianMs": 10.925635499999771,
+      "meanMs": 12.273755585365839,
+      "minMs": 10.021999999999025,
+      "throughput": 915278.5666335117
+    },
+    {
+      "name": "bitecs (SoA typed arrays), create 50,000",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 15,
+      "medianMs": 67.50032500000088,
+      "meanMs": 70.23424593333341,
+      "minMs": 56.19959299999937,
+      "throughput": 740737.1742284106
+    },
+    {
+      "name": "miniplex 2, create 10,000",
+      "unit": "entities",
+      "unitsPerCall": 10000,
+      "iterations": 158,
+      "medianMs": 4.940695499999492,
+      "meanMs": 6.389156006329186,
+      "minMs": 4.569566000000123,
+      "throughput": 2024006.5391605347
+    },
+    {
+      "name": "miniplex 2, create 50,000",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 24,
+      "medianMs": 44.91444750000119,
+      "meanMs": 43.55864037500002,
+      "minMs": 25.067544999998063,
+      "throughput": 1113227.5422067405
+    },
+    {
+      "name": "koota 0.6, create 10,000",
+      "unit": "entities",
+      "unitsPerCall": 10000,
+      "iterations": 26,
+      "medianMs": 37.66225100000156,
+      "meanMs": 38.78982357692299,
+      "minMs": 34.961073999998916,
+      "throughput": 265517.8523450334
+    },
+    {
+      "name": "koota 0.6, create 50,000",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 5,
+      "medianMs": 221.41751799999838,
+      "meanMs": 238.86866119999976,
+      "minMs": 211.70161499999813,
+      "throughput": 225817.72414231635
+    }
+  ],
+  "pass": [
+    {
+      "name": "kernel World (read + mutate)",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 43,
+      "medianMs": 24.163339000000178,
+      "meanMs": 23.8969212790697,
+      "minMs": 12.820087999999942,
+      "throughput": 2069250.4458924169
+    },
+    {
+      "name": "kernel World (update(), cloning)",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 18,
+      "medianMs": 55.24680149999949,
+      "meanMs": 57.43293249999998,
+      "minMs": 50.22032399999989,
+      "throughput": 905029.7690084459
+    },
+    {
+      "name": "bitecs (AoS arrays)",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 200,
+      "medianMs": 1.2078679999995074,
+      "meanMs": 1.4664810700000452,
+      "minMs": 1.1646030000010796,
+      "throughput": 41395251.79905452
+    },
+    {
+      "name": "bitecs (SoA typed arrays)",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 200,
+      "medianMs": 1.2338154999997641,
+      "meanMs": 1.3590640899999926,
+      "minMs": 1.191729000000123,
+      "throughput": 40524697.57432093
+    },
+    {
+      "name": "miniplex 2",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 200,
+      "medianMs": 1.4821609999999055,
+      "meanMs": 1.5377311349999945,
+      "minMs": 1.4271789999984321,
+      "throughput": 33734526.81591486
+    },
+    {
+      "name": "koota 0.6",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 76,
+      "medianMs": 12.575576499999443,
+      "meanMs": 13.294049605262922,
+      "minMs": 11.84476800000266,
+      "throughput": 3975960.8635041276
+    }
+  ],
+  "kernelSnapshot": [
+    {
+      "name": "kernel World snapshot()",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 5,
+      "medianMs": 217.99724199999764,
+      "meanMs": 224.02020340000018,
+      "minMs": 174.09981999999945,
+      "throughput": 229360.69989362772
+    },
+    {
+      "name": "kernel restoreWorld(snapshot)",
+      "unit": "entities",
+      "unitsPerCall": 50000,
+      "iterations": 5,
+      "medianMs": 242.10674800000197,
+      "meanMs": 245.37177200000005,
+      "minMs": 232.60982199999853,
+      "throughput": 206520.4725313959
+    }
+  ],
+  "heapBytesPerEntity": {
+    "kernel World (read + mutate)": 304.34256,
+    "kernel World (update(), cloning)": 304.33856,
+    "bitecs (AoS arrays)": 350.70176,
+    "bitecs (SoA typed arrays)": 213.77536,
+    "miniplex 2": 204.5952,
+    "koota 0.6": -17.0184
+  }
+}

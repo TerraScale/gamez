@@ -1,0 +1,84 @@
+{
+  "outbox": [
+    {
+      "name": "batch 10",
+      "unit": "records",
+      "unitsPerCall": 5000,
+      "iterations": 3,
+      "medianMs": 676.4272599999999,
+      "meanMs": 660.1594240000001,
+      "minMs": 530.182276,
+      "throughput": 7391.777794407635,
+      "extra": {
+        "sendsPerCycle": 500
+      }
+    },
+    {
+      "name": "batch 100",
+      "unit": "records",
+      "unitsPerCall": 5000,
+      "iterations": 3,
+      "medianMs": 504.33126300000004,
+      "meanMs": 506.89135433333377,
+      "minMs": 487.5443970000006,
+      "throughput": 9914.118689088682,
+      "extra": {
+        "sendsPerCycle": 50
+      }
+    },
+    {
+      "name": "batch 500",
+      "unit": "records",
+      "unitsPerCall": 5000,
+      "iterations": 3,
+      "medianMs": 511.136802,
+      "meanMs": 507.2003546666662,
+      "minMs": 472.37410199999977,
+      "throughput": 9782.116999667733,
+      "extra": {
+        "sendsPerCycle": 10
+      }
+    }
+  ],
+  "applyBatch": [
+    {
+      "name": "batch 10",
+      "unit": "records",
+      "unitsPerCall": 5000,
+      "iterations": 5,
+      "medianMs": 219.22067199999947,
+      "meanMs": 222.82264379999907,
+      "minMs": 213.37958099999923,
+      "throughput": 22808.06802745323,
+      "extra": {
+        "d1BatchCallsPerCycle": 500
+      }
+    },
+    {
+      "name": "batch 100",
+      "unit": "records",
+      "unitsPerCall": 5000,
+      "iterations": 6,
+      "medianMs": 185.3897450000004,
+      "meanMs": 185.99815533333398,
+      "minMs": 168.35037400000147,
+      "throughput": 26970.208087831335,
+      "extra": {
+        "d1BatchCallsPerCycle": 100
+      }
+    },
+    {
+      "name": "batch 500",
+      "unit": "records",
+      "unitsPerCall": 5000,
+      "iterations": 6,
+      "medianMs": 164.50133600000026,
+      "meanMs": 172.58603199999985,
+      "minMs": 161.11904800000048,
+      "throughput": 30394.889923568717,
+      "extra": {
+        "d1BatchCallsPerCycle": 60
+      }
+    }
+  ]
+}

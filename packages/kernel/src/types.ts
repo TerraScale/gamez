@@ -141,12 +141,14 @@ export interface SystemDef {
   run(world: World, ctx: SimContext): void;
 }
 
+/** Thrown by an action's parse/apply to reject it with a machine-readable code. */
 export class ActionError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
+  // A plain field, not a parameter property, so Node can strip this file's types (ADR 0002 §4).
+  readonly code: string;
+
+  constructor(code: string, message: string) {
     super(message);
+    this.code = code;
     this.name = "ActionError";
   }
 }

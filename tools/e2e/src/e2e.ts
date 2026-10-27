@@ -1,13 +1,17 @@
 /**
- * Phase-0 end-to-end check against a real `vp dev` (workerd + Miniflare):
+ * End-to-end check against a real `vp dev` (workerd + Miniflare):
  *
  *  1. starts the dev server and applies the D1 migrations to its local D1;
  *  2. two guests connect, each gets a welcome and sees the other;
  *  3. A walks to a tile; B must get a delta with A's path ending there;
  *  4. the end tile must reach D1 (ChunkDO -> CharacterDO outbox -> Queue -> D1);
- *  5. the dev server restarts and A's welcome must put it on that tile.
+ *  5. A plays the instanced test modes (steps, duel) over /ws/instance: scripted
+ *     actions replayed on a local sim, invalid / unknown / stale actions rejected;
+ *  6. the dev server restarts: A's welcome must put it on that tile, and each
+ *     instance must resume from its persisted snapshot; a fresh join resets it.
  *
- * Usage: node src/e2e.ts   (env: E2E_PORT, default 5299; E2E_LOG, default /tmp/gamez-e2e-dev.log)
+ * Usage: `vp run e2e` (plain node, type stripping). Env: E2E_PORT, default 5299;
+ * E2E_LOG, default /tmp/gamez-e2e-dev.log.
  * Exit code 0 only when every check passed. Prints the measured timings.
  */
 import { townMap } from "@gamez/classic.town";
@@ -15,8 +19,10 @@ import type { EntityState, ServerMessage, TilePos } from "@gamez/protocol";
 import { findPath, isWalkable, pathDuration } from "@gamez/world";
 import { BotClient, loginGuest, type Received } from "./client.ts";
 import { startDevServer, type DevServer } from "./dev-server.ts";
+import { play, resume, SCRIPTS, type PlayedInstance } from "./instance.ts";
 import { LocalD1 } from "./local-d1.ts";
 import { MIGRATIONS_DIR } from "./paths.ts";
+import { check, fail, failureCount, timings } from "./report.ts";
 
 type Welcome = Extract<ServerMessage, { t: "welcome" }>;
 type Delta = Extract<ServerMessage, { t: "delta" }>;
@@ -28,14 +34,6 @@ const REPLICATION_TIMEOUT_MS = 20_000;
 const isWelcome = (m: ServerMessage): m is Welcome => m.t === "welcome";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ms = (n: number) => `${n.toFixed(0)} ms`;
-
-const timings: Record<string, number> = {};
-let failures = 0;
-
-function check(ok: boolean, what: string): void {
-  console.log(`${ok ? "PASS" : "FAIL"}  ${what}`);
-  if (!ok) failures++;
-}
 
 function same(a: TilePos | undefined, b: TilePos): boolean {
   return a !== undefined && a.x === b.x && a.y === b.y;
@@ -186,7 +184,11 @@ async function run(): Promise<void> {
     );
     await b.close();
 
-    // 5. restart the dev server (every DO restarts) and reconnect A
+    // 5. instanced test modes, as A
+    const played: PlayedInstance[] = [];
+    for (const script of SCRIPTS) played.push(await play(server.url, guestA, script));
+
+    // 6. restart the dev server (every DO restarts) and reconnect A
     await server.stop();
     server = null;
     server = await startDevServer(PORT, LOG);
@@ -204,15 +206,16 @@ async function run(): Promise<void> {
       "after restart B (who left) is gone",
     );
     await a2.close();
+    for (const run of played) await resume(server.url, run);
   } catch (err) {
-    failures++;
-    console.log(`FAIL  ${err instanceof Error ? err.message : String(err)}`);
+    fail(err instanceof Error ? err.message : String(err));
   } finally {
     await server?.stop();
   }
 
   console.log("\ntimings:");
   for (const [k, v] of Object.entries(timings)) console.log(`  ${k.padEnd(52)} ${ms(v)}`);
+  const failures = failureCount();
   console.log(
     failures === 0
       ? "\ne2e: all checks passed"

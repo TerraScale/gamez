@@ -6,6 +6,9 @@
  * constant time.
  */
 
+/** Guest tokens stop working after 30 days; the client then logs in again (close code 4401). */
+export const GUEST_TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 export interface Identity {
   accountId: string;
   name: string;

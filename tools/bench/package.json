@@ -1,0 +1,29 @@
+{
+  "name": "@gamez/bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "bench:ecs": "node --expose-gc --experimental-transform-types src/ecs.ts",
+    "bench:kernel": "node --experimental-transform-types src/kernel.ts",
+    "bench:sync": "node --experimental-transform-types src/sync.ts",
+    "bench:machine": "node --experimental-transform-types src/machine.ts",
+    "bench": "node --expose-gc --experimental-transform-types src/run-all.ts"
+  },
+  "dependencies": {
+    "@gamez/kernel": "workspace:*",
+    "@gamez/sync": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "@types/node": "catalog:",
+    "bitecs": "0.4.0",
+    "koota": "0.6.6",
+    "miniplex": "2.0.0",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

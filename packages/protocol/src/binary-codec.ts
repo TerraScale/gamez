@@ -262,6 +262,7 @@ function encodeServer(msg: ServerMessage): Uint8Array {
       w.u8(SERVER_TAG.welcome);
       w.string(msg.selfId);
       w.string(msg.chunkId);
+      w.u32(msg.seq);
       w.f64(msg.serverTime);
       w.entities(msg.entities);
       break;
@@ -299,6 +300,7 @@ function decodeServer(frame: Frame | ArrayBuffer): ServerMessage {
         t: "welcome",
         selfId: r.string(),
         chunkId: r.string(),
+        seq: r.u32(),
         serverTime: r.f64(),
         entities: r.entities(),
       };

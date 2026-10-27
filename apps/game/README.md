@@ -1,34 +1,47 @@
 # @gamez/game
 
-The phase-0 walking skeleton. One Worker serves the Pixi client (as Workers static assets), the API and the Durable Objects.
+The game app. One Worker serves the client (as Workers static assets), the API and the Durable Objects. The client is a React shell: guest login, then a mode picker, then a full-screen `ClientModeView` with a "Modes" button to go back. Classic is the phase-0 presence stack; steps and duel run in `InstanceDO` (phase 1, [ADR 0003](../../docs/adr/0003-kernel-and-modes.md)).
 
 ## What runs where
 
-| Piece                               | File                         | Job                                                                                                                                                               |
-| ----------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Worker                              | `src/server/index.ts`        | `POST /api/guest`, `GET /ws` (verifies the token, picks a relay), `GET /api/health`, sync queue consumer                                                          |
-| `RelayDO` `relay:<continent>:0`     | `src/server/do/relay.ts`     | Client WebSockets (Hibernation API) and a cached copy of the chunk; each delta is encoded once and broadcast                                                      |
-| `ChunkDO` `classic:0:0`             | `src/server/do/chunk.ts`     | Presence authority for the town: validates `moveTo` with A\*, sends coalesced deltas (at most one every 50 ms) once per relay, saves final tiles to the character |
-| `CharacterDO` `<accountId>:classic` | `src/server/do/character.ts` | Authoritative character row plus a transactional outbox, drained to the `gamez-sync` queue by an alarm                                                            |
-| Queue consumer                      | `src/server/index.ts`        | `applyBatch` into D1 (`character_summary`, `sync_cursor`); ack, or retry on error                                                                                 |
-| Client                              | `src/client/`                | Guest login, socket with backoff and resync, clock sync, entity store, self prediction, render loop                                                               |
+| Piece                               | File                           | Job                                                                                                                                                               |
+| ----------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Worker                              | `src/server/index.ts`          | `POST /api/guest`, `GET /ws` (verifies the token, picks a relay), `GET /api/health`, sync queue consumer                                                          |
+| `RelayDO` `relay:<continent>:0`     | `src/server/do/relay.ts`       | Client WebSockets (Hibernation API) and a cached copy of the chunk; each delta is encoded once and broadcast                                                      |
+| `ChunkDO` `classic:0:0`             | `src/server/do/chunk.ts`       | Presence authority for the town: validates `moveTo` with A\*, sends coalesced deltas (at most one every 50 ms) once per relay, saves final tiles to the character |
+| `CharacterDO` `<accountId>:classic` | `src/server/do/character.ts`   | Authoritative character row plus a transactional outbox, drained to the `gamez-sync` queue by an alarm                                                            |
+| Queue consumer                      | `src/server/index.ts`          | `applyBatch` into D1 (`character_summary`, `sync_cursor`); ack, or retry on error                                                                                 |
+| `InstanceDO` `<mode>:<accountId>`   | `src/server/do/instance.ts`    | Generic instance host for catalog modes (`GET /ws/instance?token&mode`). Logic in `src/server/instance/host.ts`; sim snapshot and `lastSeq` in DO SQLite          |
+| Client                              | `src/client/`                  | Guest login, socket with backoff and resync, clock sync, entity store, self prediction, render loop                                                               |
+| Client shell and instances          | `src/client/app/`, `instance/` | React app shell, mode views (`src/client/modes/`), and `InstanceClient`: `/ws/instance` with prediction and reconciliation                                        |
 
-Code that both sides use (the wire codec and the walk maths) lives in `src/shared/`. It has no Workers APIs, so the client imports it too. To switch the wire format, change the one line in `src/shared/codec.ts`.
+Code that both sides use (the wire codec, the walk maths and the mode catalog `catalog.ts`) lives in `src/shared/`. It has no Workers APIs, so the client imports it too. To switch the wire format, change the one line in `src/shared/codec.ts`.
 
 ### Flow
 
 1. The client calls `POST /api/guest` once and caches `{token, accountId, name}` in localStorage.
-2. It opens `GET /ws?token=…`. The Worker verifies the HMAC token. A bad token gets close code `4401`, which tells the client to log in again. A good one goes to `relay:<request.cf.continent>:0`, with a location hint near the player. The verified identity travels in `x-gamez-*` headers.
-3. The relay calls `CharacterDO.getOrCreate`, then `ChunkDO.subscribe` if its cache is cold, then `ChunkDO.join`. Finally it sends `welcome` with the full snapshot.
+2. It opens `GET /ws?token=…`. The Worker verifies the HMAC token. A bad token, or one older than 30 days (`GUEST_TOKEN_MAX_AGE_MS`), gets close code `4401`, which tells the client to log in again. A good one goes to `relay:<request.cf.continent>:0`, with a location hint near the player. The verified identity travels in `x-gamez-*` headers.
+3. The relay calls `CharacterDO.getOrCreate`, then `ChunkDO.subscribe` if its cache is cold, then `ChunkDO.join`. Finally it sends `welcome` with the full snapshot and its `seq`. The first delta after a welcome must be `seq + 1`.
 4. When the player taps, the client sends `moveTo` and predicts its own path straight away. The chunk replans from where the avatar is right now: it finishes the current tile step, so the avatar never snaps back. The new path goes out in the next delta. Every client interpolates with `walkAt(…, serverNow)`.
 5. When a walk ends, a chunk alarm calls `CharacterDO.savePosition`. That writes the row and a `character_summary` outbox record in one transaction. The outbox alarm (about 2 s) sends a `ReplicationBatch` to the queue, and the consumer upserts it into D1 with a version guard.
 
+### Instance flow (steps, duel)
+
+1. The picker shows every mode in `MODES` that has a view in `CLIENT_MODE_VIEWS`. Picking one mounts its view, which calls `services.connectInstance(mode)`.
+2. The client opens `GET /ws/instance?token=…&mode=…`. The Worker verifies the token as for `/ws` and routes to `InstanceDO` `<mode>:<accountId>`. The client then sends `join`, and the DO restores the stored snapshot or creates a new sim. It answers with `state` (snapshot, `contentHash`, `lastSeq`).
+3. Each `act()` predicts locally and sends `action {seq}`. The DO dispatches it, persists snapshot and `lastSeq` in one transaction, and answers with `result` (events and authoritative snapshot). Rejected actions also get a `result` with `ok: false`, and nothing changes. `restart()` sends `join` with `fresh: true`.
+
 ### Robustness notes
 
-- Each delta carries a seq. If the relay sees a gap, it rebuilds its cache from the chunk and re-welcomes its sockets. If a client sees a gap, it reconnects.
+- Each delta carries a seq, and each welcome carries the seq of its snapshot. If the relay sees a gap, it rebuilds its cache from the chunk and re-welcomes its sockets. If a client sees a gap (a delta that is not `welcome.seq + 1` or the last applied seq + 1), it reconnects and gets a fresh welcome.
+- Each socket has token buckets in `RelayDO` (`src/server/rate-limit.ts`): `moveTo` allows a burst of 5 and refills 5 per second, `ping` allows a burst of 3 and refills 1 per second. Excess messages are dropped and counted, and the relay sends `error` with code `rate_limited` at most once a second. The buckets live in memory, so hibernation resets them.
 - A relay that wakes from hibernation re-subscribes and passes the characters it still has sockets for (`liveIds`). The chunk then drops avatars that joined through that relay but are no longer connected, which is what happens after a restart or a deploy.
 - If deliveries to a relay fail 3 times in a row, the chunk drops that relay and its avatars. The relay's next `moveTo` gets `not-joined`, so it re-subscribes and rejoins.
 - When two tabs share one account, they share one avatar. It leaves the world when the last tab closes.
+
+### TODO: rate-limit guest creation
+
+`POST /api/guest` has no rate limit yet. A per-IP check inside the Worker is not reliable (every isolate sees a different slice of traffic), so the fix is a Cloudflare **Rate Limiting binding** on that route (declared in `cloudflare.config.ts`, checked before `guestLogin`). Until it exists, anyone can mint guests in a loop.
 
 ## Development
 

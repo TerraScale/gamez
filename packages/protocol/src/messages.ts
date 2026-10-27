@@ -42,6 +42,8 @@ export type ServerMessage =
       t: "welcome";
       selfId: EntityId;
       chunkId: string;
+      /** The chunk delta seq this snapshot corresponds to; the next delta must be seq + 1. */
+      seq: number;
       serverTime: number;
       entities: EntityState[];
     }

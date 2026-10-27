@@ -23,6 +23,7 @@ export function makeWelcome(count: number): ServerMessage {
     t: "welcome",
     selfId: "char-0",
     chunkId: "chunk:0:0",
+    seq: 1041,
     serverTime: 1_767_225_600_123.5,
     entities: Array.from({ length: count }, (_, i) => makeEntity(i)),
   };

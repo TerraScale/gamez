@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
-import { newGuest, signToken, verifyToken, type Identity } from "../../src/server/auth.ts";
+import {
+  GUEST_TOKEN_MAX_AGE_MS,
+  newGuest,
+  signToken,
+  verifyToken,
+  type Identity,
+} from "../../src/server/auth.ts";
 
 const SECRET = "test-secret";
 const identity: Identity = { accountId: "acc-1", name: "Guest-00AB", issuedAt: 1_700_000_000_000 };
@@ -47,6 +53,15 @@ describe("guest tokens", () => {
     const token = await signToken(SECRET, { ...identity, issuedAt: Date.now() - 10_000 });
     expect(await verifyToken(SECRET, token, 5_000)).toBeNull();
     expect(await verifyToken(SECRET, token, 60_000)).not.toBeNull();
+  });
+
+  it("expires guest tokens 30 days after issue", async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    expect(GUEST_TOKEN_MAX_AGE_MS).toBe(30 * DAY);
+    const young = await signToken(SECRET, { ...identity, issuedAt: Date.now() - 29 * DAY });
+    const old = await signToken(SECRET, { ...identity, issuedAt: Date.now() - 31 * DAY });
+    expect(await verifyToken(SECRET, young, GUEST_TOKEN_MAX_AGE_MS)).not.toBeNull();
+    expect(await verifyToken(SECRET, old, GUEST_TOKEN_MAX_AGE_MS)).toBeNull();
   });
 
   it("creates guests with unique ids and Guest-XXXX names", () => {
