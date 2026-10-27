@@ -1,0 +1,30 @@
+{
+  "name": "@gamez/game",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "test": "vp test",
+    "deploy": "cf deploy",
+    "typegen": "cf workers types"
+  },
+  "dependencies": {
+    "@gamez/assets": "workspace:*",
+    "@gamez/classic.town": "workspace:*",
+    "@gamez/protocol": "workspace:*",
+    "@gamez/sync": "workspace:*",
+    "@gamez/world": "workspace:*",
+    "pixi.js": "^8.14.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "beta",
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "cf": "^1.0.0-beta.23",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

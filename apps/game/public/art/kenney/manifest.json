@@ -1,0 +1,175 @@
+{
+  "version": "1.0.0",
+  "pack": "art.kenney",
+  "atlases": [
+    {
+      "id": "art.kenney.atlas",
+      "url": "atlas.json"
+    }
+  ],
+  "sprites": {
+    "tile.grass": {
+      "atlas": "art.kenney.atlas",
+      "frame": "tile.grass",
+      "anchor": {
+        "x": 0.5,
+        "y": 0
+      }
+    },
+    "tile.stone": {
+      "atlas": "art.kenney.atlas",
+      "frame": "tile.stone",
+      "anchor": {
+        "x": 0.5,
+        "y": 0
+      }
+    },
+    "prop.tree": {
+      "atlas": "art.kenney.atlas",
+      "frame": "prop.tree",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "missing": {
+      "atlas": "art.kenney.atlas",
+      "frame": "missing",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.idle.0": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.idle.0",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.0": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.0",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.1": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.1",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.2": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.2",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.3": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.3",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.4": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.4",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.5": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.5",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.6": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.6",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.7": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.7",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.8": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.8",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    },
+    "unit.hero.walk.9": {
+      "atlas": "art.kenney.atlas",
+      "frame": "unit.hero.walk.9",
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      }
+    }
+  },
+  "animations": {
+    "unit.hero.idle": {
+      "frames": ["unit.hero.idle.0"],
+      "fps": 1,
+      "loop": true
+    },
+    "unit.hero.walk": {
+      "frames": [
+        "unit.hero.walk.0",
+        "unit.hero.walk.1",
+        "unit.hero.walk.2",
+        "unit.hero.walk.3",
+        "unit.hero.walk.4",
+        "unit.hero.walk.5",
+        "unit.hero.walk.6",
+        "unit.hero.walk.7",
+        "unit.hero.walk.8",
+        "unit.hero.walk.9"
+      ],
+      "fps": 12,
+      "loop": true
+    }
+  },
+  "licenses": [
+    {
+      "source": "Isometric Landscape (Kenney)",
+      "license": "CC0-1.0",
+      "url": "https://kenney.nl/assets/isometric-tiles-landscape",
+      "author": "Kenney"
+    },
+    {
+      "source": "Nature Kit (Kenney)",
+      "license": "CC0-1.0",
+      "url": "https://kenney.nl/assets/nature-kit",
+      "author": "Kenney"
+    },
+    {
+      "source": "Isometric Miniature Dungeon (Kenney)",
+      "license": "CC0-1.0",
+      "url": "https://kenney.nl/assets/isometric-miniature-dungeon",
+      "author": "Kenney"
+    }
+  ]
+}

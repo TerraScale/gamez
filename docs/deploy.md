@@ -1,0 +1,122 @@
+# Deploy runbook
+
+Production deploys run through **Cloudflare Workers Builds** (Cloudflare's GitHub integration), not GitHub Actions. GitHub Actions (`.github/workflows/ci.yml`) only checks, tests and builds.
+
+- Pull requests: Workers Builds creates a Preview for each PR (and comments on it).
+- `main`: Workers Builds deploys production.
+
+Resources: Worker `gamez` (static assets plus `RelayDO`, `ChunkDO`, `CharacterDO`), D1 `gamez-read`, queue `gamez-sync` (consumer on the same Worker), secret `AUTH_SECRET`. Config lives in `apps/game/cloudflare.config.ts`.
+
+Everything below was checked against `cf <command> --help` on `cf` 1.0.0-beta.20 unless marked **unverified**. Nothing here has been run.
+
+## 0. Before you start
+
+- Commit the repo and push it to `TerraScale/gamez` `main`, including `pnpm-lock.yaml`. Workers Builds and CI need the lockfile on GitHub.
+- Log in with `cf auth` (or set the usual Cloudflare credentials). Use `--profile` if you have several.
+- `cf d1 create` and `cf queues create` are mutating. Run them once, by hand, for the account.
+
+## 1. Create the D1 database
+
+```sh
+cf d1 create --name gamez-read
+```
+
+Optional flags: `--primary-location-hint <wnam|enam|weur|eeur|apac|oc>`, `--jurisdiction <eu|fedramp|us>`, `--read-replication-mode <auto|disabled>`. Save the database ID from the output (the output format is **unverified**). To look it up later, use `cf d1 list`.
+
+## 2. Create the queue
+
+```sh
+cf queues create --queue-name gamez-sync
+```
+
+`cf queues consumers create <queue-id>` creates a consumer, but its flags are **unverified**. `cf deploy` provisions missing bindings by default (`--provision`, default `true`), so the consumer may be created on first deploy. Check after the first deploy with `cf queues consumers list`.
+
+## 3. Apply D1 migrations (remote)
+
+`cf d1 migrations apply` takes the database ID and has no local/remote switch. It always targets the remote database. `--local` is a global flag for local simulation and must not be used here. Run from `apps/game` so the default `./migrations` directory resolves, or pass `--dir apps/game/migrations`.
+
+```sh
+cd apps/game
+cf d1 migrations list <DATABASE_ID>      # read-only: shows unapplied files
+cf d1 migrations apply <DATABASE_ID>     # tracks state in table d1_migrations
+```
+
+Add `--dry-run` to see the command without executing it.
+
+## 4. Set the `AUTH_SECRET` secret
+
+```sh
+cf workers secrets update AUTH_SECRET --worker gamez --text "<value>"
+cf workers secrets get AUTH_SECRET       # confirms the binding; the value is omitted
+```
+
+`--text` puts the value in shell history. Prefer a `.env` or JSON file passed to `cf deploy --secrets-file <path>` (verified flag). Whether a later Workers Builds deploy keeps a secret set this way is **unverified**; check `cf workers secrets get` after the first production deploy.
+
+## 5. Connect the GitHub repo to the Worker
+
+### 5a. Authorize GitHub (dashboard, one time)
+
+The first GitHub connection needs OAuth authorization in the dashboard (Workers & Pages, then Create application, then GitHub). The exact path for an existing Worker is **unverified**; see the docs at `https://developers.cloudflare.com/workers/ci-cd/builds/`.
+
+### 5b. Gather IDs (read-only)
+
+```sh
+gh api repos/TerraScale/gamez --jq '{repo_id: .id, owner_id: .owner.id, owner: .owner.login}'
+```
+
+The Worker "script tag" (the external script ID that Workers Builds uses, not the name) is needed for `--script-tag`. How to get it from the CLI is **unverified**. Try `cf workers get gamez` and the dashboard. `cf builds workers get <script-tag>` returns the current config once you have the tag.
+
+### 5c. Connect the repo and enable previews
+
+Dry-run first (`--dry-run` is a verified flag), then drop it to apply:
+
+```sh
+cf builds workers create \
+  --script-tag <SCRIPT_TAG> \
+  --git-repository-provider-type github \
+  --git-repository-provider-account-id <OWNER_ID> \
+  --git-repository-provider-account-name TerraScale \
+  --git-repository-repo-id <REPO_ID> \
+  --git-repository-repo-name TerraScale/gamez \
+  --git-repository-branch main \
+  --previews-enabled \
+  --previews-base-config-root-directory / \
+  --previews-base-config-build-command "pnpm exec vp -C apps/game build" \
+  --previews-base-config-deploy-command "pnpm -C apps/game exec cf deploy" \
+  --production-settings-root-directory / \
+  --production-settings-build-command "pnpm exec vp -C apps/game build" \
+  --production-settings-deploy-command "pnpm -C apps/game exec cf deploy" \
+  --dry-run
+```
+
+Notes:
+
+- Root directory `/` runs the install at the workspace root (needed for the pnpm workspace). Build and deploy then run from `apps/game` through `-C` and `pnpm -C`.
+- The install command is not a flag on `cf builds workers create`. Workers Builds is expected to detect pnpm from the lockfile and run `pnpm install --frozen-lockfile` (**unverified**). Check the dashboard build settings after connecting.
+- `cf deploy` builds the project itself (`cf deploy --dry-run` "builds a project and runs checks"), so the build command may be redundant. Keep it only if the Workers Builds log shows the build is needed separately.
+- `--previews-base-config-build-token-uuid` and `--production-settings-build-token-uuid` need a build token. `cf builds tokens create` exists, but the flow for getting a token UUID into this call is **unverified**. Creating the connection in the dashboard is simpler.
+- Workers Builds build minutes: `cf builds limits` shows availability.
+
+### 5d. Verify
+
+```sh
+cf builds workers get <SCRIPT_TAG>
+cf builds list --external-script-id <SCRIPT_TAG>   # build history for the Worker
+```
+
+Open a PR and check that a Preview build runs. Merge to `main` (or run a production build) and check the production deploy.
+
+## 6. Local deploy (only if needed)
+
+```sh
+cd apps/game
+cf deploy --dry-run                      # build and checks, no upload
+```
+
+A real `cf deploy` uploads to the account. Use it only when you mean to deploy outside Workers Builds.
+
+## Open questions
+
+- Confirm the GitHub repo connection and Preview setup in the dashboard before the first PR.
+- Decide whether `--provision` stays on, so `cf deploy` creates missing D1 and queue resources, or whether all resources are created by hand.
+- Decide whether `AUTH_SECRET` is set once by hand or passed from a secrets file on each deploy.
