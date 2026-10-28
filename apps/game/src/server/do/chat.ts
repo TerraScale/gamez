@@ -16,6 +16,9 @@ import { ChatHost, type ChatSocket, type ChatSocketInfo } from "../chat/host.ts"
 import { createModerator } from "../chat/moderation.ts";
 import { ChatStore } from "../chat/store.ts";
 import { CHAT_HEADERS, sqlStoreOf, type ChatChannelApi, type Env } from "../contracts.ts";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
+import { chatWsMode, wsClosed, wsOpened } from "../analytics/ws.ts";
 
 const FLUSH_BATCH = 200;
 
@@ -27,6 +30,12 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChatChannelDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const name = ctx.id.name ?? ctx.id.toString();
     this.#store = new ChatStore(sqlStoreOf(ctx.storage), name);
     this.#outbox = new Outbox(ctx.storage.sql, `chat:${name}`);
@@ -52,18 +61,38 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
     const tag = request.headers.get(CHAT_HEADERS.tag) || null;
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
-    const info: ChatSocketInfo = { accountId, name, kind, tag };
+    const info: ChatSocketInfo = { accountId, name, kind, tag, openedAt: Date.now() };
     server.serializeAttachment(info);
+    wsOpened(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "chat",
+      chatWsMode(this.#store.channel),
+    );
     await this.#hostOf().open(this.#wrap(server));
     return new Response(null, { status: 101, webSocket: client });
   }
 
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChatChannelDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     if (!ws.deserializeAttachment()) return;
     this.#hostOf().handleMessage(this.#wrap(ws), message);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    const info = ws.deserializeAttachment() as ChatSocketInfo | null;
+    wsClosed(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "chat",
+      chatWsMode(this.#store.channel),
+      code,
+      info?.openedAt,
+      Date.now(),
+    );
     try {
       ws.close(code, reason);
     } catch {
@@ -73,6 +102,12 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
 
   /** Drains reports into the sync queue. A throw makes the runtime retry the alarm. */
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChatChannelDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const sink = {
       send: async (batch: ReplicationBatch) => {
         await this.env.SYNC_QUEUE.send(batch);
@@ -122,6 +157,7 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
         this.env.ACCOUNT.getByName(accountId).setBlocked(target, blocked),
       waitUntil: (promise) => this.ctx.waitUntil(promise),
       log: (message, err) => console.error(message, err),
+      analytics: analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
     });
     return this.#host;
   }

@@ -16,7 +16,7 @@
  * Mechanics only: the mode supplies the limits and speedOf (ClientDrivenPolicy).
  */
 import { stableHash } from "./hash.ts";
-import type { Sim, World } from "./types.ts";
+import type { GameEvent, Sim, World } from "./types.ts";
 
 /** One successful dispatch the client made at sim tick `tick`. */
 export interface SegmentInput {
@@ -81,6 +81,12 @@ export interface ReplayOptions {
   maxSpeed?: number;
   /** When given, a different final hash is reported as hash_mismatch. */
   expectHash?: string;
+  /**
+   * Observer of the events of every step and successful dispatch, in order
+   * (analytics). Must not touch the sim. Called before the outcome is known:
+   * callers buffer and drop the events when the replay fails.
+   */
+  onEvents?: (events: readonly GameEvent[]) => void;
 }
 
 /** Shape and limit checks only (no sim work). Null when the segment is acceptable. */
@@ -140,22 +146,34 @@ export function replaySegment(sim: Sim, seg: SegmentBody, opts: ReplayOptions): 
   const shape = checkSegment(seg, sim.tick, opts);
   if (shape) return fail(shape.code, shape.message);
 
+  // An observer that throws must not fail the replay: it is analytics, not verification.
+  const observe = (events: readonly GameEvent[]): void => {
+    try {
+      opts.onEvents?.(events);
+    } catch {
+      /* ignored */
+    }
+  };
+
   let currentSpeed = speed();
   const advance = (to: number): boolean => {
     const n = to - sim.tick;
     if (n <= 0) return true;
     costMs += (n * msPerTick) / currentSpeed;
+    let events: GameEvent[];
     try {
-      sim.step(n);
-      return true;
+      events = sim.step(n);
     } catch {
       return false;
     }
+    if (opts.onEvents && events.length > 0) observe(events);
+    return true;
   };
 
   for (const input of seg.inputs) {
     if (!advance(input.tick)) return fail("step_failed", `step failed before tick ${input.tick}`);
     const res = sim.dispatch(input.name, input.payload, opts.actor);
+    if (res.ok && opts.onEvents && res.events.length > 0) observe(res.events);
     if (!res.ok) {
       return fail(
         "input_rejected",

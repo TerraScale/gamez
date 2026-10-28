@@ -1,6 +1,7 @@
-/** App shell: payment return and #admin fragments (wave-C.md §10.4). */
+/** App shell: payment return, #admin and admin deep-link fragments (wave-C.md §10.4, admin-dashboard.md §10.1). */
 import { describe, expect, it } from "vite-plus/test";
 import {
+  ADMIN_ARG_MAX,
   firstPaidReturn,
   ORDER_ID_MAX,
   parseShellFragment,
@@ -39,11 +40,45 @@ describe("parseShellFragment", () => {
     expect(parseShellFragment("admin")).toEqual({ kind: "admin" });
   });
 
+  it("admin deep links: #admin/<section>[/<arg>]", () => {
+    expect(parseShellFragment("#admin/players")).toEqual({ kind: "admin", section: "players" });
+    expect(parseShellFragment("#admin/lookup/acc-123")).toEqual({
+      kind: "admin",
+      section: "lookup",
+      arg: "acc-123",
+    });
+    expect(parseShellFragment("admin/lookup/acc%201%2Fx")).toEqual({
+      kind: "admin",
+      section: "lookup",
+      arg: "acc 1/x",
+    });
+    expect(parseShellFragment("#admin/lookup/a/b")).toEqual({
+      kind: "admin",
+      section: "lookup",
+      arg: "a/b",
+    });
+  });
+
+  it("a malformed admin deep link still opens the dashboard, without the bad parts", () => {
+    expect(parseShellFragment("#admin/")).toEqual({ kind: "admin" });
+    expect(parseShellFragment("#admin/Bad!")).toEqual({ kind: "admin" });
+    expect(parseShellFragment("#admin/lookup/")).toEqual({ kind: "admin", section: "lookup" });
+    expect(parseShellFragment("#admin/lookup/%E0%A4%A")).toEqual({
+      kind: "admin",
+      section: "lookup",
+    });
+    expect(parseShellFragment(`#admin/lookup/${"x".repeat(ADMIN_ARG_MAX + 1)}`)).toEqual({
+      kind: "admin",
+      section: "lookup",
+    });
+  });
+
   it("anything else is not a shell fragment", () => {
     expect(parseShellFragment("")).toBeNull();
     expect(parseShellFragment("#")).toBeNull();
     expect(parseShellFragment("#store=weird")).toBeNull();
     expect(parseShellFragment("#adminx")).toBeNull();
+    expect(parseShellFragment("#adminx/players")).toBeNull();
   });
 
   it("the OAuth fragment is not ours (session.ts still reads it)", () => {

@@ -11,6 +11,9 @@ import { codec } from "../../shared/codec.ts";
 import { presenceEntityId, presenceWorld, type PresenceWorldSpec } from "../../shared/worlds.ts";
 import { SocketLimiter, type LimitedKind } from "../rate-limit.ts";
 import { defaultWorld } from "../presence/world.ts";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
+import { WS_ABNORMAL_CLOSE, wsClosed, wsOpened } from "../analytics/ws.ts";
 
 /** Per-socket state; survives hibernation via serializeAttachment. */
 interface SocketInfo {
@@ -19,6 +22,8 @@ interface SocketInfo {
   name: string;
   /** True once the socket got its welcome; only ready sockets receive deltas. */
   ready: boolean;
+  /** Accept time (epoch ms), for ws.close durationS. Absent on sockets accepted before analytics. */
+  openedAt?: number;
 }
 
 /**
@@ -52,6 +57,16 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
    */
   readonly #poseBatch = new Map<string, { ws: WebSocket; info: SocketInfo; pose: PoseUpdate }>();
   #posesInFlight = false;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "RelayDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
+  }
 
   get name(): string {
     return this.ctx.id.name ?? this.ctx.storage.kv.get<string>("name") ?? "relay:XX:0";
@@ -95,8 +110,14 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       characterId: presenceEntityId(accountId, world),
       name,
       ready: false,
+      openedAt: Date.now(),
     };
     server.serializeAttachment(info);
+    wsOpened(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "presence",
+      world.id,
+    );
     void this.#onboard(server, info).catch((err: unknown) => {
       console.error("onboard failed", err);
       this.#send(server, { t: "error", code: "join-failed", message: "could not join the world" });
@@ -143,6 +164,12 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "RelayDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const info = ws.deserializeAttachment() as SocketInfo | null;
     if (!info) return;
     let msg: ClientMessage;
@@ -262,6 +289,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.#recordClose(ws, code);
     try {
       ws.close(code, reason);
     } catch {
@@ -271,7 +299,21 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
+    this.#recordClose(ws, WS_ABNORMAL_CLOSE);
     await this.#disconnected(ws);
+  }
+
+  /** One ws.close point for a socket that is going away (before its cleanup). */
+  #recordClose(ws: WebSocket, code: number): void {
+    const info = ws.deserializeAttachment() as SocketInfo | null;
+    wsClosed(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "presence",
+      this.world.id,
+      code,
+      info?.openedAt,
+      Date.now(),
+    );
   }
 
   /** Called by the chunk with each coalesced delta. */

@@ -1,8 +1,10 @@
 /**
  * Admin dashboard: the loader against a fake fetch, the presentational parts
- * rendered with react-dom/server on fake telemetry, and the config SDK.
- * (Effects do not run in a static render, so the AdminScreen loading state is
- * the only shell case here; the full flow is covered by the e2e and QA runs.)
+ * rendered with react-dom/server on fake telemetry, the sidebar shell (layout
+ * from state, range and query string, refresh fresh=1, theme attribute,
+ * remembered preferences, the NotAdmin flow) and the config SDK. Effects do
+ * not run in a static render, so the shell's state model is tested through
+ * its pure helpers and AdminLayout; the live flow is covered by the QA runs.
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -10,9 +12,30 @@ import type { ConfigResponse, EconomyTelemetry } from "@gamez/protocol";
 import type { HttpClient, HttpRequest } from "../../src/client/platform/http.ts";
 import type { ApiResult } from "@gamez/ui-host";
 import { createConfigApi } from "../../src/client/platform/config.ts";
-import { AdminScreen } from "../../src/client/admin/index.tsx";
+import {
+  AdminLayout,
+  AdminScreen,
+  cachedAge,
+  groupSections,
+  resolveSection,
+  type AdminLayoutProps,
+} from "../../src/client/admin/index.tsx";
+import {
+  adminHash,
+  daysOf,
+  defaultPrefs,
+  PREFS_KEY,
+  queryOf,
+  rangeOf,
+  readPrefs,
+  writePrefs,
+  type AdminPrefs,
+} from "../../src/client/admin/kit/toolbar.tsx";
+import type { SectionContext, SectionDef } from "../../src/client/admin/kit/types.ts";
+import { SECTIONS } from "../../src/client/admin/sections/index.ts";
 import {
   adminRequest,
+  checkAdmin,
   isDevHostname,
   loadAdminData,
   makeDevAdmin,
@@ -353,7 +376,296 @@ describe("AdminScreen shell", () => {
     expect(html).toContain("Live ops");
     expect(html).toContain("Loading the dashboard");
     expect(html).toContain("--adm-cat-1");
+    expect(html).toContain("Close");
     expect(html).not.toContain("tok-");
+    // No section data is shown (or requested) before GET /api/admin/me answers.
+    expect(html).not.toContain('aria-label="Section"');
+    expect(html).not.toContain('class="adm-nav-group"');
+  });
+
+  it("accepts a deep link without throwing", () => {
+    const html = renderToStaticMarkup(
+      <AdminScreen
+        session={{ token: "t", accountId: "a", name: "A" }}
+        platform={undefined}
+        onClose={() => {}}
+        initialSection="lookup"
+        initialArg="acc-1"
+      />,
+    );
+    expect(html).toContain('data-testid="admin-screen"');
+  });
+
+  it("checkAdmin: admin ok, player 403 with devHost, old server (404) ok", async () => {
+    const ok = await checkAdmin(async () => json({ admin: true, devHost: false }), "t");
+    expect(ok.ok).toBe(true);
+    const player = await checkAdmin(async () => json({ admin: false, devHost: true }), "t");
+    expect(player).toMatchObject({ ok: false, status: 403, devHost: true });
+    const anon = await checkAdmin(
+      async () => json({ error: { code: "unauthorized", message: "log in" } }, 401),
+      "",
+    );
+    expect(anon).toMatchObject({ ok: false, status: 401 });
+    const old = await checkAdmin(async () => new Response("", { status: 404 }), "t");
+    expect(old).toEqual({ ok: true, value: null });
+  });
+});
+
+const NOW = Date.UTC(2026, 9, 28, 12, 30, 15);
+
+function fakeCtx(prefs: AdminPrefs, fresh = false): SectionContext {
+  const range = rangeOf(prefs, NOW);
+  return {
+    token: "t",
+    range,
+    query: queryOf(range, fresh),
+    days: daysOf(range),
+    get: async () => ({ ok: false, status: 0, code: "test", message: "no fetch in tests" }),
+    post: async () => ({ ok: false, status: 0, code: "test", message: "no fetch in tests" }),
+    setStatus: () => {},
+    reload: () => {},
+    openPlayer: () => {},
+  };
+}
+
+/** The registry's ids, labels, groups and loads, with probe bodies (sections are built elsewhere). */
+const FAKE_SECTIONS: SectionDef<unknown>[] = SECTIONS.map((s) => ({
+  ...s,
+  Component: ({ data }: { data: unknown }) => (
+    <p className="probe">
+      {s.id} body: {JSON.stringify(data)}
+    </p>
+  ),
+}));
+
+const escapeHtml = (text: string) => text.replace(/&/g, "&amp;");
+
+function layout(over: Partial<AdminLayoutProps> = {}): string {
+  const prefs = over.prefs ?? defaultPrefs(NOW);
+  const section = FAKE_SECTIONS.find((s) => s.id === prefs.section) ?? FAKE_SECTIONS[0]!;
+  const props: AdminLayoutProps = {
+    sections: FAKE_SECTIONS,
+    prefs,
+    section,
+    gate: { state: "admin" },
+    view: null,
+    ctx: fakeCtx(prefs),
+    arg: null,
+    status: "",
+    busy: false,
+    devHost: true,
+    onSection: () => {},
+    onPrefs: () => {},
+    onRange: () => {},
+    onRefresh: () => {},
+    onRetryGate: () => {},
+    onMakeDevAdmin: () => {},
+    onClose: () => {},
+    ...over,
+  };
+  return renderToStaticMarkup(<AdminLayout {...props} />);
+}
+
+describe("sidebar shell", () => {
+  it("groups the sections in sidebar order", () => {
+    const groups = groupSections(SECTIONS);
+    expect(groups.map((g) => g.group)).toEqual(["Live", "Players", "Game", "Business", "Ops"]);
+    expect(groups.flatMap((g) => g.sections.map((s) => s.id))).toEqual(
+      expect.arrayContaining(SECTIONS.map((s) => s.id)),
+    );
+    expect(groups.flatMap((g) => g.sections)).toHaveLength(SECTIONS.length);
+  });
+
+  it("renders the sidebar, the phone select and the toolbar for an admin", () => {
+    const html = layout();
+    for (const s of SECTIONS) expect(html).toContain(`>${escapeHtml(s.label)}<`);
+    expect(html).toContain('aria-label="Dashboard sections"');
+    expect(html).toContain('aria-current="page">Overview<');
+    expect(html).toContain('<select aria-label="Section"');
+    expect(html).toContain('<optgroup label="Players">');
+    expect(html).toContain('aria-pressed="true">7 d<');
+    expect(html).toContain("Auto-refresh");
+    expect(html).toContain("Refresh");
+    expect(html).toContain("Theme");
+    expect(html).toContain("Close");
+    expect(html).toContain("Loading overview");
+  });
+
+  it("marks the open section and shows its data", () => {
+    const prefs = { ...defaultPrefs(NOW), section: "tech" };
+    const html = layout({
+      prefs,
+      view: {
+        sectionId: "tech",
+        status: "ready",
+        data: { at: NOW, sources: [{ name: "http.request", kind: "local", ok: true }] },
+        loadedAt: NOW + 12_000,
+      },
+    });
+    expect(html).toContain('aria-current="page">Tech health<');
+    expect(html).toContain('<h1 class="adm-phone-hidden">Tech health</h1>');
+    expect(html).toContain("(cached 12 s)");
+    expect(html).toContain('class="adm-body" aria-busy="false"');
+    expect(html).toContain("tech body: ");
+  });
+
+  it("keeps the previous data dimmed while it reloads, never another section's", () => {
+    const prefs = { ...defaultPrefs(NOW), section: "tech" };
+    const data = { at: NOW, sources: [] };
+    const reloading = layout({ prefs, view: { sectionId: "tech", status: "loading", data } });
+    expect(reloading).toContain('aria-busy="true"');
+    expect(reloading).toContain("tech body: ");
+    const other = layout({ prefs, view: { sectionId: "overview", status: "ready", data } });
+    expect(other).not.toContain('class="adm-body"');
+    expect(other).not.toContain("tech body");
+    expect(other).toContain("Loading tech health");
+  });
+
+  it("shows a section error with a retry", () => {
+    const html = layout({
+      view: { sectionId: "overview", status: "error", data: null, error: "HTTP 500" },
+    });
+    expect(html).toContain("Overview could not load");
+    expect(html).toContain("HTTP 500");
+    expect(html).toContain("Try again");
+  });
+
+  it("renders self-loading sections without waiting for data", () => {
+    const prefs = { ...defaultPrefs(NOW), section: "config" };
+    const html = layout({ prefs });
+    expect(html).toContain('class="adm-body"');
+    expect(html).toContain("config body: null");
+    expect(html).not.toContain("Loading flags &amp; config…");
+  });
+
+  it("sets the theme on the .adm root (system leaves the page's own)", () => {
+    expect(layout({ prefs: { ...defaultPrefs(NOW), theme: "dark" } })).toContain(
+      'data-theme="dark"',
+    );
+    expect(layout({ prefs: { ...defaultPrefs(NOW), theme: "light" } })).toContain(
+      'data-theme="light"',
+    );
+    expect(layout()).not.toMatch(/<div class="adm adm-shell"[^>]*data-theme=/);
+    expect(layout()).toContain('.adm[data-theme="dark"]');
+  });
+
+  it("keeps the wave C NotAdmin flow: dev self-grant on a dev host, Close, no sections", () => {
+    const denied = layout({ gate: { state: "denied", status: 403, devHost: true } });
+    expect(denied).toContain("Not an admin");
+    expect(denied).toContain("Make me admin (dev)");
+    expect(denied).not.toContain('aria-label="Section"');
+    expect(denied).not.toContain("Auto-refresh");
+    const prod = layout({ gate: { state: "denied", status: 403, devHost: false }, devHost: false });
+    expect(prod).not.toContain("Make me admin (dev)");
+    const anon = layout({ gate: { state: "denied", status: 401 } });
+    expect(anon).toContain("Log in to continue");
+    const broken = layout({ gate: { state: "error", message: "Network error, try again" } });
+    expect(broken).toContain("Dashboard unavailable");
+  });
+
+  it("opens a deep-linked section, else the remembered one, else overview", () => {
+    expect(resolveSection("lookup", "tech")).toBe("lookup");
+    expect(resolveSection("nope", "tech")).toBe("tech");
+    expect(resolveSection(undefined, "gone")).toBe("overview");
+  });
+
+  it("reports cache age only for stale responses", () => {
+    expect(cachedAge({ at: 1000 }, 3000)).toBeNull();
+    expect(cachedAge({ at: 1000 }, 31_000)).toBe(30);
+    expect(cachedAge(null, 31_000)).toBeNull();
+    expect(cachedAge({ at: "x" }, 31_000)).toBeNull();
+  });
+});
+
+describe("range and query", () => {
+  it("presets end at the load time rounded up to the minute", () => {
+    const r = rangeOf({ ...defaultPrefs(NOW), preset: "24h" }, NOW);
+    expect(r.to).toBe(Date.UTC(2026, 9, 28, 12, 31));
+    expect(r.to - r.from).toBe(86_400_000);
+    expect(r.bucket).toBe("auto");
+    expect(queryOf(r)).toBe(`from=${r.from}&to=${r.to}`);
+    expect(daysOf(r)).toBe(1);
+    expect(daysOf(rangeOf({ ...defaultPrefs(NOW), preset: "7d" }, NOW))).toBe(7);
+    expect(daysOf(rangeOf({ ...defaultPrefs(NOW), preset: "90d" }, NOW))).toBe(60);
+  });
+
+  it("adds bucket and fresh=1 (manual refresh) to the query", () => {
+    const r = rangeOf({ ...defaultPrefs(NOW), preset: "30d", bucket: "day" }, NOW);
+    expect(queryOf(r)).toContain("&bucket=day");
+    expect(queryOf(r, true)).toMatch(/&bucket=day&fresh=1$/);
+    expect(fakeCtx({ ...defaultPrefs(NOW), bucket: "hour" }, true).query).toMatch(
+      /^from=\d+&to=\d+&bucket=hour&fresh=1$/,
+    );
+  });
+
+  it("custom ranges cover whole UTC days, swapped when reversed, at most 90 days", () => {
+    const base = { ...defaultPrefs(NOW), preset: "custom" as const };
+    const r = rangeOf({ ...base, customFrom: "2026-10-01", customTo: "2026-10-07" }, NOW);
+    expect(r.from).toBe(Date.UTC(2026, 9, 1));
+    expect(r.to).toBe(Date.UTC(2026, 9, 8));
+    expect(daysOf(r)).toBe(7);
+    const swapped = rangeOf({ ...base, customFrom: "2026-10-07", customTo: "2026-10-01" }, NOW);
+    expect(swapped).toEqual(r);
+    const long = rangeOf({ ...base, customFrom: "2025-01-01", customTo: "2026-10-27" }, NOW);
+    expect(long.to - long.from).toBe(90 * 86_400_000);
+  });
+
+  it("builds the deep-link hash", () => {
+    expect(adminHash("overview")).toBe("#admin/overview");
+    expect(adminHash("lookup", "acc 1/x")).toBe("#admin/lookup/acc%201%2Fx");
+  });
+});
+
+describe("remembered preferences", () => {
+  function memory(initial?: string) {
+    const m = new Map<string, string>();
+    if (initial !== undefined) m.set(PREFS_KEY, initial);
+    return {
+      m,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+    };
+  }
+
+  it("round-trips section, range, refresh and theme", () => {
+    const s = memory();
+    const prefs: AdminPrefs = {
+      ...defaultPrefs(NOW),
+      section: "economy",
+      preset: "custom",
+      customFrom: "2026-10-01",
+      customTo: "2026-10-10",
+      bucket: "day",
+      refreshMs: 60_000,
+      theme: "dark",
+    };
+    writePrefs(prefs, s);
+    expect(readPrefs(s, NOW)).toEqual(prefs);
+  });
+
+  it("drops bad fields and survives broken or missing storage", () => {
+    const bad = memory(
+      JSON.stringify({
+        section: "<script>",
+        preset: "1y",
+        refreshMs: 7,
+        theme: "neon",
+        bucket: "x",
+      }),
+    );
+    expect(readPrefs(bad, NOW)).toEqual(defaultPrefs(NOW));
+    expect(readPrefs(memory("{not json"), NOW)).toEqual(defaultPrefs(NOW));
+    expect(readPrefs(null, NOW)).toEqual(defaultPrefs(NOW));
+    const throwing = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(readPrefs(throwing, NOW)).toEqual(defaultPrefs(NOW));
+    expect(() => writePrefs(defaultPrefs(NOW), throwing)).not.toThrow();
   });
 });
 

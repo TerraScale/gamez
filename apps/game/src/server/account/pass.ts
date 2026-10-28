@@ -26,7 +26,8 @@ import {
   type SeasonDef,
 } from "@gamez/economy";
 import type { NoticeInput, PassTrack, PassView } from "@gamez/protocol";
-import type { EconResult, SqlStore } from "../contracts.ts";
+import type { Outbox } from "@gamez/sync";
+import type { EconResult, PassProgressPayload, SqlStore } from "../contracts.ts";
 import type { AccountEconomy } from "./economy.ts";
 import type { AccountNotices } from "./notices.ts";
 import type { AccountVault } from "./vault.ts";
@@ -41,6 +42,7 @@ const TRACKS: readonly PassTrack[] = ["free", "premium"];
 type XpRow = { xp: number };
 type TotalRow = { total: number };
 type ClaimRow = { tier: number; track: string };
+type SeenRow = { level: number; xp: number; premium: number; premium_at: number | null };
 
 function isTxId(v: unknown): v is string {
   return typeof v === "string" && v.length > 0 && v.length <= MAX_TX_ID;
@@ -61,6 +63,9 @@ export class AccountPass {
     readonly vault: AccountVault,
     readonly notices: AccountNotices,
     readonly now: () => number = Date.now,
+    /** Admin dashboard: "pass_progress" rows. Absent in tests that do not need them. */
+    readonly outbox?: Outbox,
+    readonly accountId: string = "",
   ) {}
 
   init(): void {
@@ -79,6 +84,14 @@ export class AccountPass {
       xp INTEGER NOT NULL,
       reason TEXT NOT NULL,
       at INTEGER NOT NULL
+    )`);
+    // Last progress row sent per season (dedupes pass_progress appends).
+    sql.exec(`CREATE TABLE IF NOT EXISTS pass_progress_seen (
+      season TEXT PRIMARY KEY,
+      level INTEGER NOT NULL,
+      xp INTEGER NOT NULL,
+      premium INTEGER NOT NULL,
+      premium_at INTEGER
     )`);
     sql.exec(`CREATE TABLE IF NOT EXISTS pass_claim (
       season TEXT NOT NULL,
@@ -125,7 +138,9 @@ export class AccountPass {
         total,
       );
       if (total <= last) return null;
-      return this.#addXpRow(season, total - last);
+      const change = this.#addXpRow(season, total - last);
+      this.#progress(season);
+      return change;
     });
     if (crossed) this.#announce(season, crossed.from, crossed.to);
     return this.view();
@@ -151,6 +166,7 @@ export class AccountPass {
         safeReason,
         this.now(),
       );
+      this.#progress(season);
       return change;
     });
     if (crossed) this.#announce(season, crossed.from, crossed.to);
@@ -206,7 +222,66 @@ export class AccountPass {
     return { ok: true, value: this.view() };
   }
 
+  /**
+   * Re-sends the running season's progress row when the premium entitlement
+   * changed outside xp (a store grant or refund, which AccountDO calls after the
+   * purchase write). Writes nothing when the row is already up to date.
+   */
+  syncProgress(): void {
+    this.store.transactionSync(() => this.#progress(currentSeason(this.now())));
+  }
+
   // ---- helpers ------------------------------------------------------------
+
+  /**
+   * Appends "pass_progress" for `season` when level, xp or premium changed since
+   * the last append (inside the caller's transaction). No-op without an outbox.
+   */
+  #progress(season: SeasonDef): void {
+    if (!this.outbox) return;
+    const xp = this.#xpOf(season.id);
+    const level = tierForXp(season, xp);
+    const premiumEntitlement = this.economy.entitlements().find((e) => e.sku === season.premiumSku);
+    const premium = premiumEntitlement !== undefined;
+    const premiumAt = premiumEntitlement?.grantedAt ?? null;
+    const seen = this.store.sql
+      .exec<SeenRow>(
+        "SELECT level, xp, premium, premium_at FROM pass_progress_seen WHERE season = ?",
+        season.id,
+      )
+      .toArray()[0];
+    // Accounts with no pass activity get no row (a cosmetic grant is not pass progress).
+    if (!seen && xp === 0 && !premium) return;
+    if (
+      seen &&
+      seen.level === level &&
+      seen.xp === xp &&
+      seen.premium === (premium ? 1 : 0) &&
+      seen.premium_at === premiumAt
+    ) {
+      return;
+    }
+    this.store.sql.exec(
+      `INSERT INTO pass_progress_seen (season, level, xp, premium, premium_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(season) DO UPDATE SET level = excluded.level, xp = excluded.xp,
+         premium = excluded.premium, premium_at = excluded.premium_at`,
+      season.id,
+      level,
+      xp,
+      premium ? 1 : 0,
+      premiumAt,
+    );
+    const payload: PassProgressPayload = {
+      accountId: this.accountId,
+      seasonId: season.id,
+      level,
+      xp,
+      premium,
+      premiumAt,
+      updatedAt: this.now(),
+    };
+    this.outbox.append("pass_progress", `${this.accountId}/${season.id}`, "upsert", payload);
+  }
 
   /** Adds xp to the season's total (inside the caller's transaction). */
   #addXpRow(season: SeasonDef, xp: number): { season: SeasonDef; from: number; to: number } {

@@ -19,6 +19,7 @@ import {
   type ReportReason,
 } from "@gamez/protocol";
 import type { ChatReportPayload } from "../contracts.ts";
+import type { Analytics } from "../analytics/types.ts";
 import { TokenBucket, type BucketSpec } from "../rate-limit.ts";
 import { filterChat } from "./filter.ts";
 import { encodeChatServerMessage, parseChatClientMessage } from "./messages.ts";
@@ -54,7 +55,25 @@ export interface ChatSocketInfo {
   kind: AccountKind;
   /** Guild tag of the account when it joined. */
   tag: string | null;
+  /** Accept time (epoch ms), for ws.close durationS. Absent on sockets accepted before analytics. */
+  openedAt?: number;
 }
+
+/** The chat.message channelKind blob: the channel's access kind, never the id. */
+export type ChannelKind = "global" | "mode" | "guild" | "other";
+
+export function channelKindOf(channel: string): ChannelKind {
+  if (channel === "global") return "global";
+  if (channel.startsWith("mode:")) return "mode";
+  if (channel.startsWith("guild:")) return "guild";
+  return "other";
+}
+
+/** chat.message outcomes (docs/design/admin-dashboard.md §3). */
+export type ChatOutcome = "ok" | "filtered" | "muted" | "rate_limited" | "guard";
+/** mod.action kinds and who took them. */
+export type ModAction = "mute" | "hide" | "report" | "filter" | "guard";
+export type ModBy = "admin" | "auto" | "player";
 
 export interface ChatSocket {
   readonly info: ChatSocketInfo;
@@ -84,6 +103,8 @@ export interface ChatHostDeps {
   /** Keeps background work alive past the handler (the DO's ctx.waitUntil). */
   waitUntil(promise: Promise<unknown>): void;
   log?: (message: string, err?: unknown) => void;
+  /** Analytics writer for chat.message and mod.action points (optional: no points without it). */
+  analytics?: Analytics;
 }
 
 /** A join never waits longer than this for the AccountDO block list (the welcome goes out without it). */
@@ -244,23 +265,33 @@ export class ChatHost {
     const { accountId, kind, name, tag } = socket.info;
     const now = this.#d.now();
     const text = cleanChatText(raw);
-    if (text.length === 0) return this.#reject(socket, "empty", "message is empty", nonce);
+    if (text.length === 0) {
+      this.#chatPoint("guard", 0);
+      return this.#reject(socket, "empty", "message is empty", nonce);
+    }
     if (text.length > CHAT_MAX_LEN) {
+      this.#chatPoint("guard", text.length);
       return this.#reject(socket, "too_long", `at most ${CHAT_MAX_LEN} characters`, nonce);
     }
     const mute = this.#d.store.muteOf(accountId);
     if (mute && mute.until > now) {
+      this.#chatPoint("muted", text.length);
       return this.#reject(socket, "muted", "you are muted in this channel", nonce);
     }
     if (!this.#bucket(socket.info, now).take(now)) {
+      this.#chatPoint("rate_limited", text.length);
       return this.#reject(socket, "rate_limited", "slow down", nonce);
     }
     const key = text.toLowerCase();
     if (this.#d.store.recentKeys(accountId, now - DUPLICATE_WINDOW_MS).includes(key)) {
+      this.#chatPoint("guard", text.length);
+      this.#modPoint("guard", "auto");
       return this.#reject(socket, "duplicate", "you just sent that", nonce);
     }
     const filtered = filterChat(text, { allowLinks: kind === "registered" });
     if (!filtered.ok) {
+      this.#chatPoint("filtered", text.length);
+      this.#modPoint("filter", "auto");
       return filtered.reason === "link"
         ? this.#reject(socket, "filtered", "links need a registered account", nonce)
         : this.#reject(socket, "filtered", "that message was blocked", nonce);
@@ -278,6 +309,7 @@ export class ChatHost {
       this.#d.store.insert(msg, key);
       this.#d.store.prune(RETAIN_MESSAGES);
     });
+    this.#chatPoint("ok", msg.text.length);
     this.#send(socket, { t: "ack", nonce, id: msg.id });
     this.#broadcast({ t: "message", msg }, this.#d.store.blockersOf(accountId));
     this.#d.waitUntil(this.#moderate(msg, text));
@@ -310,8 +342,10 @@ export class ChatHost {
       return until;
     });
     this.#d.outbox.scheduleFlush();
+    this.#modPoint("hide", "auto");
     this.#broadcast({ t: "hidden", ids: [msg.id] });
     if (muteUntil !== null) {
+      this.#modPoint("mute", "auto");
       this.#sendToAccount(msg.from, { t: "muted", until: muteUntil, reason: "repeated_unsafe" });
     } else {
       this.#sendToAccount(msg.from, {
@@ -336,7 +370,10 @@ export class ChatHost {
       this.#appendReport(row.id, row.from, accountId, reason, row.text, row.verdict, now);
       return true;
     });
-    if (created) this.#d.outbox.scheduleFlush();
+    if (created) {
+      this.#d.outbox.scheduleFlush();
+      this.#modPoint("report", "player");
+    }
   }
 
   /** Writes one chat_report record (caller's transaction). */
@@ -411,6 +448,20 @@ export class ChatHost {
     this.#lastAt = at;
     this.#lastN = n;
     return `${at.toString(36)}-${n}`;
+  }
+
+  /** One chat.message point: the outcome of a send attempt in this channel. */
+  #chatPoint(outcome: ChatOutcome, chars: number): void {
+    this.#d.analytics?.write(
+      "chat.message",
+      { channelKind: channelKindOf(this.#d.channel), outcome },
+      { chars },
+    );
+  }
+
+  /** One mod.action point: a mute, hide, report, filter or guard block. */
+  #modPoint(action: ModAction, by: ModBy): void {
+    this.#d.analytics?.write("mod.action", { action, by });
   }
 
   #reject(socket: ChatSocket, code: ChatErrorCode, message: string, nonce?: string): void {

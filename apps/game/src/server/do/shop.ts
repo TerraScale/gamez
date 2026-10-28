@@ -6,6 +6,8 @@
 import type { Party, ShopView } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { sqlStoreOf, type EconResult, type Env, type ShopApi } from "../contracts.ts";
 import { accountGateway } from "../economy/gateway.ts";
 import { systemClock } from "../shops/clock.ts";
@@ -20,6 +22,12 @@ export class ShopDO extends DurableObject<Env> implements ShopApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ShopDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const name = ctx.id.name ?? "";
     const cut = name.lastIndexOf("/");
     const world = cut > 0 ? name.slice(0, cut) : name;
@@ -41,6 +49,12 @@ export class ShopDO extends DurableObject<Env> implements ShopApi {
   }
 
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ShopDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     await this.#book.drive();
     await this.#outbox.flush(
       {

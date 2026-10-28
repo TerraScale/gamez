@@ -1,22 +1,50 @@
 /**
  * URL fragments the shell reacts to (wave C, docs/design/wave-C.md §10.4):
  * `#store=paid&order=<id>` and `#store=cancel` after a payment return, and
- * `#admin` for the live-ops dashboard. The OAuth `#auth=` fragment is handled
+ * `#admin` for the live-ops dashboard, with deep links `#admin/<section>[/<arg>]`
+ * (docs/design/admin-dashboard.md §10.1). The OAuth `#auth=` fragment is handled
  * by session.ts (consumeAuthFragment) and is not parsed here.
  */
 
 export type ShellFragment =
   | { kind: "store"; outcome: "paid"; order: string | null }
   | { kind: "store"; outcome: "cancel" }
-  | { kind: "admin" };
+  | { kind: "admin"; section?: string; arg?: string };
 
 /** Longest order id accepted from a URL; longer values are dropped. */
 export const ORDER_ID_MAX = 80;
+/** Longest admin deep-link argument (an account id); longer ones are dropped. */
+export const ADMIN_ARG_MAX = 128;
+const ADMIN_SECTION_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * "admin", "admin/<section>" or "admin/<section>/<arg>" (the hash without "#").
+ * A malformed section opens the dashboard on its default section; a malformed
+ * or too long argument is dropped. The argument is URI-decoded and may contain "/".
+ */
+function parseAdmin(raw: string): ShellFragment | null {
+  if (raw === "admin") return { kind: "admin" };
+  if (!raw.startsWith("admin/")) return null;
+  const rest = raw.slice("admin/".length);
+  const cut = rest.indexOf("/");
+  const section = cut < 0 ? rest : rest.slice(0, cut);
+  if (!ADMIN_SECTION_RE.test(section)) return { kind: "admin" };
+  if (cut < 0) return { kind: "admin", section };
+  let arg: string;
+  try {
+    arg = decodeURIComponent(rest.slice(cut + 1));
+  } catch {
+    return { kind: "admin", section };
+  }
+  if (arg.length === 0 || arg.length > ADMIN_ARG_MAX) return { kind: "admin", section };
+  return { kind: "admin", section, arg };
+}
 
 /** Parses the location hash ("#store=paid&order=x" or "store=paid&order=x"). Unknown fragments give null. */
 export function parseShellFragment(hash: string): ShellFragment | null {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (raw === "admin") return { kind: "admin" };
+  const admin = parseAdmin(raw);
+  if (admin) return admin;
   const params = new URLSearchParams(raw);
   const store = params.get("store");
   if (store === "paid") {

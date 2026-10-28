@@ -29,6 +29,8 @@ export default defineConfig({
       ShopDO: exports.durableObject({ storage: "sqlite" }),
       ArenaDO: exports.durableObject({ storage: "sqlite" }),
       ConfigDO: exports.durableObject({ storage: "sqlite" }),
+      // admin dashboard (docs/design/admin-dashboard.md): local analytics stub
+      MetricsDO: exports.durableObject({ storage: "sqlite" }),
     },
     triggers: [
       triggers.queue({
@@ -55,6 +57,8 @@ export default defineConfig({
       SHOP: bindings.durableObject({ worker: WORKER, exportName: "ShopDO" }),
       ARENA: bindings.durableObject({ worker: WORKER, exportName: "ArenaDO" }),
       CONFIG: bindings.durableObject({ worker: WORKER, exportName: "ConfigDO" }),
+      METRICS: bindings.durableObject({ worker: WORKER, exportName: "MetricsDO" }),
+      ANALYTICS: bindings.analyticsEngineDataset({ name: "gamez_events" }),
       DB: bindings.d1({ name: "gamez-read" }),
       SYNC_QUEUE: bindings.queue({ name: "gamez-sync" }),
       AUTH_SECRET: bindings.secret(),

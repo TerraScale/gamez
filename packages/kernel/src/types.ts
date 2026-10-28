@@ -273,6 +273,37 @@ export interface ClientDrivenPolicy {
   reports?(world: World, registry: FrozenRegistry): InstanceReport[];
   /** Wave C platform hooks (docs/design/wave-C.md §2): bank, arena builds, season progress. */
   platform?: PlatformHooks;
+  /** Admin dashboard: how verified play folds into metrics (docs/design/admin-dashboard.md §5). */
+  analytics?: ModeAnalytics;
+}
+
+/**
+ * Adds `amount` to counter (metric, k1, k2). All three keys must have bounded
+ * cardinality: enums, registry ids, bands ("10-19"). Never names or ids of players.
+ */
+export type AnalyticsTally = (metric: string, k1: string, k2: string, amount: number) => void;
+
+/**
+ * Admin dashboard hooks of a client-driven mode (docs/design/admin-dashboard.md §5).
+ * Pure, server-side only, never part of contentHash; they read the world and
+ * never change it. The verified host (analytics/sim-tally.ts) calls them for
+ * verified segments and offline grants only.
+ */
+export interface ModeAnalytics {
+  /**
+   * Bounded dimensions of the hero now. `control` is the control mode
+   * ("manual" | "auto" | "idle"), `levelBand` e.g. "10-19". The host tallies
+   * ("play.ms", control, levelBand) (wall time = replay cost) and ("sim.ms", …)
+   * for every verified segment itself.
+   */
+  dims(world: World): { control: string; levelBand: string };
+  /** Folds one batch of verified events (and the world after them) into counters. */
+  fold(events: readonly GameEvent[], world: World, tally: AnalyticsTally): void;
+  /** Summary of one offline grant's events, or null when it granted nothing. */
+  offline?(
+    events: readonly GameEvent[],
+    world: World,
+  ): { kills: number; xp: number; gold: number; items: number; levels: number } | null;
 }
 
 /**

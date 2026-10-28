@@ -34,6 +34,7 @@ import {
 } from "./screens.ts";
 import { useAccount } from "./useAccount.ts";
 import { useFeatureFlags, useNotices } from "./useShellData.ts";
+import { setTelemetryContext, startTelemetry } from "../telemetry/index.ts";
 import "./app.css";
 
 /** Notice display time (ms). */
@@ -84,6 +85,8 @@ export function App() {
   const [stack, setStack] = useState<ShellItem[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  // Deep link of the dashboard (#admin/<section>[/<arg>]); the screen keeps the hash in sync.
+  const [adminRoute, setAdminRoute] = useState<{ section?: string; arg?: string }>({});
   /** Latest session for the platform SDK, which reads it per request. */
   const sessionRef = useRef<Session | null>(null);
 
@@ -176,11 +179,13 @@ export function App() {
     const apply = () => {
       const fragment = parseShellFragment(window.location.hash);
       if (fragment === null) return;
-      clearShellFragment();
       if (fragment.kind === "admin") {
+        // The admin hash stays (a reload reopens the same section); Close clears it.
+        setAdminRoute({ section: fragment.section, arg: fragment.arg });
         setAdminOpen(true);
         return;
       }
+      clearShellFragment();
       if (fragment.outcome === "paid") {
         setNotice({
           tone: "ok",
@@ -199,6 +204,15 @@ export function App() {
     window.addEventListener("hashchange", apply);
     return () => window.removeEventListener("hashchange", apply);
   }, [isReady, platform, refresh]);
+
+  // Client telemetry (admin-dashboard.md §9): the session starts once the app is ready;
+  // the token and the running mode ride on later events. No account id leaves the client.
+  const runningMode = running?.modeId ?? "";
+  useEffect(() => {
+    if (!isReady) return;
+    setTelemetryContext({ token, mode: runningMode, contentHash: "" });
+    startTelemetry();
+  }, [isReady, token, runningMode]);
 
   useEffect(() => {
     if (!notice) return;
@@ -281,7 +295,12 @@ export function App() {
             <AdminScreen
               session={boot.session}
               platform={platform}
-              onClose={() => setAdminOpen(false)}
+              initialSection={adminRoute.section}
+              initialArg={adminRoute.arg}
+              onClose={() => {
+                if (window.location.hash.startsWith("#admin")) clearShellFragment();
+                setAdminOpen(false);
+              }}
             />
           </Suspense>
         </div>

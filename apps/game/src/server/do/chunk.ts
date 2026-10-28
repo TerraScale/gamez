@@ -1,6 +1,8 @@
 import type { EntityId, EntityState, PoseUpdate, TilePos } from "@gamez/protocol";
 import { isWalkable, pathDuration, type TileMap } from "@gamez/world";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import {
   WALK_SPEED,
   type CharacterRecord,
@@ -94,6 +96,12 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChunkDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     this.#world = worldOfChunk(this.chunkId) ?? defaultWorld();
     void ctx.blockConcurrencyWhile(async () => {
       this.#sql.exec(
@@ -261,6 +269,12 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
 
   /** Settles every finished walk and persists its final tile to the CharacterDO (server-path worlds). */
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChunkDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     if (this.#world.movement !== "server-path") return;
     const now = Date.now();
     for (const avatar of this.#avatars.values()) {

@@ -720,6 +720,11 @@ export interface ConfigResponse {
   /** Current season id (@gamez/economy currentSeason). */
   seasonId: string;
   serverTime: number;
+  /**
+   * Numeric live config (admin.ts TUNABLES), current values. Optional: older
+   * servers and a ConfigDO outage answer without it (readers use the defaults).
+   */
+  tunables?: Record<string, number>;
 }
 
 /** POST /api/admin/flags {flags: Partial<…>} -> ConfigResponse */

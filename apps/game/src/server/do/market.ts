@@ -6,6 +6,8 @@
 import type { MarketListing, Party } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { accountGateway } from "../economy/gateway.ts";
 import { sqlStoreOf, type EconResult, type Env, type MarketApi } from "../contracts.ts";
 import { MarketBook, type ListInput } from "../market/book.ts";
@@ -20,6 +22,12 @@ export class MarketDO extends DurableObject<Env> implements MarketApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "MarketDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const shard = ctx.id.name ?? ctx.id.toString();
     this.#outbox = new Outbox(ctx.storage.sql, `market:${shard}`);
     this.#book = new MarketBook(sqlStoreOf(ctx.storage), accountGateway(env), this.#outbox, shard);
@@ -63,6 +71,12 @@ export class MarketDO extends DurableObject<Env> implements MarketApi {
   }
 
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "MarketDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     try {
       await this.#book.tick();
     } catch (err) {

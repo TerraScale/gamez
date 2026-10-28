@@ -15,6 +15,7 @@ import type {
   ArenaStatus,
   ArenaTicket,
   ConfigResponse,
+  TunablesResponse,
   EconomyErrorCode,
   FeatureFlag,
   MarketListing,
@@ -67,6 +68,18 @@ export interface Env {
   SHOP: DurableObjectNamespace<import("./do/shop.ts").ShopDO>;
   ARENA: DurableObjectNamespace<import("./do/arena.ts").ArenaDO>;
   CONFIG: DurableObjectNamespace<import("./do/config.ts").ConfigDO>;
+  // ---- admin dashboard (docs/design/admin-dashboard.md)
+  /** Local/dev analytics stub ("local"); see analytics/types.ts. */
+  METRICS: DurableObjectNamespace<import("./do/metrics.ts").MetricsDO>;
+  /** Workers Analytics Engine dataset "gamez_events" (absent in some test envs). */
+  ANALYTICS?: AnalyticsEngineDataset;
+  /** AE SQL API credentials (optional secrets; absent = query the local stub). */
+  ANALYTICS_ACCOUNT_ID?: string;
+  ANALYTICS_API_TOKEN?: string;
+  /** AE dataset name for SQL queries (default "gamez_events"). */
+  ANALYTICS_DATASET?: string;
+  /** "0": no local stub; "1": always also write the local stub. */
+  ANALYTICS_LOCAL?: string;
   DB: D1Database;
   SYNC_QUEUE: Queue<ReplicationBatch>;
   AUTH_SECRET: string;
@@ -353,6 +366,11 @@ export interface AccountApi {
   /** True when `sid` is open (touches lastSeenAt at most once a minute). */
   checkSession(sid: string): Promise<boolean>;
   closeSession(sid: string): Promise<void>;
+  /**
+   * Admin dashboard (§6): records that the account was active now. Appends one
+   * "account_activity" outbox row per UTC day at most; later calls that day are no-ops.
+   */
+  touchActivity(now: number): Promise<void>;
   // shared economy — account/economy.ts (T-economy)
   wallet(): Promise<WalletView>;
   applyWalletTx(tx: WalletTx): Promise<WalletTxResult>;
@@ -464,6 +482,31 @@ export interface AccountSummaryPayload {
   displayName: string;
   kind: AccountKind;
   createdAt: number;
+  /** Admin dashboard: when the account became registered; null/absent for guests. */
+  registeredAt?: number | null;
+}
+
+/**
+ * "account_activity" (AccountDO, admin dashboard §6). pk = "<accountId>/<day>";
+ * written at most once per account per UTC day.
+ */
+export interface AccountActivityPayload {
+  accountId: string;
+  /** floor(epoch ms / 86_400_000). */
+  day: number;
+  kind: AccountKind;
+  firstAt: number;
+}
+
+/** "pass_progress" (AccountDO account/pass.ts, admin dashboard §6). pk = "<accountId>/<seasonId>". */
+export interface PassProgressPayload {
+  accountId: string;
+  seasonId: string;
+  level: number;
+  xp: number;
+  premium: boolean;
+  premiumAt: number | null;
+  updatedAt: number;
 }
 
 /** "guild_index" (GuildDO). pk = guildId; delete = disbanded. */
@@ -742,6 +785,10 @@ export interface ArenaApi {
 export interface ConfigApi {
   config(): Promise<ConfigResponse>;
   setFlags(patch: Partial<Record<FeatureFlag, boolean>>, by: string): Promise<ConfigResponse>;
+  /** Admin dashboard: numeric tunables (TUNABLES in @gamez/protocol admin.ts), with the audit. */
+  tunables(): Promise<TunablesResponse>;
+  /** Unknown keys and non-finite values are ignored; values are clamped to the spec. */
+  setTunables(patch: Record<string, number>, by: string): Promise<TunablesResponse>;
 }
 
 // ---- Payments (T-pay): server/payments/provider.ts --------------------------
