@@ -37,6 +37,7 @@ import {
 import { modules as classicModules } from "../src/index.ts";
 import { tileCenter } from "../src/fixed.ts";
 import { gameOf, heroOf, questsOf, RES, runStatsOf } from "../src/resources.ts";
+import { riftDepth } from "../src/rules.ts";
 import { type ClassProto, KIND, type QuestProto } from "../src/types.ts";
 import { TEST_SKILLS, testContent, TEST_BALANCE, TEST_CLASS } from "./support/content.ts";
 import {
@@ -325,6 +326,21 @@ describe("death and respawn", () => {
     expect(eventsOf(again, "classic.hero.died")).toEqual([]);
     expect(sim.world.read(hero, Wallet).gold).toBe(900);
     expect(runStatsOf(sim.world).deaths).toBe(1);
+  });
+
+  it("keeps the gold when the hero dies in a rift (the fee was the stake)", () => {
+    const { sim, hero } = heroSim({ gold: 1000 });
+    sim.world.update(hero, Level, { level: 2, xp: 150 });
+    const area = sim.world.getResource<{ depth: number }>(RES.area);
+    expect(area).toBeDefined();
+    area!.depth = riftDepth(1, 1);
+    const killer = spawnTestMonster(sim.world, { x: 6, y: 5 });
+    sim.world.add(hero, Dead, { at: sim.tick, killer });
+    const events = sim.step(1);
+    expect(eventsOf(events, "classic.hero.died")).toEqual([
+      { type: "classic.hero.died", goldLost: 0, xpLost: 2, killer: "Dummy" },
+    ]);
+    expect(sim.world.read(hero, Wallet).gold).toBe(1000);
   });
 
   it("never takes XP below the level start", () => {
@@ -693,7 +709,7 @@ describe("determinism and pinned hash", () => {
     expect(questsOf(sim.world).completed).toEqual(["test.quest.hunt"]);
     expect(runStatsOf(sim.world)).toMatchObject({ kills: 4, deaths: 1 });
     expect(sim.world.has(hero, Dead)).toBe(false);
-    expect(sim.hash()).toBe("d5dc2da21fc54e6c");
+    expect(sim.hash()).toBe("c2fb40ff4c1a37ba");
   });
 });
 

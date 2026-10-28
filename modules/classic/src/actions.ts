@@ -257,6 +257,8 @@ export type HeroCommand =
       minRarity: ItemRarity;
       /** Wave A: only bases of this category (gambling, debug grants). Absent = any. */
       category?: ItemCategory;
+      /** QA grants: every item is this exact SetItemProto piece (generate.rollItem setItem). */
+      setItem?: string;
       toStash: boolean;
       reason: string;
     }

@@ -361,6 +361,8 @@ export interface RendererDebugInfo {
   effectsSeen: Record<string, string>;
   effectsPlayed: number;
   floatsShown: number;
+  /** Camera shake requests since enable() (counted even when the quality setting turns shake off). */
+  shakes?: number;
   activeEffects: number;
 }
 

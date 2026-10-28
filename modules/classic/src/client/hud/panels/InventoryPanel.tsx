@@ -1,7 +1,9 @@
 /**
  * Inventory: paper doll (9 equip slots), the bag grid by footprint, and an item
  * menu. Click a bag item to equip it, long-press or right-click for the menu,
- * move by "Move" then a cell. Click an equipped slot to unequip.
+ * move by "Move" then a cell. Click an equipped slot to unequip. On touch a
+ * tap opens the item sheet (full details and actions) and a second tap on the
+ * same item equips it, so nothing is equipped before its stats were seen.
  */
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { ACTION } from "../../../actions.ts";
@@ -22,6 +24,7 @@ import { ItemIcon } from "../icons.tsx";
 import { C, labelStyle } from "../styles.ts";
 import { gemTierOf } from "../../describe.ts";
 import { useSelectedStashTab } from "./StashPanel.tsx";
+import { ItemDetails } from "../widgets/Tooltip.tsx";
 
 /**
  * Marks on a bag cell: socket dots (top left, filled when a gem sits in it), the
@@ -105,6 +108,21 @@ export const DOLL: (EquipSlot | null)[][] = [
 
 export const LONG_PRESS_MS = 450;
 
+/**
+ * What a tap or click on a bag item does: finish or cancel a move, open the
+ * item sheet (touch, first tap) or equip (mouse, pen, keyboard, or a second
+ * touch tap on the item whose sheet is open).
+ */
+export function bagTapAction(o: {
+  moving: boolean;
+  pointerType: string;
+  sheetOpen: boolean;
+}): "move" | "details" | "equip" {
+  if (o.moving) return "move";
+  if (o.pointerType === "touch" && !o.sheetOpen) return "details";
+  return "equip";
+}
+
 interface BagItemProps {
   item: ItemView;
   x: number;
@@ -113,7 +131,8 @@ interface BagItemProps {
   /** Gap between the item box and its cell edge (0 on compact layouts, so the box is the full cell). */
   inset: number;
   selected: boolean;
-  onPick: (item: ItemView) => void;
+  /** `pointerType` of the press that led to the click ("" for keyboard clicks). */
+  onPick: (item: ItemView, pointerType: string) => void;
   onMenu: (uid: number) => void;
   onHover: (uid: number, x: number, y: number) => void;
   onLeave: () => void;
@@ -133,6 +152,7 @@ function BagItem({
 }: BagItemProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fired = useRef(false);
+  const pointer = useRef("");
   const clear = () => {
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
@@ -149,18 +169,21 @@ function BagItem({
       aria-label={`${item.name}, ${RARITY_LABEL[item.rarity]}, ${item.w} by ${item.h}${extras.map((t) => `, ${t}`).join("")}`}
       title={item.name}
       onClick={() => {
+        const type = pointer.current;
+        pointer.current = "";
         if (fired.current) {
           fired.current = false;
           return;
         }
-        onPick(item);
+        onPick(item, type);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
         clear();
         onMenu(item.uid);
       }}
-      onPointerDown={() => {
+      onPointerDown={(e: PointerEvent<HTMLButtonElement>) => {
+        pointer.current = e.pointerType;
         fired.current = false;
         clear();
         onLeave();
@@ -171,9 +194,10 @@ function BagItem({
       }}
       onPointerUp={clear}
       onPointerCancel={clear}
-      onPointerEnter={(e: PointerEvent<HTMLButtonElement>) =>
-        onHover(item.uid, e.clientX, e.clientY)
-      }
+      onPointerEnter={(e: PointerEvent<HTMLButtonElement>) => {
+        // A touch has no hover: the tap opens the item sheet instead.
+        if (e.pointerType !== "touch") onHover(item.uid, e.clientX, e.clientY);
+      }}
       onPointerLeave={() => {
         clear();
         onLeave();
@@ -219,6 +243,14 @@ export function InventoryPanel({ api }: SlotProps) {
   const compact = useCompact(api);
   const [moving, setMoving] = useState<number | null>(null);
   const [menu, setMenu] = useState<number | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+
+  // The sheet sits under the bag: on a phone it can open below the fold.
+  useEffect(() => {
+    if (menu === null) return;
+    const el = sheetRef.current as { scrollIntoView?: (o: object) => void } | null;
+    el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [menu]);
 
   // Closing the panel (Escape, closeAll) unmounts it without a pointer-leave, so the
   // item tooltip would stay on screen. Clear it on unmount.
@@ -386,13 +418,21 @@ export function InventoryPanel({ api }: SlotProps) {
                   cell={cell}
                   inset={inset}
                   selected={p.item.uid === moving}
-                  onPick={(item) => {
-                    if (moving !== null) {
+                  onPick={(item, pointerType) => {
+                    const what = bagTapAction({
+                      moving: moving !== null,
+                      pointerType,
+                      sheetOpen: menu === item.uid,
+                    });
+                    if (what === "move") {
                       if (item.uid === moving) setMoving(null);
                       else place(p.x, p.y);
-                      return;
+                    } else if (what === "details") {
+                      openMenu(item.uid);
+                    } else {
+                      api.act(ACTION.equip, { uid: item.uid, slot: null });
+                      if (menu === item.uid) setMenu(null);
                     }
-                    api.act(ACTION.equip, { uid: item.uid, slot: null });
                   }}
                   onMenu={openMenu}
                   onHover={hover}
@@ -403,11 +443,12 @@ export function InventoryPanel({ api }: SlotProps) {
           </div>
           <div style={{ ...labelStyle, marginTop: 6 }}>
             {compact
-              ? `${pluralize(freeCells, "free cell")} · tap an item to equip it, hold for actions · swipe the bag sideways to see every cell`
+              ? `${pluralize(freeCells, "free cell")} · tap an item for its details, tap it again to equip · swipe the bag sideways to see every cell`
               : `${pluralize(freeCells, "free cell")} · click an item to equip it, right-click or hold for actions`}
           </div>
           {menuItem ? (
             <div
+              ref={sheetRef}
               role="menu"
               aria-label="Item actions"
               style={{
@@ -418,10 +459,7 @@ export function InventoryPanel({ api }: SlotProps) {
                 background: "rgba(255, 240, 210, 0.05)",
               }}
             >
-              <div style={{ color: rarityHex(menuItem.rarity), fontWeight: 700 }}>
-                {menuItem.name}
-              </div>
-              <div style={labelStyle}>{menuItem.lines.join(" · ")}</div>
+              <ItemDetails item={menuItem} isWorn={false} />
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                 <Btn
                   onClick={() => {

@@ -206,6 +206,17 @@ export function castFailMessage(code: string, skillLabel: string): string {
   return CAST_FAIL_MESSAGE[code] ?? `Cannot cast ${skillLabel}`;
 }
 
+/**
+ * What a death cost, without a trailing period: "Lost 100 gold and 2 XP",
+ * "Lost 2 XP" (a rift death keeps the gold), "Nothing was lost".
+ */
+export function deathLossText(goldLost: number, xpLost: number): string {
+  const parts: string[] = [];
+  if (goldLost > 0) parts.push(`${goldLost} gold`);
+  if (xpLost > 0) parts.push(`${xpLost} XP`);
+  return parts.length === 0 ? "Nothing was lost" : `Lost ${parts.join(" and ")}`;
+}
+
 /** "1 skill point" / "5 skill points" (zero yields an empty string). */
 function countOf(n: number, one: string): string {
   if (n <= 0) return "";
@@ -469,12 +480,12 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       toast(
         "death",
         "You have died",
-        `Lost ${ev.goldLost} gold and ${ev.xpLost} XP. Respawning soon.`,
+        `${deathLossText(ev.goldLost, ev.xpLost)}. Respawning soon.`,
         TOAST_LONG_MS,
       );
       log(
         "death",
-        `You died to ${ev.killer}. Lost ${ev.goldLost} gold, ${ev.xpLost} XP.`,
+        `You died to ${ev.killer}. ${deathLossText(ev.goldLost, ev.xpLost)}.`,
         LOG_COLOR.death,
       );
       return out;

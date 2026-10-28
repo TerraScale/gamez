@@ -48,6 +48,12 @@ export interface RollItemOptions {
   rarityWeights?: Partial<Record<ItemRarity, number>>;
   /** Wave A (gambling): base ilvl gate (default `ilvl`). */
   maxBaseIlvl?: number;
+  /**
+   * Exact SetItemProto id (QA grants): the item is that set piece, whatever
+   * the rolled rarity, the category and the piece's ilvl gate. An unknown id
+   * (or one whose base is missing) rolls as usual.
+   */
+  setItem?: string;
 }
 
 /** Order of the rarity weights (rank order). */
@@ -284,7 +290,15 @@ export function rollItem(world: World, ctx: SimContext, o: RollItemOptions): Ite
 
   // Set pieces: a piece whose base and ilvl fit, else fall back to rare.
   let piece: Entry<SetItemProto> | undefined;
-  if (rarity === "set") {
+  const fixedPiece =
+    o.setItem !== undefined ? reg.get<SetItemProto>(KIND.setItem, o.setItem) : undefined;
+  const fixedBase = fixedPiece ? reg.get<ItemBaseProto>(KIND.itemBase, fixedPiece.base) : undefined;
+  if (o.setItem !== undefined && fixedPiece && fixedBase) {
+    piece = [o.setItem, fixedPiece];
+    base = [fixedPiece.base, fixedBase];
+    unique = undefined;
+    rarity = "set";
+  } else if (rarity === "set") {
     const cands = setItemCandidates(reg, ilvl, o.category, base?.[0]);
     const picked = pickWeighted(rng, cands, (e) => e[1].weight);
     if (picked) {

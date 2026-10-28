@@ -91,7 +91,7 @@ function addProgress(
   }
 }
 
-/** Queues the guardian spawn 6-10 tiles from the hero (awake, boss rarity, level + 2). */
+/** Queues the guardian spawn 6-10 tiles from the hero (awake, boss rarity, the rift's monster level). */
 function spawnGuardian(
   world: World,
   ctx: SimContext,
@@ -117,7 +117,8 @@ function spawnGuardian(
     x: tileCenter(at.x),
     y: tileCenter(at.y),
     depth: run.depth,
-    level: monsterLevel(run.depth) + 2,
+    // The rift's own monster level: boss rarity already makes the guardian the toughest foe of the run.
+    level: monsterLevel(run.depth),
     rarity: "boss",
     mods: [],
     pack: game.nextPack++,

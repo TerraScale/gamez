@@ -30,7 +30,7 @@ import { wearSystem } from "./wear.ts";
 
 export const classicItems = defineModule({
   id: MODULE.items,
-  version: "1.2.0",
+  version: "1.2.1",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   setup(world) {

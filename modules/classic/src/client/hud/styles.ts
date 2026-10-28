@@ -8,6 +8,8 @@ import type { CSSProperties } from "react";
 
 export const C = {
   panel: "rgba(14, 12, 10, 0.90)",
+  /** Panel sheets (PanelFrame): opaque enough that HUD text under them never shows through. */
+  panelSolid: "rgba(14, 12, 10, 0.97)",
   panelInner: "rgba(255, 240, 210, 0.05)",
   border: "rgba(201, 160, 80, 0.40)",
   borderStrong: "rgba(243, 210, 122, 0.85)",

@@ -23,7 +23,12 @@ import { planCrafts, planGambles, planRepairs } from "../src/auto/craft.ts";
 import { inZone, type Zone } from "../src/auto/dodge.ts";
 import { barSkills } from "../src/auto/fight.ts";
 import { classicAuto } from "../src/auto/index.ts";
-import { chooseRiftLevel, riftLevelCap } from "../src/auto/riftLoop.ts";
+import {
+  chooseRiftLevel,
+  riftLevelCap,
+  riftReady,
+  RIFT_FAIL_STREAK,
+} from "../src/auto/riftLoop.ts";
 import { makeAutoCtx } from "../src/auto/think.ts";
 import { sortBag, TAB_GEMS, TAB_OVERFLOW, TAB_SPECIAL } from "../src/auto/town.ts";
 import { busOf } from "../src/bus.ts";
@@ -700,11 +705,11 @@ describe("auto rift loop", () => {
     expect(chooseRiftLevel(slow, RIFT, 40)).toBe(2);
     const failed = riftState({ maxCompleted: 3, history: [record(1, 100, false)] });
     expect(chooseRiftLevel(failed, RIFT, 40)).toBe(1);
-    // Hero level caps it (monster level 22 + 2L <= level + 2).
-    expect(riftLevelCap(26)).toBe(3);
+    // Hero level caps it (monster level 18 + 2L <= level + 2).
+    expect(riftLevelCap(26)).toBe(5);
     expect(
       chooseRiftLevel(riftState({ maxCompleted: 9, history: [record(9, 10, true)] }), RIFT, 26),
-    ).toBe(3);
+    ).toBe(5);
   });
 
   it("opens a rift at the obelisk once the main dungeon is done", () => {
@@ -894,6 +899,30 @@ describe("auto wave A determinism", () => {
   });
 
   it("pins the hash after the fixed script", () => {
-    expect(scriptedA().hash()).toBe("3754c7a631526829");
+    expect(scriptedA().hash()).toBe("dbc4f301080fda7e");
+  });
+});
+
+describe("auto rift readiness (QA: rift level 1 was unwinnable for weak heroes)", () => {
+  it("waits until level 1's monsters are within the margin of the hero", () => {
+    // Rift level 1 monsters are level 20: a level 17 hero waits, level 18 goes.
+    expect(riftReady(riftState(), 17, 17)).toBe(false);
+    expect(riftReady(riftState(), 18, 18)).toBe(true);
+  });
+
+  it("pauses after failing level 1 twice in a row until the hero gains a level", () => {
+    expect(RIFT_FAIL_STREAK).toBe(2);
+    const twice = riftState({ history: [record(1, 100, false), record(1, 200, false)] });
+    // record() stores hero level 30.
+    expect(riftReady(twice, 30, 30)).toBe(false);
+    expect(riftReady(twice, 31, 31)).toBe(true);
+    // One failure, a failure at level 2, or a completion in the streak: no pause.
+    expect(riftReady(riftState({ history: [record(1, 100, false)] }), 30, 30)).toBe(true);
+    expect(
+      riftReady(riftState({ history: [record(2, 100, false), record(1, 100, false)] }), 30, 30),
+    ).toBe(true);
+    expect(
+      riftReady(riftState({ history: [record(1, 100, false), record(1, 100, true)] }), 30, 30),
+    ).toBe(true);
   });
 });

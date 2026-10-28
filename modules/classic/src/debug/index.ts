@@ -20,11 +20,19 @@ import {
   type SimContext,
   type World,
 } from "@gamez/kernel";
-import { pushCommand } from "../bus.ts";
+import { pushCommand, pushSpawn } from "../bus.ts";
 import { ERR } from "../actions.ts";
-import { Level, Talents } from "../components.ts";
-import { heroOf, RES, type DungeonState, type RiftState } from "../resources.ts";
-import { MAIN_DUNGEON_DEPTH, xpAtLevel } from "../rules.ts";
+import { AreaTag, Body, Dead, Level, Life, Monster, Pos, Talents } from "../components.ts";
+import { tileCenter } from "../fixed.ts";
+import {
+  currentDepth,
+  gameOf,
+  heroOf,
+  RES,
+  type DungeonState,
+  type RiftState,
+} from "../resources.ts";
+import { bossDisplayName, MAIN_DUNGEON_DEPTH, monsterLevel, xpAtLevel } from "../rules.ts";
 import { MODULE } from "../ids.ts";
 import {
   BALANCE_ID,
@@ -35,8 +43,13 @@ import {
   type BalanceProto,
   type ItemCategory,
   type ItemRarity,
+  type MonsterProto,
   type RiftProto,
+  type SetProto,
+  type SetItemProto,
 } from "../types.ts";
+import { findFreeNear, tileKey } from "../world/common.ts";
+import { getMap } from "../world/maps.ts";
 
 /** Action name of the QA grant (not in ACTION: it does not exist in the playable mode). */
 export const DEBUG_GRANT = "classic.debug.grant";
@@ -51,6 +64,17 @@ export interface GrantPayload {
   bossesKilled?: number[];
   deepest?: number;
   talentPoints?: number;
+  /** Every piece of this SetProto id, into the bag (QA: set bonuses). */
+  set?: string;
+  /** Fills the active rift run's progress to this percent (1..100; 100 calls the guardian). */
+  riftProgress?: number;
+  /**
+   * Spawns this boss or rift guardian (MonsterProto id with a `boss` block or
+   * `guardian: true`) awake, 3-5 tiles from the hero, in the dungeon or a rift.
+   */
+  spawnBoss?: string;
+  /** Sets every living boss of the hero's area to this percent of its max life (1..99): phase changes on demand. */
+  woundBosses?: number;
 }
 
 const FIELDS = [
@@ -62,7 +86,19 @@ const FIELDS = [
   "bossesKilled",
   "deepest",
   "talentPoints",
+  "set",
+  "riftProgress",
+  "spawnBoss",
+  "woundBosses",
 ] as const;
+
+/** Content ids in payloads: namespaced, short, plain characters. */
+const ID_RE = /^classic\.[a-z_]+\.[a-z0-9_]+$/;
+
+function idOf(v: unknown, what: string): string {
+  if (typeof v !== "string" || v.length > 80 || !ID_RE.test(v)) bad(`${what} must be a content id`);
+  return v;
+}
 
 const MAX_DEPTH = 200;
 
@@ -98,6 +134,11 @@ export function parseGrant(payload: unknown): GrantPayload {
   if (p.talentPoints !== undefined)
     out.talentPoints = intIn(p.talentPoints, 1, 100, "talentPoints");
   if (p.deepest !== undefined) out.deepest = intIn(p.deepest, 0, MAX_DEPTH, "deepest");
+  if (p.set !== undefined) out.set = idOf(p.set, "set");
+  if (p.spawnBoss !== undefined) out.spawnBoss = idOf(p.spawnBoss, "spawnBoss");
+  if (p.woundBosses !== undefined) out.woundBosses = intIn(p.woundBosses, 1, 99, "woundBosses");
+  if (p.riftProgress !== undefined)
+    out.riftProgress = intIn(p.riftProgress, 1, 100, "riftProgress");
   if (p.unlockRift !== undefined) {
     if (typeof p.unlockRift !== "boolean") bad("unlockRift must be a boolean");
     out.unlockRift = p.unlockRift;
@@ -154,6 +195,84 @@ function unlockRift(world: World, ctx: SimContext): void {
   if (rift) rift.unlocked = true;
 }
 
+/** Queues one grantItems per piece of the set (each at its own ilvl or the hero's level). */
+function grantSet(world: World, ctx: SimContext, setId: string, heroLevel: number): void {
+  const set = ctx.registry.get<SetProto>(KIND.set, setId);
+  if (!set) throw new ActionError(ERR.unknownId, `unknown set ${setId}`);
+  for (const pieceId of set.pieces) {
+    const piece = ctx.registry.get<SetItemProto>(KIND.setItem, pieceId);
+    if (!piece) continue;
+    pushCommand(world, {
+      op: "grantItems",
+      count: 1,
+      ilvl: Math.max(piece.ilvl, heroLevel),
+      minRarity: "set",
+      setItem: pieceId,
+      toStash: false,
+      reason: "debug",
+    });
+  }
+}
+
+/** Fills the active rift run to `pct` % of its goal (never lowers it). */
+function fillRift(world: World, pct: number): void {
+  const run = world.getResource<RiftState>(RES.rift)?.active ?? null;
+  if (!run) throw new ActionError(ERR.notInRift, "no rift run is open");
+  run.progress = Math.max(run.progress, Math.min(run.goal, Math.ceil((run.goal * pct) / 100)));
+}
+
+/** Spawns a boss or guardian awake near the hero (not in town). */
+function spawnBossNear(world: World, ctx: SimContext, hero: number, id: string): void {
+  const proto = ctx.registry.get<MonsterProto>(KIND.monster, id);
+  if (!proto || (proto.boss === undefined && proto.guardian !== true)) {
+    throw new ActionError(ERR.unknownId, `${id} is not a boss or rift guardian`);
+  }
+  const depth = currentDepth(world);
+  if (depth === 0) throw new ActionError(ERR.inTown, "bosses spawn only outside the town");
+  const map = getMap(world, ctx.registry, depth);
+  const occupied = new Set<number>();
+  for (let i = 0; i < map.objects.length; i++)
+    if ((map.objects[i] ?? null) !== null) occupied.add(i);
+  for (const e of world.query(Pos, Body, AreaTag)) {
+    if (world.read(e, AreaTag).depth !== depth || !world.read(e, Body).solid) continue;
+    const p = world.read(e, Pos);
+    occupied.add(tileKey(map.width, p.x >> 8, p.y >> 8));
+  }
+  const hp = world.read(hero, Pos);
+  const at = findFreeNear(map, { x: hp.x >> 8, y: hp.y >> 8 }, 3, occupied);
+  if (!at) throw new ActionError(ERR.badTarget, "no free tile near the hero");
+  pushSpawn(world, {
+    monster: id,
+    x: tileCenter(at.x),
+    y: tileCenter(at.y),
+    depth,
+    level: monsterLevel(depth) + 3,
+    rarity: "boss",
+    mods: [],
+    pack: gameOf(world).nextPack++,
+    name: proto.boss !== undefined ? bossDisplayName(proto) : "",
+    owner: 0,
+    team: "monster",
+    until: 0,
+    awake: true,
+  });
+}
+
+/** Lowers every living boss of the hero's area to `pct` % of its max life (never heals). */
+function woundBosses(world: World, pct: number): void {
+  const depth = currentDepth(world);
+  let found = 0;
+  for (const e of world.query(Monster, Life, AreaTag)) {
+    if (world.read(e, AreaTag).depth !== depth || world.has(e, Dead)) continue;
+    if (world.read(e, Monster).rarity !== "boss") continue;
+    const life = world.read(e, Life);
+    const hp = Math.max(1, Math.floor((life.max * pct) / 100));
+    if (hp < life.hp) world.update(e, Life, { hp });
+    found++;
+  }
+  if (found === 0) throw new ActionError(ERR.badTarget, "no living boss in this area");
+}
+
 /** Applies a validated grant to the sim (queued grants run on the next step). */
 export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void {
   const hero = heroOf(world);
@@ -197,6 +316,11 @@ export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void
     if (dungeon && g.deepest > dungeon.deepest) dungeon.deepest = g.deepest;
   }
   if (g.unlockRift) unlockRift(world, ctx);
+  if (g.set !== undefined) grantSet(world, ctx, g.set, level.level);
+  if (g.riftProgress !== undefined) fillRift(world, g.riftProgress);
+  if (g.spawnBoss !== undefined && world.has(hero, Pos))
+    spawnBossNear(world, ctx, hero, g.spawnBoss);
+  if (g.woundBosses !== undefined) woundBosses(world, g.woundBosses);
   if (g.talentPoints !== undefined) {
     const t = world.get(hero, Talents);
     if (t) world.update(hero, Talents, { points: t.points + g.talentPoints });
@@ -223,7 +347,7 @@ const grant: ActionDef<GrantPayload> = {
 
 export const classicDebug = defineModule({
   id: MODULE.debug,
-  version: "0.1.0",
+  version: "0.2.0",
   deps: [MODULE.content, MODULE.core],
   optionalDeps: [MODULE.items, MODULE.progression, MODULE.world, MODULE.rift, MODULE.talents],
   systems: [],

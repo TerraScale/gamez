@@ -159,7 +159,8 @@ export function PanelFrame({
         maxHeight: "100%",
         minHeight: 0,
         // Opaque on phones: HUD text must not show through a full-screen sheet.
-        background: compact ? "#0e0c0a" : C.panel,
+        // Desktop panels are near-opaque: the Log column under them must not read through (QA).
+        background: compact ? "#0e0c0a" : C.panelSolid,
       }}
     >
       <header

@@ -227,9 +227,16 @@ describe("toasts never cover open panels (QA major 2)", () => {
     const style = errorFlashStyle("compact", { top: 90, bottom: 300 }, true);
     expect(style.top).toBeUndefined();
     expect(style.bottom).toBe(HUD_EDGE * 2);
-    expect(errorFlashStyle("desktop", NO_INSETS, true)).toEqual(
-      errorFlashStyle("desktop", NO_INSETS),
-    );
+    expect(errorFlashStyle("desktop", NO_INSETS)).toEqual({ bottom: 190 });
+  });
+
+  it("the desktop error flash moves into the toast column while a panel is open", () => {
+    const style = errorFlashStyle("desktop", NO_INSETS, true);
+    expect(style.right).toBe(HUD_EDGE);
+    expect(style.width).toBe(TOAST_WIDTH);
+    expect(style.transform).toBe("none");
+    // Panels end PANEL_ROW_RIGHT from the right edge, left of this column.
+    expect(PANEL_ROW_RIGHT.desktop).toBeGreaterThanOrEqual(TOAST_WIDTH + HUD_EDGE);
   });
 });
 

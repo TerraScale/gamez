@@ -1,14 +1,17 @@
 /**
  * classic.progression.heroDeath (post 600): the death penalty, applied once on
  * the tick the hero died (Dead.at === tick). Respawn is a separate op/action.
+ *
+ * A death inside a rift costs no gold: the rift fee was the stake, and the run
+ * itself is lost (classic.rift.track fails it). The XP share is still lost.
  */
 import type { SystemDef } from "@gamez/kernel";
 import { Dead, Intent, Level, Monster, Wallet } from "../components.ts";
 import { emit } from "../events.ts";
 import { pct } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
-import { heroOf, runStatsOf, RES } from "../resources.ts";
-import { xpAtLevel } from "../rules.ts";
+import { currentDepth, heroOf, runStatsOf, RES } from "../resources.ts";
+import { isRiftDepth, xpAtLevel } from "../rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../types.ts";
 import { replace } from "./util.ts";
 
@@ -23,7 +26,7 @@ export const progressionHeroDeath: SystemDef = {
 
     let goldLost = 0;
     const wallet = world.get(hero, Wallet);
-    if (wallet) {
+    if (wallet && !isRiftDepth(currentDepth(world))) {
       goldLost = pct(wallet.gold, bal.deathGoldLossPct);
       world.update(hero, Wallet, { gold: wallet.gold - goldLost });
     }

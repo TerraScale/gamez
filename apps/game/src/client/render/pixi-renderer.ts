@@ -312,8 +312,9 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
 
   /** Brief camera shake (boss slams): `strength` px, decays over `ms`. Off on low quality. */
   shake(strength: number, ms: number): void {
-    if (!this.ready || !shakeEnabled(this.quality)) return;
     if (!(strength > 0) || !(ms > 0)) return;
+    if (this.tracker) this.tracker.shakes++;
+    if (!this.ready || !shakeEnabled(this.quality)) return;
     // A stronger shake replaces a weaker one still running; a weaker one never cuts a stronger one short.
     const left = this.shakeStrength * remainingShare(this.shakeMs, this.shakeElapsed);
     if (strength < left) return;
@@ -447,6 +448,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
       effectsSeen: t ? sortedRecord(t.effects) : {},
       effectsPlayed: t?.effectsPlayed ?? 0,
       floatsShown: t?.floatsShown ?? 0,
+      shakes: t?.shakes ?? 0,
       activeEffects: this.fx?.activeEffects ?? 0,
     };
   }

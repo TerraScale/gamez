@@ -23,7 +23,7 @@ A rift level is the depth `100000 + 1000·level + run % 1000` (`rules.riftDepth`
 
 - Maps stay a pure function of (worldSeed, depth).
 - Every run gets a fresh map.
-- The monster level is derived from the depth (22 + 2·level).
+- The monster level is derived from the depth (18 + 2·level, so rift level 1 = 20 sits just below depth 16 = 23).
 - The main dungeon ends at depth 16. Rifts are never waypoint or boss depths, and they never update `deepest`.
 
 A finished run is a `RiftRecord`: level, ticks, score = level × 1000 + whole seconds left, deaths, class, worldSeed, endTick and run. That is everything a wave B replay needs to verify the record before it goes into a D1 `leaderboard_rift` projection. The client shows these depths as "Rift level N" (`depthLabel`), never as the raw number.

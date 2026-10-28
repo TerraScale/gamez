@@ -184,6 +184,7 @@ export function execGrantItems(
     ilvl: number;
     minRarity: ItemRarity;
     category?: ItemCategory;
+    setItem?: string;
     toStash: boolean;
     reason: string;
   },
@@ -201,6 +202,7 @@ export function execGrantItems(
       magicFind,
       minRarity: o.minRarity,
       ...(o.category !== undefined ? { category: o.category } : {}),
+      ...(o.setItem !== undefined ? { setItem: o.setItem } : {}),
     });
     if (!item) continue;
     if (o.toStash) {

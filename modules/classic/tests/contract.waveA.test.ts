@@ -135,7 +135,7 @@ describe("rift depths", () => {
     expect(riftLevelOf(d)).toBe(7);
     expect(isBossDepth(d)).toBe(false);
     expect(isWaypointDepth(d)).toBe(false);
-    expect(monsterLevel(d)).toBe(22 + 2 * 7);
+    expect(monsterLevel(d)).toBe(18 + 2 * 7);
     expect(isRiftDepth(16)).toBe(false);
     expect(riftLevelOf(16)).toBe(0);
     expect(monsterLevel(4)).toBe(5);

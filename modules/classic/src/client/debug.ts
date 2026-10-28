@@ -247,7 +247,8 @@ export interface ClassicDebugControls {
   /**
    * QA grant (classic.debug.grant, `?debug=1&cheats=1` only): gold, levels,
    * items {count, rarity, ilvl, category?}, gems, unlockRift, bossesKilled,
-   * deepest, talentPoints. Strictly validated by the sim.
+   * deepest, talentPoints, and the QA routes set, riftProgress, spawnBoss,
+   * woundBosses (tools/qa/README.md). Strictly validated by the sim.
    */
   cheat(payload: Record<string, unknown>): DispatchResult;
 }

@@ -556,7 +556,7 @@ describe("determinism and pinned hash", () => {
   });
 
   it("the hash after a fixed script is pinned", () => {
-    expect(script(7).hash()).toBe("4de0543a499389df");
+    expect(script(7).hash()).toBe("859bc8851e97b3df");
   });
 });
 

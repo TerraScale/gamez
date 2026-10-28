@@ -541,7 +541,7 @@ const POTIONS: Record<string, ItemBaseProto> = {
 };
 
 /**
- * Late bases (wave A, ilvl 28-44): rift depths (monster level 22 + 2 x level)
+ * Late bases (wave A, ilvl 28-44): rift depths (monster level 18 + 2 x level)
  * draw from these. Requirements and armour follow the curve of the bases above.
  */
 const LATE: Record<string, ItemBaseProto> = {

@@ -41,7 +41,21 @@ export function DpsTable({ dps }: { dps: DpsView }) {
   if (dps.skills.length === 0) {
     return <p style={labelStyle}>No damage skills on the bar yet.</p>;
   }
-  const head = { ...labelStyle, fontWeight: 700, textAlign: "right" as const, padding: "4px 0" };
+  // Numeric columns keep a left gap and never wrap, so a narrow panel
+  // cannot run "Casts", "DPS" and "Mana" together.
+  const head = {
+    ...labelStyle,
+    fontWeight: 700,
+    textAlign: "right" as const,
+    padding: "4px 0 4px 10px",
+    whiteSpace: "nowrap" as const,
+  };
+  const num = {
+    textAlign: "right" as const,
+    paddingLeft: 10,
+    whiteSpace: "nowrap" as const,
+    borderTop: `1px dashed ${C.faint}`,
+  };
   return (
     <table
       aria-label="Damage per second of the bar skills"
@@ -49,7 +63,7 @@ export function DpsTable({ dps }: { dps: DpsView }) {
     >
       <thead>
         <tr>
-          <th style={{ ...head, textAlign: "left" }}>Skill</th>
+          <th style={{ ...head, textAlign: "left", paddingLeft: 0 }}>Skill</th>
           <th style={head}>Avg hit</th>
           <th style={head}>Casts</th>
           <th style={head}>DPS</th>
@@ -66,24 +80,10 @@ export function DpsTable({ dps }: { dps: DpsView }) {
               style={{ color: best ? C.goldBright : C.text }}
             >
               <td style={{ padding: "4px 0", borderTop: `1px dashed ${C.faint}` }}>{s.name}</td>
-              <td style={{ textAlign: "right", borderTop: `1px dashed ${C.faint}` }}>
-                {fmtInt(s.avgHit)}
-              </td>
-              <td style={{ textAlign: "right", borderTop: `1px dashed ${C.faint}` }}>
-                {fmtPerSecond(s.perSecond)}
-              </td>
-              <td
-                style={{
-                  textAlign: "right",
-                  fontWeight: 700,
-                  borderTop: `1px dashed ${C.faint}`,
-                }}
-              >
-                {fmtInt(s.dps)}
-              </td>
-              <td style={{ textAlign: "right", borderTop: `1px dashed ${C.faint}` }}>
-                {fmtRate(s.manaPerSecond)}
-              </td>
+              <td style={num}>{fmtInt(s.avgHit)}</td>
+              <td style={num}>{fmtPerSecond(s.perSecond)}</td>
+              <td style={{ ...num, fontWeight: 700 }}>{fmtInt(s.dps)}</td>
+              <td style={num}>{fmtRate(s.manaPerSecond)}</td>
             </tr>
           );
         })}
@@ -137,7 +137,8 @@ function CharacterBody({ api, hero, dps }: SlotProps & { hero: HeroView; dps: Dp
       </Row>
       <Section title="Attributes">
         {ATTRS.map((a) => (
-          <Row key={a} style={{ justifyContent: "space-between", minHeight: 44 }}>
+          // The gap keeps the 44 px "+" buttons apart on touch screens.
+          <Row key={a} style={{ justifyContent: "space-between", minHeight: 44, marginBottom: 8 }}>
             <span>{ATTR_LABEL[a]}</span>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontWeight: 700, minWidth: 40, textAlign: "right" }}>

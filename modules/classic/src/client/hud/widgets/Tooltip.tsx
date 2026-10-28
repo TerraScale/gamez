@@ -167,36 +167,14 @@ function SocketsBlock({ sockets }: { sockets: NonNullable<ItemView["sockets"]> }
   );
 }
 
-export function Tooltip({ api }: SlotProps) {
-  const hover = useSelect(api.ui, (u) => u.hover);
-  // Selects item lists only (never the hover), so the memo stays valid across hover changes.
-  const pool = useSelect(api.hud, (s) => ({
-    bag: s.inventory.items.map((i) => i.item),
-    equipment: s.equipment,
-    stash: s.stash,
-    stock: s.vendor ? s.vendor.stock : [],
-  }));
-  if (!hover) return null;
-  const equipped = Object.values(pool.equipment);
-  const item = findItem(hover.uid, [pool.bag, equipped, pool.stash, pool.stock]);
-  if (!item) return null;
-  const isWorn = equipped.some((e) => e?.uid === item.uid);
-  const flip = typeof window !== "undefined" && hover.x > window.innerWidth - TOOLTIP_WIDTH - 24;
-  const left = Math.max(0, flip ? hover.x - TOOLTIP_WIDTH - 12 : hover.x + 16);
+/**
+ * The body of an item tooltip: name, kind, lines, durability, sockets, set,
+ * value and the comparison with the equipped item. The hover tooltip and the
+ * touch item sheet (InventoryPanel) both render it.
+ */
+export function ItemDetails({ item, isWorn }: { item: ItemView; isWorn: boolean }) {
   return (
-    <div
-      role="tooltip"
-      style={{
-        ...panelStyle,
-        position: "absolute",
-        left,
-        top: Math.max(0, hover.y + 16),
-        width: TOOLTIP_WIDTH,
-        padding: 10,
-        pointerEvents: "none",
-        zIndex: 60,
-      }}
-    >
+    <>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ color: rarityHex(item.rarity), fontWeight: 700, fontSize: 14 }}>
           {item.name}
@@ -253,6 +231,41 @@ export function Tooltip({ api }: SlotProps) {
           <Comparison item={item} />
         </div>
       )}
+    </>
+  );
+}
+
+export function Tooltip({ api }: SlotProps) {
+  const hover = useSelect(api.ui, (u) => u.hover);
+  // Selects item lists only (never the hover), so the memo stays valid across hover changes.
+  const pool = useSelect(api.hud, (s) => ({
+    bag: s.inventory.items.map((i) => i.item),
+    equipment: s.equipment,
+    stash: s.stash,
+    stock: s.vendor ? s.vendor.stock : [],
+  }));
+  if (!hover) return null;
+  const equipped = Object.values(pool.equipment);
+  const item = findItem(hover.uid, [pool.bag, equipped, pool.stash, pool.stock]);
+  if (!item) return null;
+  const isWorn = equipped.some((e) => e?.uid === item.uid);
+  const flip = typeof window !== "undefined" && hover.x > window.innerWidth - TOOLTIP_WIDTH - 24;
+  const left = Math.max(0, flip ? hover.x - TOOLTIP_WIDTH - 12 : hover.x + 16);
+  return (
+    <div
+      role="tooltip"
+      style={{
+        ...panelStyle,
+        position: "absolute",
+        left,
+        top: Math.max(0, hover.y + 16),
+        width: TOOLTIP_WIDTH,
+        padding: 10,
+        pointerEvents: "none",
+        zIndex: 60,
+      }}
+    >
+      <ItemDetails item={item} isWorn={isWorn} />
     </div>
   );
 }

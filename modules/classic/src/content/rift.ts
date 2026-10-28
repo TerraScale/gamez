@@ -11,10 +11,11 @@ export const RIFT: RiftProto = {
   size: 80,
   rooms: [10, 14],
   roomSize: [6, 12],
-  packs: [22, 30],
+  // Wave A QA: [22, 30] packs and a goal of 120 left geared level-24 heroes dying in rift level 1
+  // (128+ monsters alive); fewer packs and a lower goal keep the run about two thirds of a level.
+  packs: [18, 26],
   progress: { normal: 1, minion: 1, champion: 4, unique: 10, boss: 0, summon: 0 },
-  // About two thirds of a level (measured: 174-199 points per level at levels 1-30, see tests/rift.content.test.ts).
-  goal: 120,
+  goal: 100,
   timeLimit: 20 * 60 * 6,
   guardians: ["classic.monster.guardian_maw", "classic.monster.guardian_choir"],
   feeBase: 200,

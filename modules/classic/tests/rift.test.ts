@@ -518,7 +518,7 @@ describe("population and progress", () => {
       .filter((e) => sim.world.read(e, AreaTag).depth === depth);
     expect(units.length).toBeGreaterThan(0);
     const level = monsterLevel(depth);
-    expect(level).toBe(24);
+    expect(level).toBe(20);
     for (const e of units) {
       const m = sim.world.read(e, Monster);
       expect(m.level).toBeGreaterThanOrEqual(level);
@@ -553,7 +553,7 @@ describe("population and progress", () => {
     const g = fillBar(sim, hero, depth);
     expect(stateOf(sim).active?.guardianSpawned).toBe(true);
     expect(sim.world.read(g, Monster).rarity).toBe("boss");
-    expect(sim.world.read(g, Monster).level).toBe(monsterLevel(depth) + 2);
+    expect(sim.world.read(g, Monster).level).toBe(monsterLevel(depth));
     expect(sim.world.read(g, Monster).proto).toBe(GUARDIAN);
     // No second guardian, even after many more ticks.
     sim.step(20);
@@ -750,7 +750,7 @@ describe("determinism", () => {
 });
 
 /** Pinned after the first green run of the fixed script (see script()). */
-const PINNED_HASH = "4b3c8e2c746a3b49";
+const PINNED_HASH = "25e854c29522a9ec";
 
 // ---------------------------------------------------------------------------
 // HUD view model
@@ -781,7 +781,7 @@ describe("rift HUD view", () => {
     expect(view!.unlockText).toBe("Defeat the Hollow King on depth 4 to open the Rift.");
     expect(view!.obelisk).toBe(obelisk);
     expect(view!.levels).toEqual([
-      { level: 1, fee: riftFee(RIFT, 1), monsterLevel: 24, affordable: true },
+      { level: 1, fee: riftFee(RIFT, 1), monsterLevel: 20, affordable: true },
     ]);
     expect(view!.active).toBeNull();
   });
@@ -828,6 +828,6 @@ describe("rift depths", () => {
   it("are not main dungeon depths", () => {
     expect(isRiftDepth(riftDepth(1, 1))).toBe(true);
     expect(isRiftDepth(16)).toBe(false);
-    expect(monsterLevel(riftDepth(3, 7))).toBe(28);
+    expect(monsterLevel(riftDepth(3, 7))).toBe(24);
   });
 });

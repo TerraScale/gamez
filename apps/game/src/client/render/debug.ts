@@ -76,6 +76,7 @@ export class DebugTracker {
   chunksBuilt = 0;
   effectsPlayed = 0;
   floatsShown = 0;
+  shakes = 0;
   /** "appearance|action|facing" -> "key (kind)". */
   readonly anims = new Map<string, string>();
   /** "kind|sprite" -> "anim" | "sprite" | "procedural". */

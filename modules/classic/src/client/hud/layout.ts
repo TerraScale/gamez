@@ -270,6 +270,11 @@ export function errorFlashStyle(
   if (layout === "compact") {
     return { top: insets.top + HUD_EDGE * 2 };
   }
+  // Desktop with a panel open: the toast column, which panels never cover (PANEL_ROW_RIGHT),
+  // so a refusal never hides a panel row (QA: "nothing needs repair" sat over the smith's items).
+  if (layout === "desktop" && panelOpen) {
+    return { bottom: 190, left: "auto", right: HUD_EDGE, width: TOAST_WIDTH, transform: "none" };
+  }
   if (layout === "desktop") return { bottom: 190 };
   return { bottom: bottomBarInset("short", insets.bottom) + 30 };
 }

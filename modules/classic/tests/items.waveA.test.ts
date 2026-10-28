@@ -1178,6 +1178,6 @@ describe("determinism (wave A items)", () => {
   });
 
   it("pins the hash of the fixed script", () => {
-    expect(script(7).hash()).toBe("87208227ee5adead");
+    expect(script(7).hash()).toBe("50dc6b3e16e847a1");
   });
 });

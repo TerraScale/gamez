@@ -650,6 +650,6 @@ describe("numbers", () => {
 describe("content hash", () => {
   it("is identical across two loads and pinned", () => {
     expect(reg.hash).toBe(loadMode(mode, [classicContent]).registry.hash);
-    expect(reg.hash).toBe("e4c38ef5d5b6f4c0");
+    expect(reg.hash).toBe("c767a9d300200f44");
   });
 });

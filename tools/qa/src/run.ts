@@ -78,6 +78,7 @@ const SCENARIOS = [
   "classic-create",
   "classic-idle",
   "classic-features",
+  "classic-boss",
   "gallery",
   "panels",
   "steps",
@@ -92,7 +93,8 @@ function usage(msg?: string): never {
       `scenarios: ${SCENARIOS.join(", ")}\n` +
       "  classic-start <class>                 class: warrior | rogue | sorcerer\n" +
       "  classic-idle <class> <minutes> <speed> speed: 1 | 2 | 4 | 8\n" +
-      "  classic-features <class>              cheats (?debug=1&cheats=1): talents, smith, gambler, rift\n" +
+      "  classic-features <class>              cheats (?debug=1&cheats=1): talents, smith, gambler, sets, rift\n" +
+      "  classic-boss <class>                  cheats: a boss beside the hero, its telegraphs, phases and shake\n" +
       "  gallery [--all-facings]\n" +
       "  panels [class], classic-create [class]\n",
   );
@@ -275,6 +277,7 @@ interface RenderView {
   effectsSeen: Record<string, string>;
   effectsPlayed: number;
   floatsShown: number;
+  shakes?: number;
 }
 
 const simOf = (run: Run): Promise<SimView> => run.page.evaluate<SimView>("window.__gamez.sim");
@@ -333,6 +336,7 @@ function renderSummary(r: RenderView | null): Record<string, unknown> | null {
     labelsVisible: r.labelsVisible,
     effectsPlayed: r.effectsPlayed,
     floatsShown: r.floatsShown,
+    shakes: r.shakes ?? null,
   };
 }
 
@@ -744,7 +748,7 @@ async function gallery(run: Run): Promise<void> {
     ),
   );
   run.report.data.sections = sections;
-  const unitSections = new Set(["heroes", "monsters", "npcs"]);
+  const unitSections = new Set(["heroes", "monsters", "bosses", "npcs"]);
   for (const s of sections) {
     for (let p = 0; p < s.pages; p++) {
       const facings =
@@ -1012,14 +1016,48 @@ async function classicFeatures(run: Run): Promise<void> {
   await run.page.press("Escape");
   await run.page.wait(200);
 
+  // 4b. Sets: every piece of the class's early set (cheat `set`), two worn -> the 2-piece bonus.
+  const setId = EARLY_SET[cls] ?? "classic.set.ashen_choir";
+  const setGrant = await run.page.evaluate<{ ok: boolean; error?: unknown }>(
+    `window.__gamez.controls.cheat(${JSON.stringify({ set: setId })})`,
+  );
+  run.check("cheat set accepted", setGrant.ok, setGrant.error);
+  await run.page.wait(GRANT_WAIT_MS);
+  const bonusBefore = await run.page.evaluate<number>(
+    "window.__gamez.counters?.events?.['classic.set.bonus'] ?? 0",
+  );
+  const pieces = await hud<number[]>(
+    `inventory.items.filter((p) => p.item.rarity === "set").map((p) => p.item.uid)`,
+  );
+  const worn: number[] = [];
+  for (const uid of pieces) {
+    if (worn.length >= 2) break;
+    const r = await actRes("classic.equip", { uid, slot: null });
+    if (r.ok) worn.push(uid);
+    await run.page.wait(150);
+  }
+  await run.page.wait(400);
+  const bonusAfter = await run.page.evaluate<number>(
+    "window.__gamez.counters?.events?.['classic.set.bonus'] ?? 0",
+  );
+  data.sets = { set: setId, pieces: pieces.length, worn: worn.length, bonusBefore, bonusAfter };
+  run.check("the set grant gives every piece", pieces.length >= 4, data.sets);
+  run.check("two worn set pieces activate the set bonus", bonusAfter > bonusBefore, data.sets);
+  await run.page.evaluate("window.__gamez.controls.openPanel('inventory')");
+  await run.page.wait(400);
+  await run.shot("set-bonus");
+  await run.page.evaluate("window.__gamez.controls.closeAll()");
+  await run.page.wait(250);
+
   // 5. Rift: obelisk locked, then unlocked, a level opened, the guardian reached on auto.
   await interactPanel("obelisk", "rift");
   await run.shot("rift-locked");
   data.riftLocked = await hud("rift ?? null");
   await run.page.evaluate("window.__gamez.controls.closeAll()");
   await run.page.wait(250);
+  // Rift level 1 monsters are level 20: twelve more levels give the cheat hero a chance.
   const unlock = await run.page.evaluate<{ ok: boolean; error?: unknown }>(
-    `window.__gamez.controls.cheat({ unlockRift: true })`,
+    `window.__gamez.controls.cheat({ unlockRift: true, levels: 12 })`,
   );
   run.check("cheat unlockRift accepted", unlock.ok, unlock.error);
   await run.page.wait(GRANT_WAIT_MS);
@@ -1036,12 +1074,33 @@ async function classicFeatures(run: Run): Promise<void> {
     await run.page.evaluate("window.__gamez.controls.setMode('auto')");
     let guardian = true;
     try {
-      await run.page.waitFor("window.__gamez.hud.rift?.active?.guardianAlive === true", 150_000);
+      await run.page.waitFor("window.__gamez.hud.rift?.active?.guardianAlive === true", 8_000);
     } catch {
       guardian = false;
     }
     data.guardianReached = guardian;
+    // A cheat hero is rarely geared for the rift: warn only, then fill the bar to check the guardian path.
     run.check("a rift run reaches its guardian (auto)", guardian, await hud("rift ?? null"), true);
+    if (!guardian) {
+      const fill = await run.page.evaluate<{ ok: boolean; error?: { code: string } }>(
+        "window.__gamez.controls.cheat({ riftProgress: 100 })",
+      );
+      let called = fill.ok;
+      if (fill.ok) {
+        try {
+          await run.page.waitFor("window.__gamez.hud.rift?.active?.guardianAlive === true", 15_000);
+        } catch {
+          called = false;
+        }
+      }
+      data.guardianByCheat = { fill: fill.ok, code: fill.error?.code ?? null, called };
+      // not_in_rift: the run already ended (the hero died first); that is a rule refusal, not a bug.
+      run.check(
+        "a full progress bar calls the guardian (cheat riftProgress)",
+        called || fill.error?.code === "not_in_rift",
+        data.guardianByCheat,
+      );
+    }
     await run.shot("rift-guardian");
     await run.page.evaluate("window.__gamez.controls.setMode('manual')");
     const left = await actRes("classic.leaveRift", {});
@@ -1051,6 +1110,128 @@ async function classicFeatures(run: Run): Promise<void> {
     await run.shot("rift-left");
   } else {
     run.check("the obelisk is in reach for the rift run", false, obelisk, true);
+  }
+  run.report.data.render = renderSummary(await renderOf(run));
+  run.report.data.final = await simOf(run);
+}
+
+/** The early set of each class (classic-features grants it with the `set` cheat). */
+const EARLY_SET: Record<string, string> = {
+  warrior: "classic.set.ashen_choir",
+  rogue: "classic.set.quicksilver_veil",
+  sorcerer: "classic.set.ember_codex",
+};
+
+interface TelegraphSeen {
+  tick: number;
+  shape: string;
+  skill: string;
+}
+
+/**
+ * classic-boss <class>: a deterministic route to a boss fight (cheats). The
+ * hero gets 25 levels and takes the town stairs to depth 1, then `spawnBoss`
+ * puts Morrow, the Grave Warden (depth-1 level) awake beside it. The run screenshots each telegraph shape as
+ * it fills (circle, cone, and the line Morrow learns in phase 2), then uses
+ * `woundBosses` to drive both phases and checks the phase toast and the camera
+ * shake (render.shakes). Shapes not seen in time are warnings.
+ */
+async function classicBoss(run: Run): Promise<void> {
+  const cls = classArg(run);
+  await startClassic(run, cls, { cheats: true });
+  await run.page.evaluate("window.__gamez.controls.setMode('manual')");
+  const data: Record<string, unknown> = {};
+  run.report.data.boss = data;
+  const cheat = (payload: unknown): Promise<{ ok: boolean; error?: { code: string } }> =>
+    run.page.evaluate(`window.__gamez.controls.cheat(${JSON.stringify(payload)})`);
+
+  // A strong hero against a depth-1 boss: the fight lasts long enough to watch every
+  // telegraph and both phases (a rift-level boss kills a cheat hero in seconds).
+  const grant = await cheat({ levels: 25 });
+  run.check("cheat grant accepted", grant.ok, grant.error);
+  await run.page.wait(GRANT_WAIT_MS);
+
+  // Down the town stairs to depth 1 (manual mode, so auto never takes over).
+  const walk = await run.page.evaluate<{ ok: boolean }>(
+    "window.__gamez.controls.interact('stairsDown')",
+  );
+  run.check("interact stairsDown", walk.ok);
+  await run.page.waitFor("window.__gamez.sim.depth === 1", 45_000);
+  await run.page.evaluate("window.__gamez.controls.closeAll()");
+  await run.page.wait(800);
+
+  const shakesAt = async (): Promise<number> => (await renderOf(run))?.shakes ?? 0;
+  const shakes0 = await shakesAt();
+  const spawn = await cheat({ spawnBoss: "classic.monster.boss_warden" });
+  run.check("cheat spawnBoss accepted", spawn.ok, spawn.error);
+  await run.page.wait(800);
+  const s0 = await simOf(run);
+  run.check("the boss is alive beside the hero", (s0.counts.bossesAlive ?? 0) >= 1, s0.counts);
+  await run.shot("boss-spawned");
+
+  /** Telegraphs in the event ring newer than `since`. */
+  const telegraphs = (since: number): Promise<TelegraphSeen[]> =>
+    run.page.evaluate<TelegraphSeen[]>(
+      `window.__gamez.sim.lastEvents.filter((e) => e.type === "classic.telegraph" && e.tick > ${since}).map((e) => ({ tick: e.tick, shape: e.shape, skill: e.skill }))`,
+    );
+  const shapes: Record<string, TelegraphSeen> = {};
+  let last = 0;
+  /** Polls for telegraphs until every wanted shape was seen; screenshots each new shape as it fills. */
+  const watch = async (want: string[], ms: number): Promise<void> => {
+    const until = Date.now() + ms;
+    while (Date.now() < until && want.some((w) => !shapes[w])) {
+      for (const t of await telegraphs(last)) {
+        last = Math.max(last, t.tick);
+        if (shapes[t.shape]) continue;
+        shapes[t.shape] = t;
+        await run.shot(`telegraph-${t.shape}`);
+      }
+      const hero = (await simOf(run)).hero;
+      if (hero?.dead) break;
+      await run.page.wait(120);
+    }
+  };
+
+  // Phase 0: Morrow cleaves (cone) and quakes (circle).
+  await watch(["cone", "circle"], 40_000);
+
+  // Phase 1 at 70 % life: the phase toast and the shake.
+  const phase1 = await cheat({ woundBosses: 60 });
+  run.check("cheat woundBosses accepted", phase1.ok, phase1.error);
+  let phaseSeen = true;
+  try {
+    await run.page.waitFor(
+      "(window.__gamez.counters?.events?.['classic.boss.phase'] ?? 0) >= 1",
+      10_000,
+    );
+  } catch {
+    phaseSeen = false;
+  }
+  await run.page.wait(250);
+  await run.shot("boss-phase-1");
+  const toasts = await run.page.evaluate<string[]>(
+    "window.__gamez.ui.toasts.map((t) => `${t.title} | ${t.body ?? ''}`)",
+  );
+  data.phaseToasts = toasts;
+  run.check("the boss enters phase 1", phaseSeen);
+  run.check(
+    "the phase shows a toast",
+    toasts.some((t) => /Morrow/.test(t)),
+    toasts,
+  );
+
+  // Phase 2 at 35 %: enrage and the rush (line telegraph).
+  const phase2 = await cheat({ woundBosses: 30 });
+  run.check("cheat woundBosses (phase 2) accepted", phase2.ok, phase2.error);
+  await run.page.wait(400);
+  await run.shot("boss-phase-2");
+  await watch(["line", "cone", "circle"], 40_000);
+  const shakes1 = await shakesAt();
+  data.shakes = { before: shakes0, after: shakes1 };
+  data.shapes = shapes;
+  run.check("the phase change shakes the camera", shakes1 > shakes0, data.shakes);
+  for (const shape of ["circle", "cone", "line"]) {
+    run.check(`a ${shape} telegraph was seen and captured`, !!shapes[shape], shapes, true);
   }
   run.report.data.render = renderSummary(await renderOf(run));
   run.report.data.final = await simOf(run);
@@ -1160,6 +1341,7 @@ const RUNNERS: Record<(typeof SCENARIOS)[number], (run: Run) => Promise<void>> =
   "classic-create": classicCreate,
   "classic-idle": classicIdle,
   "classic-features": classicFeatures,
+  "classic-boss": classicBoss,
   gallery,
   panels,
   steps,

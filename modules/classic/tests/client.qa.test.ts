@@ -100,9 +100,10 @@ describe("gallery sections", () => {
     expect(byId.get("heroes")?.cells.length).toBe(
       reg.all(KIND.class).length * GALLERY_ACTIONS.length,
     );
-    expect(byId.get("monsters")?.cells.length).toBe(
-      reg.all(KIND.monster).length * GALLERY_ACTIONS.length,
-    );
+    // Bosses and rift guardians have their own section (two tall rows a page).
+    expect(
+      (byId.get("monsters")?.cells.length ?? 0) + (byId.get("bosses")?.cells.length ?? 0),
+    ).toBe(reg.all(KIND.monster).length * GALLERY_ACTIONS.length);
     expect(byId.get("npcs")?.cells.length).toBe(reg.all(KIND.npc).length * GALLERY_ACTIONS.length);
     const skills = byId.get("skills")?.cells.filter((c) => c.kind === "effect") ?? [];
     expect(skills.length).toBe(reg.all(KIND.skill).length);

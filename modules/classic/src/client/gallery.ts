@@ -64,6 +64,11 @@ const GALLERY_EFFECT_RADIUS = 1;
 const ROW_PX = 32;
 /** QA estimate of a scale-100 unit's height above its feet. Taller units (bosses) scale it. */
 const UNIT_TOP_PX = 150;
+/**
+ * Extra head room (percent) for units drawn above scale 100: big sprites carry
+ * wide effects above the head (the Choir of Cinders' flames spilled into the row above).
+ */
+const BIG_UNIT_HEADROOM_PCT = 125;
 /** Caption space under the feet (two 10 px lines). */
 const CAPTION_BELOW_PX = 56;
 /** Room above a unit's head for its nameplate (the renderer draws it just above the head). */
@@ -210,16 +215,22 @@ function unitSection(
   };
 }
 
-function monstersSorted(reg: FrozenRegistry): (readonly [string, Readonly<MonsterProto>])[] {
-  const all = reg.all<MonsterProto>(KIND.monster);
-  return [...all.filter(([, m]) => !m.boss), ...all.filter(([, m]) => !!m.boss)];
+/** Bosses and rift guardians: tall units that get their own two-row pages. */
+function isBigMonster(m: Readonly<MonsterProto>): boolean {
+  return !!m.boss || m.guardian === true;
 }
 
-function monstersSection(reg: FrozenRegistry): GallerySection {
+/**
+ * Regular monsters (four rows a page), or bosses and rift guardians (`big`,
+ * two rows a page, so their tall sprites never run into the next row and the
+ * camera fits the page).
+ */
+function monstersSection(reg: FrozenRegistry, big: boolean): GallerySection {
   const cells: GalleryCell[] = [];
   const headers: string[] = [];
-  for (const [id, m] of monstersSorted(reg)) {
-    const boss = m.boss ? ` (boss, d${m.boss.depth})` : "";
+  for (const [id, m] of reg.all<MonsterProto>(KIND.monster)) {
+    if (isBigMonster(m) !== big) continue;
+    const boss = m.boss ? ` (boss, d${m.boss.depth})` : m.guardian ? " (rift guardian)" : "";
     unitRow(cells, headers, "monsters", id, `${m.name}${boss}\n${m.appearance}`, {
       name: m.name,
       appearance: m.appearance,
@@ -229,10 +240,12 @@ function monstersSection(reg: FrozenRegistry): GallerySection {
       isSelf: false,
       tint: tintOf(m.tint),
       scale: m.scale,
-      labelColor: MONSTER_COLOR[m.boss ? "boss" : "normal"],
+      labelColor: MONSTER_COLOR[big ? "boss" : "normal"],
     });
   }
-  return unitSection("monsters", "Monsters", headers, cells, 5, 4);
+  return big
+    ? unitSection("bosses", "Bosses", headers, cells, 5, 2)
+    : unitSection("monsters", "Monsters", headers, cells, 5, 4);
 }
 
 function npcsSection(reg: FrozenRegistry): GallerySection {
@@ -255,7 +268,7 @@ function npcsSection(reg: FrozenRegistry): GallerySection {
 }
 
 function variantsSection(reg: FrozenRegistry): GallerySection {
-  const monsters = monstersSorted(reg);
+  const monsters = reg.all<MonsterProto>(KIND.monster);
   const sample = monsters.find(([id]) => id === "classic.monster.husk") ?? monsters[0] ?? null;
   const cells: GalleryCell[] = [];
   if (sample) {
@@ -857,7 +870,8 @@ export function buildGallerySections(
   const { tiles, props } = collectIds(reg, manifestKeys);
   return [
     heroesSection(reg),
-    monstersSection(reg),
+    monstersSection(reg, false),
+    monstersSection(reg, true),
     npcsSection(reg),
     variantsSection(reg),
     lootSection(reg),
@@ -900,8 +914,11 @@ interface PageLayout {
 /** Head height above the feet of one cell (screen px at zoom 1). */
 export function cellTopPx(cell: GalleryCell): number {
   switch (cell.kind) {
-    case "unit":
-      return (UNIT_TOP_PX * (cell.entity?.scale ?? 100)) / 100 + NAMEPLATE_PX;
+    case "unit": {
+      const scale = cell.entity?.scale ?? 100;
+      const top = (UNIT_TOP_PX * scale) / 100;
+      return (scale > 100 ? (top * BIG_UNIT_HEADROOM_PCT) / 100 : top) + NAMEPLATE_PX;
+    }
     case "station":
       return 110;
     case "prop":

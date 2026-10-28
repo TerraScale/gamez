@@ -168,7 +168,7 @@ missing).
 ### 2.4 Shared formulas (implemented in `rules.ts`, `bonus.ts`, `loot.ts`)
 
 - Depths: `MAIN_DUNGEON_DEPTH = 16`; rift depths `riftDepth(level, run) = 100000 + 1000·level +
-  run % 1000`, `isRiftDepth`, `riftLevelOf`; `monsterLevel(rift depth) = 22 + 2·level`; rift depths
+  run % 1000`, `isRiftDepth`, `riftLevelOf`; `monsterLevel(rift depth) = 18 + 2·level` (was 22; lowered after QA so level 1 is clearable); rift depths
   are never boss or waypoint depths; `tierOf(rift) = 3`.
 - Items: `addItemStats` now adds smith upgrades (`upgradeMods`: weapon +6 % dmg/level, armor pieces
   +12 % base armor/level (min +level), jewelry +1 all attributes/level), socketed gems (`gemMods`
@@ -367,7 +367,7 @@ durationPct (statuses, buffs, summons), extraSummons (count and max).
   `deepest` or waypoints for rift depths.
 - `classic.rift.track` (post 160): progress += `RiftProto.progress[rarity]` per hero-credited
   death in the rift (cap `goal`; `classic.rift.progress` every 10 %); at the goal spawn the
-  guardian (`guardians[level % n]`, rarity boss, level `monsterLevel + 2`, near the hero on a free
+  guardian (`guardians[level % n]`, rarity boss, level `monsterLevel` (was +2 before the wave A QA pass), near the hero on a free
   tile ≥ 6 tiles away; `classic.rift.guardian`). Guardian dead → completed: record
   (`riftScore`), rewards (gold `goldPerLevel × level`, `items + floor(level / bonusEvery)` items
   `minRarity` at monster level via grantItems; half when over time), `riftExit` Interactable at
@@ -635,7 +635,18 @@ Against the targets:
 
 - **Warrior pace:** the warrior misses the depth-5 target, and the 4-slot Auto bar never adds the new level 12–18 skills for the warrior and sorcerer. A bar-swap rule is needed.
 - **Rift labels:** the obelisk is placed one tile from the smith, so their labels overlap in town.
-- **Rift goal:** the goal is 120 progress against 174–199 points of population. Revisit it with real clear rates.
-- **Cheat heroes in the rift:** a cheat-built level 11 hero cannot clear rift level 1 (monster level 24). Natural progress reaches the rift at about level 30.
+- **Rift goal:** now 100 progress with 18–26 packs (was 120 with 22–30); revisit it with real clear rates.
+- **Cheat heroes in the rift:** a cheat-built hero (levels and ilvl-22 rares only, no stat points spent) still dies in rift level 1; a hero that killed the Hollow King (level 26, 17 400 life) faces a level-20 guardian (Choir of Cinders: 9 775 life).
 - **Combat:** monster skills set their element through a local combat rule (weaponPct plus an all-zero `damage` block). A `SkillProto.element` field would be cleaner. `boss_slam` and `boss_nova` are no longer used by any boss.
 - **Contract:** `ItemView` has no gem tier field; the HUD reads the tier from the gem's name.
+
+### 14.6 Browser QA fix pass
+
+Fixes for the wave A browser QA findings (lenses combat-visuals, wave-a-panels, late-game-loop):
+
+- **Rift balance:** rift level L has monster level 18 + 2L (was 22 + 2L), so level 1 (20) sits below depth 16 (23). Packs 18–26 (was 22–30), goal 100 (was 120), and the guardian spawns at the rift's monster level (was +2). In a headless probe (cheat level-24 hero with ilvl-22 rares, seed 77, one run per class), the warrior and the sorcerer reached the guardian and then died to it, and the rogue reached 69 % before a champion killed it. Before the change, QA runs reached 0 % to 44 % and never saw the guardian. No class completed level 1 with cheat gear.
+- **Rift deaths:** a death inside a rift costs no gold (the fee was the stake). XP loss stays. The toast names only what was lost ("Lost 2 XP", "Nothing was lost").
+- **Auto rifts:** Auto opens a rift only when level 1's monsters are within 2 levels of the hero (`riftReady`), and it pauses after two level-1 failures in a row until the hero gains a level. It farms the main dungeon instead of paying fees to die.
+- **QA routes (`classic.debug`):** `set` (every piece of a set), `riftProgress` (fills the open run, so 100 calls the guardian), `spawnBoss` (a boss or guardian awake beside the hero) and `woundBosses` (phases on demand). `render.shakes` counts camera shakes. The new QA scenario `classic-boss` captures circle, cone and line telegraphs, both phases, the phase toast and the shake. `classic-features` checks the 2-piece set bonus and the guardian path.
+- **Touch inventory:** a tap on a bag item opens the item sheet, which shows the full tooltip body (`ItemDetails`) plus the actions. A second tap on the same item equips it. Mouse clicks still equip at once.
+- **Layout:** desktop panels are 97 % opaque. On desktop, the error flash moves into the toast column while a panel is open. Damage table headers keep a gap and never wrap. Phone attribute rows have 8 px between their + buttons. In the gallery, bosses and rift guardians have their own two-row section.

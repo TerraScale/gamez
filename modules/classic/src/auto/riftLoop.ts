@@ -14,6 +14,9 @@
  *  - level: 1 at first; after a run completed within RiftProto.timeLimit the
  *    next level (<= maxCompleted + 1), after a slow or failed run one lower;
  *    never above what the hero's level can take (monster level <= level + 2).
+ *  - no run at all while the hero is too weak for level 1 (riftReady), or
+ *    after RIFT_FAIL_STREAK deaths in a row at level 1 until the hero gains a
+ *    level: the hero farms the main dungeon instead of paying fees to die.
  * No town portal in a rift (ERR.inRift): no voluntary trips, no retreat.
  */
 import type { Entity } from "@gamez/kernel";
@@ -72,6 +75,22 @@ export function chooseRiftLevel(state: RiftState, proto: RiftProto, heroLvl: num
   return Math.max(1, level);
 }
 
+/** Failed level-1 runs in a row that pause auto rifts until the hero levels up. */
+export const RIFT_FAIL_STREAK = 2;
+
+/**
+ * True when the hero may try rifts: level 1's monsters are within
+ * RIFT_LEVEL_MARGIN of `effLvl`, and the last RIFT_FAIL_STREAK runs were not
+ * all level-1 failures at the hero's current level `heroLvl` or above.
+ */
+export function riftReady(state: RiftState, effLvl: number, heroLvl: number): boolean {
+  if (monsterLevel(riftDepth(1, 0)) > effLvl + RIFT_LEVEL_MARGIN) return false;
+  const recent = state.history.slice(0, RIFT_FAIL_STREAK);
+  if (recent.length < RIFT_FAIL_STREAK) return true;
+  const stuck = recent.every((r) => !r.completed && r.level === 1 && r.heroLevel >= heroLvl);
+  return !stuck;
+}
+
 /** True when the main dungeon is finished: deepest 16 and its boss dead. */
 export function mainDungeonDone(dungeon: DungeonState | undefined): boolean {
   return (
@@ -89,6 +108,7 @@ export function riftWanted(c: AutoCtx): number {
   if (!state?.unlocked || !proto || state.active) return 0;
   if (!mainDungeonDone(c.world.getResource<DungeonState>(RES.dungeon))) return 0;
   const lvl = effectiveLevel(heroLevel(c), c.st);
+  if (!riftReady(state, lvl, heroLevel(c))) return 0;
   let level = chooseRiftLevel(state, proto, lvl);
   const gold = goldOf(c);
   while (level > 1 && riftFee(proto, level) > gold) level--;

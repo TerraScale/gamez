@@ -49,8 +49,12 @@ export const MAIN_DUNGEON_DEPTH = 16;
  */
 export const RIFT_DEPTH_BASE = 100_000;
 export const RIFT_MAX_LEVEL = 99;
-/** Monster level of rift level L = RIFT_MONSTER_LEVEL_BASE + RIFT_LEVEL_STEP x L. */
-export const RIFT_MONSTER_LEVEL_BASE = 22;
+/**
+ * Monster level of rift level L = RIFT_MONSTER_LEVEL_BASE + RIFT_LEVEL_STEP x L.
+ * Rift level 1 (20) sits a little below depth 16 (23), so the hero who just
+ * killed the depth-16 boss can clear it; the ladder passes depth 16 at level 3.
+ */
+export const RIFT_MONSTER_LEVEL_BASE = 18;
 export const RIFT_LEVEL_STEP = 2;
 
 export function isRiftDepth(depth: number): boolean {
@@ -81,7 +85,7 @@ export function isBossDepth(depth: number): boolean {
 export function isWaypointDepth(depth: number): boolean {
   return depth === 0 || (depth % 2 === 1 && !isRiftDepth(depth));
 }
-/** Monster level of a dungeon depth: 1, 2, 4, 5, 7, 8, 10, ...; rift level L: 22 + 2L. */
+/** Monster level of a dungeon depth: 1, 2, 4, 5, 7, 8, 10, ...; rift level L: 18 + 2L. */
 export function monsterLevel(depth: number): number {
   if (isRiftDepth(depth)) return RIFT_MONSTER_LEVEL_BASE + RIFT_LEVEL_STEP * riftLevelOf(depth);
   return 1 + Math.floor((3 * (Math.max(1, depth) - 1)) / 2);
