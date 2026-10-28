@@ -5,6 +5,13 @@
  * through sim.dispatch(name, payload, "local"); the sim is only advanced with
  * sim.step(n). Nothing here mutates the sim world.
  *
+ * Wave B (docs/design/wave-B.md §2.5): with GameDeps.server the game is
+ * server-backed. Every successful dispatch is reported to the hooks (they
+ * record it as a segment input), steps are split so no segment outgrows its
+ * limit, the hooks may cut a segment right after each step, server-only
+ * actions are refused, and newGame asks the hooks for the sim to show until
+ * the server's fresh state arrives. replaceSim swaps the sim after a resync.
+ *
  * Errors inside the frame loop never escape: they are shown in ui.error.
  */
 import {
@@ -16,7 +23,12 @@ import {
   type Sim,
   type World,
 } from "@gamez/kernel";
-import type { ArpgWorldRenderer, FloatTextSpec, PointerInfo } from "@gamez/ui-host";
+import type {
+  ArpgWorldRenderer,
+  FloatTextSpec,
+  PlatformServices,
+  PointerInfo,
+} from "@gamez/ui-host";
 import { ACTION } from "../actions.ts";
 import {
   Ai,
@@ -41,6 +53,8 @@ import {
   type PerfView,
   type Settings,
   type Store,
+  type SyncView,
+  LOCAL_SYNC_VIEW,
   type Toast,
   type UiState,
 } from "./contract.ts";
@@ -77,6 +91,34 @@ export interface GameDeps {
   exit(): void;
   /** QA probe (`?debug=1`, debug.ts): hears every event batch the client fans out. */
   onEvents?(events: readonly GameEvent[]): void;
+  // ---- wave B (docs/design/wave-B.md §2.5, §7)
+  /** Platform services for the social panels (null/absent: offline host). */
+  platform?: PlatformServices | null;
+  /** Signed-in session (null/absent: none). */
+  session?: { accountId: string; name: string } | null;
+  /** Server sync state store (absent: LOCAL_SYNC_VIEW forever). */
+  sync?: Store<SyncView>;
+  /** Called once per frame after the sim stepped and the scene rendered (town presence). */
+  extraFrame?(sim: Sim, nowMs: number): void;
+  /** Server mode: segment recording and server-only rules (sync/ServerSync implements it). */
+  server?: ServerHooks;
+}
+
+/**
+ * What the game asks the server sync (wave-B.md §2.5). All calls are made
+ * synchronously around the sim's dispatch/step; none of them may mutate the sim.
+ */
+export interface ServerHooks {
+  /** Before a dispatch: null when allowed, else why not (server-only action, full segment). */
+  refuse(name: string): { code: string; message: string } | null;
+  /** After a successful dispatch made while sim.tick === tick. */
+  dispatched(tick: number, name: string, payload: unknown): void;
+  /** Most ticks the next sim.step() may run (room left in the open segment, >= 1). */
+  room(sim: Sim): number;
+  /** Right after every successful sim.step() (the only place a segment may be cut). */
+  stepped(sim: Sim, nowMs: number): void;
+  /** newGame: the sim to show until the server's fresh instance arrives (it restarts the server). */
+  newGame(seed: number): Sim;
 }
 
 export interface ClassicGame {
@@ -89,6 +131,15 @@ export interface ClassicGame {
   destroy(): void;
   /** The current local sim (replaced by newGame). Read-only use: QA debug hooks. */
   currentSim(): Sim;
+  /**
+   * Swaps in another sim (server resync, adopted server state): resets the
+   * scene, loop, pointer and panels like newGame, keeps the log and toasts.
+   */
+  replaceSim(next: Sim): void;
+  /** Fans events out like the sim's own (server offline-progress summary). */
+  emit(events: readonly GameEvent[]): void;
+  /** Adds a system line to the log. */
+  log(text: string): void;
 }
 
 /** Keeps the most recent log lines. */
@@ -105,6 +156,8 @@ const FAIL_BACKOFF_MS = 1000;
 const TOWN_CLOSE_RANGE = 4;
 /** Long toast (boss, rift and achievement news, carry-over notice). */
 const TOAST_LONG_MS = 7000;
+/** Colour of system log lines (server sync notices). */
+const SYSTEM_LOG_COLOR = 0x9fb3c8;
 
 interface Cell<T> {
   store: Store<T>;
@@ -408,11 +461,18 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
 
   function act(name: string, payload: unknown): DispatchResult {
     try {
+      const refused = deps.server?.refuse(name) ?? null;
+      if (refused !== null) {
+        setError(refused.code, refused.message);
+        return { ok: false, events: [], tick: sim.tick, error: refused };
+      }
+      const tick = sim.tick;
       const res = sim.dispatch(name, payload, "local");
       if (!res.ok) {
         setError(res.error?.code ?? "error", res.error?.message ?? "Action failed");
         return res;
       }
+      deps.server?.dispatched(tick, name, payload);
       fanOut(res.events);
       refreshHud();
       return res;
@@ -521,6 +581,26 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
 
   // ---- frame ------------------------------------------------------------------
 
+  /**
+   * sim.step(ticks), split so a server segment never outgrows its limit, with
+   * the server hook after every step (where it may cut a segment).
+   */
+  function stepSim(ticks: number, nowMs: number): GameEvent[] {
+    const server = deps.server;
+    if (!server) return sim.step(ticks);
+    let events: GameEvent[] | null = null;
+    let left = ticks;
+    while (left > 0) {
+      const n = Math.max(1, Math.min(left, Math.floor(server.room(sim))));
+      const batch = sim.step(n);
+      left -= n;
+      server.stepped(sim, nowMs);
+      if (events === null) events = batch;
+      else for (const ev of batch) events.push(ev);
+    }
+    return events ?? [];
+  }
+
   function tickSim(dtMs: number, nowMs: number): void {
     const control = sim.world.getResource<ControlState>(RES.control);
     const speed = control && control.mode === "idle" ? control.speed : 1;
@@ -531,7 +611,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     const t0 = deps.now();
     let events: GameEvent[];
     try {
-      events = sim.step(adv.ticks);
+      events = stepSim(adv.ticks, nowMs);
     } catch (err) {
       // The kernel rolled the failed step back; pause the sim briefly and show the error.
       backoffUntil = nowMs + FAIL_BACKOFF_MS;
@@ -611,6 +691,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
         refreshHud();
       }
       periodic(nowMs);
+      deps.extraFrame?.(sim, nowMs);
     } catch (err) {
       reportError(err);
     }
@@ -620,9 +701,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
 
   // ---- API --------------------------------------------------------------------
 
-  function newGame(): void {
-    deps.save.clear();
-    sim = createSim(loaded, { seed: deps.newSeed() });
+  /** Makes `next` the current sim and resets everything derived from the old one. */
+  function swapSim(next: Sim, clearMessages: boolean): void {
+    sim = next;
     scene.reset();
     loop.reset();
     backoffUntil = Number.NEGATIVE_INFINITY;
@@ -630,10 +711,20 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     gamblerNpc = 0;
     pointer.cancel();
     appliedZoom = Number.NaN;
-    setUi({ panels: [], toasts: [], error: null, hover: null });
-    log.set([]);
+    if (clearMessages) {
+      setUi({ panels: [], toasts: [], error: null, hover: null });
+      log.set([]);
+    } else {
+      setUi({ panels: [], error: null, hover: null });
+    }
     lastHudAt = Number.NEGATIVE_INFINITY;
     refreshHud();
+  }
+
+  function newGame(): void {
+    deps.save.clear();
+    const seed = deps.newSeed();
+    swapSim(deps.server ? deps.server.newGame(seed) : createSim(loaded, { seed }), true);
   }
 
   function save(): boolean {
@@ -720,6 +811,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       save();
       deps.exit();
     },
+    sync: deps.sync ?? cell<SyncView>(LOCAL_SYNC_VIEW).store,
+    platform: deps.platform ?? null,
+    session: deps.session ?? null,
   };
 
   refreshHud();
@@ -738,5 +832,21 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       audio.destroy();
     },
     currentSim: () => sim,
+    replaceSim(next) {
+      if (destroyed) return;
+      swapSim(next, false);
+    },
+    emit(events) {
+      if (destroyed) return;
+      try {
+        fanOut(events);
+        refreshHud();
+      } catch (err) {
+        reportError(err);
+      }
+    },
+    log(text) {
+      pushLog("system", text, SYSTEM_LOG_COLOR);
+    },
   };
 }

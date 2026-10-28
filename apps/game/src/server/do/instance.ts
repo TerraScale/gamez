@@ -1,9 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
-import { INSTANCE_HEADERS, type Env } from "../contracts.ts";
+import { Outbox, type ReplicationBatch } from "@gamez/sync";
+import { INSTANCE_HEADERS, sqlStoreOf, type Env } from "../contracts.ts";
 import { InstanceHost, type InstanceSocket, type SocketInfo } from "../instance/host.ts";
 import { encodeServerMessage } from "../instance/messages.ts";
 import { findMode, instanceName, loadedMode } from "../instance/modes.ts";
 import { SqlInstanceStore } from "../instance/sql-store.ts";
+import { VerifiedHost } from "../instance/verified-host.ts";
+import { SqlVerifiedStore } from "../instance/verified-store.ts";
+
+/** Outbox records per queue message (reports are small; well under 128 KB). */
+const FLUSH_BATCH = 200;
 
 /**
  * Generic host for instanced modes, per contracts.ts (InstanceDO section).
@@ -11,10 +17,16 @@ import { SqlInstanceStore } from "../instance/sql-store.ts";
  * InstanceClientMessage / InstanceServerMessage protocol; all game logic is
  * in InstanceHost (src/server/instance/host.ts), this class only adapts
  * sockets, SQLite and the alarm to it.
+ *
+ * Client-driven modes (ModeSpec.instance.clientDriven, e.g. classic) get a
+ * VerifiedHost instead (docs/design/wave-B.md §2): the browser runs the sim,
+ * this DO replays and persists its input segments, and reports verified state
+ * to D1 through an outbox drained by the alarm.
  */
 export class InstanceDO extends DurableObject<Env> {
-  #host: InstanceHost | null = null;
+  #host: InstanceHost | VerifiedHost | null = null;
   #store: SqlInstanceStore | null = null;
+  #outbox: Outbox | null = null;
   readonly #wrappers = new WeakMap<WebSocket, InstanceSocket>();
 
   get #name(): string {
@@ -59,7 +71,7 @@ export class InstanceDO extends DurableObject<Env> {
       ws.close(1011, "unknown mode");
       return;
     }
-    host.handleMessage(this.#wrap(ws), message);
+    await host.handleMessage(this.#wrap(ws), message);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
@@ -68,23 +80,61 @@ export class InstanceDO extends DurableObject<Env> {
     } catch {
       // Already closed.
     }
-    this.#getHost()?.handleClose(this.#wrap(ws));
+    await this.#getHost()?.handleClose(this.#wrap(ws));
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.#getHost()?.handleClose(this.#wrap(ws));
+    await this.#getHost()?.handleClose(this.#wrap(ws));
   }
 
   async alarm(): Promise<void> {
-    this.#getHost()?.alarm();
+    const host = this.#getHost();
+    if (host instanceof VerifiedHost) await this.#flushOutbox();
+    else host?.alarm();
+  }
+
+  /** Drains the verified host's report outbox into the sync queue (a throw retries the alarm). */
+  async #flushOutbox(): Promise<void> {
+    const outbox = this.#outbox;
+    if (!outbox) return;
+    const sink = {
+      send: async (batch: ReplicationBatch) => {
+        await this.env.SYNC_QUEUE.send(batch);
+      },
+    };
+    await outbox.flush(sink, FLUSH_BATCH);
+    // Records appended while the flush was in flight need another alarm.
+    if (outbox.size() > 0) await outbox.scheduleFlush(this.ctx.storage, 0);
   }
 
   /** The host for this instance's mode (stored on the first upgrade); null if unknown. */
-  #getHost(): InstanceHost | null {
+  #getHost(): InstanceHost | VerifiedHost | null {
     if (this.#host) return this.#host;
     const id = this.ctx.storage.kv.get<string>("mode");
     const loaded = id ? loadedMode(id) : null;
     if (!loaded) return null;
+    const policy = loaded.mode.instance?.clientDriven;
+    if (policy) {
+      const outbox = new Outbox(this.ctx.storage.sql, `instance:${this.#name}`);
+      outbox.init();
+      this.#outbox = outbox;
+      this.#host = new VerifiedHost({
+        name: this.#name,
+        loaded,
+        policy,
+        store: new SqlVerifiedStore(sqlStoreOf(this.ctx.storage)),
+        sockets: () => this.#sockets(),
+        now: () => Date.now(),
+        randomSeed: () => crypto.getRandomValues(new Uint32Array(1))[0]!,
+        outbox,
+        scheduleFlush: () => {
+          outbox.scheduleFlush(this.ctx.storage).catch((err: unknown) => {
+            console.error(`instance ${this.#name}: could not schedule the outbox flush`, err);
+          });
+        },
+      });
+      return this.#host;
+    }
     this.#store ??= new SqlInstanceStore(this.ctx.storage);
     this.#host = new InstanceHost({
       name: this.#name,

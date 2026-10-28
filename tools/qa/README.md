@@ -114,6 +114,40 @@ The warn-only check `no frame over 100 ms after the first 5 s` is in
 `checks`. Software GL stalls the frame without blocking JavaScript, so a long
 steady frame with no steady longtask points at rendering, not at game code.
 
+Under SwiftShader, `classic-idle <class> <min> 8` routinely warns here (steady
+frames of 2-3 s, a few fps). Wave B QA measured the same stalls with server sync
+on and off, while the sim tick stayed around 16 ms, so the warning at x8 is the
+software render path. Do not chase it in the sim or the sync code; re-measure on
+a GPU machine before calling it a regression.
+
+### Wave B scenarios (account, social, server sync, town presence)
+
+```sh
+node tools/qa/src/run.ts account                       # register, sign out, sign in again, wrong password
+node tools/qa/src/run.ts social                        # leaderboards, guild create/leave, chat send/report
+node tools/qa/src/run.ts classic-server [class]        # server-verified hero: reload, new game, Idle x8
+node tools/qa/src/run.ts classic-legacy [class]        # offline play writes the old local save; import it once
+node tools/qa/src/run.ts classic-town [class]          # a bot walks in the classic town; the page draws it
+node tools/qa/src/run.ts classic-social [class]        # the classic HUD's social panels and sync badge
+```
+
+Simulating a network drop: Chrome's `Network.emulateNetworkConditions`
+(offline) and `Network.setBlockedURLs` do **not** sever or block WebSockets.
+To play offline, install a pre-document script with
+`Page.addScriptToEvaluateOnNewDocument` that replaces `window.WebSocket`
+behind a localStorage flag (`classic-legacy` does this with `qa.offline`). To
+drop one live socket, wrap `WebSocket` the same way and close only the socket
+whose URL matches (for example `world=classic-town`): closing every socket
+also closes Vite's HMR socket, which reloads the page.
+
+Expected console noise: a wrong-password sign-in logs the browser's own
+"Failed to load resource ... 401" for `/api/auth/login`. That is the correct
+`bad_credentials` reply, not an app error.
+
+`classic-town` judges movement only on the bot's own avatar: other sessions on
+the same dev server can be drawn too, and are listed in
+`data.presence.otherSessions`.
+
 Every run prints one JSON report to stdout:
 
 ```jsonc

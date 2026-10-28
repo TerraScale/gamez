@@ -29,3 +29,16 @@ export { stableHash } from "./hash.ts";
 export { loadMode, matchGlob } from "./loader.ts";
 /** Creates a sim: runs every module's setup() (or restores `from`). */
 export { createSim } from "./sim.ts";
+/** Input segments of client-driven modes: recorder (client) and replay/verify (server). */
+export {
+  checkSegment,
+  replaySegment,
+  segmentKey,
+  SegmentRecorder,
+  type RecordedSegment,
+  type ReplayErrorCode,
+  type ReplayOptions,
+  type ReplayOutcome,
+  type SegmentBody,
+  type SegmentInput,
+} from "./replay.ts";

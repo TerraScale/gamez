@@ -17,6 +17,7 @@ import { classicCrafting } from "./crafting/index.ts";
 import { classicDebug } from "./debug/index.ts";
 import { classicRift } from "./rift/index.ts";
 import { classicTalents } from "./talents/index.ts";
+import { classicClientDriven } from "./platform/policy.ts";
 
 export const modules: ModuleSpec[] = [
   classicContent,
@@ -52,7 +53,8 @@ export const mode: ModeSpec = defineMode({
   world: null,
   modules: ["classic.*"],
   tick: { kind: "fixed", hz: CLASSIC_HZ },
-  instance: { maxPlayers: 1 },
+  // Wave B: the browser runs the sim, the InstanceDO verifies it (docs/design/wave-B.md §2).
+  instance: { maxPlayers: 1, clientDriven: classicClientDriven },
 });
 
 export * from "./types.ts";
@@ -66,3 +68,5 @@ export { busOf, type Bus, type DeathRecord, type HitRequest, type SpawnRequest }
 export { getAreaMap, getMap, mapFor, type ClassicMap } from "./world/maps.ts";
 export * from "./bonus.ts";
 export * from "./loot.ts";
+export * from "./platform/policy.ts";
+export * from "./platform/reports.ts";

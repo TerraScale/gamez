@@ -8,6 +8,8 @@
  *   hud / ui / log  live getters over the client stores
  *   counters  cumulative totals, not ring-buffered: tick, ticksTotal, events{type: n}, slain, heroDeaths, ringDropped
  *   controls  setMode, setSpeed, newHero, interact, openPanel, act, ... (see ClassicDebugControls)
+ *   sync      wave B: the SyncView plus localTick, pendingSegments, epoch... (server mode),
+ *             or the local SyncView (mode "local")
  *
  * URL parameters (independent of ?debug):
  *   ?seed=<n>              fresh deterministic sim with that seed (the local save is neither read nor written)
@@ -440,6 +442,8 @@ export interface InstallOptions {
   probe: EventProbe;
   /** Seed of the current sim (updated by newHero through the getter). */
   seed: () => number;
+  /** Wave B: server sync details for window.__gamez.sync (absent: api.sync only). */
+  sync?: () => Record<string, unknown>;
 }
 
 /** Installs window.__gamez for the classic mode. Returns the uninstall function. */
@@ -500,6 +504,11 @@ export function installClassicDebug(opts: InstallOptions): () => void {
     hud: () => api.hud.getSnapshot(),
     ui: () => api.ui.getSnapshot(),
     log: () => api.log.getSnapshot().slice(-40),
+    sync: () => {
+      const view = api.sync?.getSnapshot() ?? null;
+      const extra = opts.sync?.() ?? {};
+      return { ...view, ...extra, localTick: game.currentSim().tick };
+    },
   };
   root.mode = "classic";
   root.controls = controls;

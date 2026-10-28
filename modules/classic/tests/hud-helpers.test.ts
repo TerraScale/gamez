@@ -384,7 +384,7 @@ describe("slot table", () => {
     expect(() => registerDefaultHud(slots)).toThrow();
   });
 
-  it("has sixteen panel ids (wave A adds six), each unique", () => {
-    expect(new Set(PANEL_IDS).size).toBe(16);
+  it("has twenty panel ids (wave A adds six, wave B four), each unique", () => {
+    expect(new Set(PANEL_IDS).size).toBe(20);
   });
 });

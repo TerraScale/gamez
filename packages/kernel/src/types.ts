@@ -221,7 +221,66 @@ export interface ModeSpec {
   modules: string[];
   tick: TickPolicy;
   /** Instance rules belong to the mode (party size etc.). */
-  instance?: { maxPlayers: number };
+  instance?: {
+    maxPlayers: number;
+    /**
+     * Wave B (docs/design/wave-B.md §2): the client runs this fixed-tick mode
+     * locally and streams input segments; the InstanceDO replays and verifies
+     * them instead of ticking the sim itself. Absent = server-ticked.
+     */
+    clientDriven?: ClientDrivenPolicy;
+  };
+}
+
+/**
+ * Verification rules of a client-driven fixed-tick mode (wave B §2). The
+ * InstanceDO (VerifiedHost) stays generic: everything mode-specific is here.
+ * Functions must be pure and deterministic (they run on the server only, but
+ * read sim state). They are not part of contentHash.
+ */
+export interface ClientDrivenPolicy {
+  /** Most ticks one segment may cover (segments above this are rejected as bad_segment). */
+  maxTicksPerSegment: number;
+  /** Most inputs (successful dispatches) one segment may carry. */
+  maxInputsPerSegment: number;
+  /**
+   * Sim speed multiplier in effect for the next tick (>= 1). A tick costs
+   * msPerTick / speedOf(world) of wall time in the anti speed-hack ledger.
+   * Sampled at the start of a segment and after every input.
+   */
+  speedOf(world: World): number;
+  /** Highest value speedOf may return; larger values are clamped (and logged). */
+  maxSpeed: number;
+  /** Actions only the server may dispatch; a segment containing one is rejected. */
+  serverOnlyActions: readonly string[];
+  /**
+   * Offline progress: on a join after at least `minMs` of server-measured
+   * absence (and no client continuation), the host dispatches
+   * `action` with payload `{ elapsedMs: min(elapsed, capMs) }` when
+   * `eligible(world)` is true. Failures are ignored.
+   */
+  offline?: {
+    action: string;
+    minMs: number;
+    capMs: number;
+    eligible(world: World): boolean;
+  };
+  /**
+   * Read-model rows derived from verified state (leaderboards, summaries).
+   * The host calls it after persisting verified state and appends the rows
+   * whose content changed to its outbox (docs/design/wave-B.md §4).
+   */
+  reports?(world: World, registry: FrozenRegistry): InstanceReport[];
+}
+
+/** One read-model row produced by ClientDrivenPolicy.reports(). */
+export interface InstanceReport {
+  /** Outbox/projection table, e.g. "classic_hero". */
+  table: string;
+  /** Row key, unique per instance within `table`, e.g. "hero" or "run:12". */
+  key: string;
+  /** Plain JSON columns (the projection maps them to D1 columns). */
+  data: Record<string, string | number | boolean | null>;
 }
 
 /** Result of resolving and loading a mode. Immutable and shareable across sims. */

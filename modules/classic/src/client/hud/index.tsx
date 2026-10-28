@@ -30,7 +30,12 @@ import {
 } from "./layout.ts";
 import { useHudLayout } from "./common.tsx";
 import { AreaBanner } from "./widgets/AreaBanner.tsx";
+import { AccountPanel } from "./panels/AccountPanel.tsx";
+import { ChatPanel } from "./panels/ChatPanel.tsx";
+import { GuildPanel } from "./panels/GuildPanel.tsx";
+import { LeaderboardPanel } from "./panels/LeaderboardPanel.tsx";
 import { ControlBar } from "./widgets/ControlBar.tsx";
+import { SyncBadge } from "./widgets/SyncBadge.tsx";
 import { PerfOverlay } from "./widgets/PerfOverlay.tsx";
 import { Minimap } from "./widgets/Minimap.tsx";
 import { StatusBar } from "./widgets/StatusBar.tsx";
@@ -121,6 +126,11 @@ export const PANEL_COMPONENTS: Record<PanelId, SlotComponent> = {
   rift: RiftPanel,
   achievements: AchievementsPanel,
   lootFilter: LootFilterPanel,
+  // wave B
+  chat: ChatPanel,
+  guild: GuildPanel,
+  leaderboard: LeaderboardPanel,
+  account: AccountPanel,
 };
 
 /** Registers the default HUD widgets and panels into `slots` (see §13 slot table). Call once per registry. */
@@ -232,6 +242,9 @@ function Region({
   return (
     <div ref={regionRef} data-slot={name} style={regionStyle(name, layout, insets)}>
       <Slot name={name} props={{ api } satisfies SlotProps} />
+      {/* Wave B: the sync badge sits at the right end of the top row (not a slot entry, so the
+          widget table of the top slot stays as the §13 list; it clears the minimap column). */}
+      {name === SLOT.top ? <SyncBadge api={api} /> : null}
     </div>
   );
 }

@@ -13,9 +13,17 @@ import type {
  * the fields in declaration order. Counts and string byte lengths are uvarint,
  * tile coordinates are uint16, seq is uint32, times and speed are float64, and
  * entity kind is one byte. Multi-byte numbers are little-endian.
+ *
+ * Format v2 (wave B): every entity ends with a flags byte whose bit 0 says an
+ * optional tag string follows. A pose client message (tag 4) carries a flags
+ * byte too: bit 0 = appearance string follows, bit 1 = tag string follows.
+ * Unknown flag bits are rejected, so a newer field can never be misread.
  */
 
-const CLIENT_TAG = { hello: 1, moveTo: 2, ping: 3 } as const;
+const CLIENT_TAG = { hello: 1, moveTo: 2, ping: 3, pose: 4 } as const;
+const ENTITY_FLAG_TAG = 0x01;
+const POSE_FLAG_APPEARANCE = 0x01;
+const POSE_FLAG_TAG = 0x02;
 const SERVER_TAG = { welcome: 1, delta: 2, pong: 3, error: 4 } as const;
 
 const KIND_CODE: Record<EntityKind, number> = { player: 0, ghost: 1 };
@@ -101,6 +109,8 @@ class Writer {
     for (const step of e.path) this.tile(step);
     this.f64(e.pathStartedAt);
     this.f64(e.speed);
+    this.u8(e.tag === undefined ? 0 : ENTITY_FLAG_TAG);
+    if (e.tag !== undefined) this.string(e.tag);
   }
 
   entities(list: EntityState[]): void {
@@ -190,7 +200,7 @@ class Reader {
     const kindCode = this.u8();
     const kind = KINDS[kindCode];
     if (kind === undefined) throw new Error(`binary codec: unknown entity kind ${kindCode}`);
-    return {
+    const state: EntityState = {
       id,
       kind,
       name: this.string(),
@@ -200,6 +210,10 @@ class Reader {
       pathStartedAt: this.f64(),
       speed: this.f64(),
     };
+    const flags = this.u8();
+    if (flags & ~ENTITY_FLAG_TAG) throw new Error(`binary codec: unknown entity flags ${flags}`);
+    if (flags & ENTITY_FLAG_TAG) state.tag = this.string();
+    return state;
   }
 
   entities(): EntityState[] {
@@ -228,6 +242,19 @@ function encodeClient(msg: ClientMessage): Uint8Array {
       w.u8(CLIENT_TAG.ping);
       w.f64(msg.clientTime);
       break;
+    case "pose":
+      w.u8(CLIENT_TAG.pose);
+      w.tile(msg.pos);
+      w.uvarint(msg.path.length);
+      for (const step of msg.path) w.tile(step);
+      w.f64(msg.speed);
+      w.u8(
+        (msg.appearance === undefined ? 0 : POSE_FLAG_APPEARANCE) |
+          (msg.tag === undefined ? 0 : POSE_FLAG_TAG),
+      );
+      if (msg.appearance !== undefined) w.string(msg.appearance);
+      if (msg.tag !== undefined) w.string(msg.tag);
+      break;
     default:
       throw new Error(`binary codec: unknown client message ${(msg as { t: string }).t}`);
   }
@@ -248,6 +275,19 @@ function decodeClient(frame: Frame | ArrayBuffer): ClientMessage {
     case CLIENT_TAG.ping:
       msg = { t: "ping", clientTime: r.f64() };
       break;
+    case CLIENT_TAG.pose: {
+      const pos = r.tile();
+      const path = Array.from({ length: r.count() }, () => r.tile());
+      const speed = r.f64();
+      const flags = r.u8();
+      if (flags & ~(POSE_FLAG_APPEARANCE | POSE_FLAG_TAG)) {
+        throw new Error(`binary codec: unknown pose flags ${flags}`);
+      }
+      msg = { t: "pose", pos, path, speed };
+      if (flags & POSE_FLAG_APPEARANCE) msg.appearance = r.string();
+      if (flags & POSE_FLAG_TAG) msg.tag = r.string();
+      break;
+    }
     default:
       throw new Error(`binary codec: unknown client message tag ${tag}`);
   }

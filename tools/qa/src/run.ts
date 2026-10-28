@@ -33,6 +33,7 @@ import {
   type PerfProbe,
   type PerfSummary,
 } from "./analysis.ts";
+import { WAVE_B_RUNNERS } from "./waveB/index.ts";
 
 interface Args {
   scenario: string;
@@ -72,7 +73,7 @@ export interface QaReport {
   consoleWarnings: ConsoleEntry[];
 }
 
-const SCENARIOS = [
+const BASE_SCENARIOS = [
   "picker",
   "classic-start",
   "classic-create",
@@ -85,6 +86,9 @@ const SCENARIOS = [
   "duel",
   "plaza",
 ] as const;
+
+/** Base scenarios plus wave B's (./waveB/index.ts). */
+const SCENARIOS: readonly string[] = [...BASE_SCENARIOS, ...Object.keys(WAVE_B_RUNNERS)];
 
 function usage(msg?: string): never {
   if (msg) process.stderr.write(`${msg}\n\n`);
@@ -155,12 +159,12 @@ function parseArgs(argv: string[]): Args {
   }
   const scenario = positional.shift();
   if (!scenario) usage();
-  if (!(SCENARIOS as readonly string[]).includes(scenario)) usage(`unknown scenario ${scenario}`);
+  if (!SCENARIOS.includes(scenario)) usage(`unknown scenario ${scenario}`);
   return { scenario, positional, ...a };
 }
 
-/** Collects screenshots, checks and samples for one run. */
-class Run {
+/** Collects screenshots, checks and samples for one run. Exported for ./waveB/*. */
+export class Run {
   readonly page: Page;
   readonly report: QaReport;
   readonly args: Args;
@@ -204,16 +208,16 @@ class Run {
 
 // ---- shared steps -------------------------------------------------------------------
 
-async function openPicker(run: Run, query = "debug=1"): Promise<void> {
+export async function openPicker(run: Run, query = "debug=1"): Promise<void> {
   await run.page.open(run.url(query));
   await run.page.waitFor("document.querySelectorAll('.mode-card').length > 0", 30_000);
 }
 
-async function pickMode(run: Run, name: string): Promise<void> {
+export async function pickMode(run: Run, name: string): Promise<void> {
   await run.page.clickText(name, { exact: true, timeoutMs: 10_000 });
 }
 
-function classArg(run: Run, i = 0): string {
+export function classArg(run: Run, i = 0): string {
   const c = run.args.positional[i] ?? "warrior";
   if (!/^[a-z_.]+$/i.test(c)) usage(`bad class ${c}`);
   return c;
@@ -223,7 +227,11 @@ function classArg(run: Run, i = 0): string {
  * Opens classic with ?debug, ?seed, ?class, ?autostart and waits for the hero.
  * `cheats` adds ?cheats=1 (the QA grant action, classic.debug).
  */
-async function startClassic(run: Run, cls: string, opts: { cheats?: boolean } = {}): Promise<void> {
+export async function startClassic(
+  run: Run,
+  cls: string,
+  opts: { cheats?: boolean } = {},
+): Promise<void> {
   const cheats = opts.cheats === true ? "&cheats=1" : "";
   const q = `debug=1&seed=${run.args.seed}&class=${encodeURIComponent(cls)}&autostart=1${cheats}`;
   await openPicker(run, q);
@@ -1335,7 +1343,8 @@ async function plaza(run: Run): Promise<void> {
   );
 }
 
-const RUNNERS: Record<(typeof SCENARIOS)[number], (run: Run) => Promise<void>> = {
+const RUNNERS: Record<string, (run: Run) => Promise<void>> = {
+  ...WAVE_B_RUNNERS,
   picker,
   "classic-start": classicStart,
   "classic-create": classicCreate,
@@ -1383,7 +1392,7 @@ async function main(): Promise<void> {
     await waitForServer(args.url);
     page = await launch(VIEWPORTS[args.viewport], { verbose: args.verbose });
     const run = new Run(page, report, args);
-    await RUNNERS[args.scenario as (typeof SCENARIOS)[number]](run);
+    await RUNNERS[args.scenario]!(run);
   } catch (err) {
     report.error = err instanceof Error ? (err.stack ?? err.message) : String(err);
     if (page) {

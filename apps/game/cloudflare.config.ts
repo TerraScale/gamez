@@ -17,6 +17,11 @@ export default defineConfig({
       ChunkDO: exports.durableObject({ storage: "sqlite" }),
       CharacterDO: exports.durableObject({ storage: "sqlite" }),
       InstanceDO: exports.durableObject({ storage: "sqlite" }),
+      // wave B (docs/design/wave-B.md)
+      AccountDO: exports.durableObject({ storage: "sqlite" }),
+      IdentityDO: exports.durableObject({ storage: "sqlite" }),
+      ChatChannelDO: exports.durableObject({ storage: "sqlite" }),
+      GuildDO: exports.durableObject({ storage: "sqlite" }),
     },
     triggers: [
       triggers.queue({
@@ -33,6 +38,10 @@ export default defineConfig({
       CHUNK: bindings.durableObject({ worker: WORKER, exportName: "ChunkDO" }),
       CHARACTER: bindings.durableObject({ worker: WORKER, exportName: "CharacterDO" }),
       INSTANCE: bindings.durableObject({ worker: WORKER, exportName: "InstanceDO" }),
+      ACCOUNT: bindings.durableObject({ worker: WORKER, exportName: "AccountDO" }),
+      IDENTITY: bindings.durableObject({ worker: WORKER, exportName: "IdentityDO" }),
+      CHAT: bindings.durableObject({ worker: WORKER, exportName: "ChatChannelDO" }),
+      GUILD: bindings.durableObject({ worker: WORKER, exportName: "GuildDO" }),
       DB: bindings.d1({ name: "gamez-read" }),
       SYNC_QUEUE: bindings.queue({ name: "gamez-sync" }),
       AUTH_SECRET: bindings.secret(),

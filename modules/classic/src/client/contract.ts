@@ -8,6 +8,7 @@
  *                              \--world--> buildHud() at 10 Hz --> hud store --> React (selectors)
  *   React buttons / keys / taps --> api.act(name, payload) --> sim.dispatch()
  */
+import type { PlatformServices } from "@gamez/ui-host";
 import type { DispatchResult, Entity } from "@gamez/kernel";
 import type { AutoPlan, HeroStatsValue } from "../components.ts";
 import type { AutoConfig, ControlMode, LootFilter, RiftRecord, SimSpeed } from "../resources.ts";
@@ -50,7 +51,16 @@ export type PanelId =
   /** Achievement list (key Y). */
   | "achievements"
   /** Loot filter editor (from Settings). */
-  | "lootFilter";
+  | "lootFilter"
+  // ---- wave B (docs/design/wave-B.md §8.4); need api.platform (else an offline note)
+  /** Chat channels (global, mode, guild) — key Enter / C. */
+  | "chat"
+  /** Guild browser and roster — key G. */
+  | "guild"
+  /** Leaderboards (level, depth, rift; per class) — key B. */
+  | "leaderboard"
+  /** Sign in / register / link the guest, display name. */
+  | "account";
 
 /** Display colours (0xRRGGBB) shared by HUD and renderer. */
 export const RARITY_COLOR: Record<ItemRarity, number> = {
@@ -568,6 +578,37 @@ export interface MinimapData {
   }[];
 }
 
+/**
+ * Wave B: server sync state of the classic client (docs/design/wave-B.md §2.5),
+ * shown by the HUD's sync badge.
+ */
+export interface SyncView {
+  /** "server": verified by the InstanceDO; "local": no server (seeded run, cheats, QA gallery, offline host). */
+  mode: "server" | "local";
+  /** Socket state ("local" mode: always "offline"). */
+  status: "connecting" | "online" | "offline";
+  /** Last server-verified sim tick (0 before the first vstate). */
+  verifiedTick: number;
+  /** Local ticks not yet verified (recorded and/or unacked). */
+  pendingTicks: number;
+  /** True when pendingTicks exceeded limits.maxPendingTicks and local progress past it will be replaced. */
+  overflow: boolean;
+  /** Last resync, for a toast ("Progress corrected by the server"). */
+  lastResync: { code: string; message: string; at: number } | null;
+  /** This character came from an imported local save (leaderboards mark it). */
+  imported: boolean;
+}
+
+export const LOCAL_SYNC_VIEW: SyncView = {
+  mode: "local",
+  status: "offline",
+  verifiedTick: 0,
+  pendingTicks: 0,
+  overflow: false,
+  lastResync: null,
+  imported: false,
+};
+
 /** Everything the HUD may call. Implemented by the client view (src/client/game.ts). */
 export interface ClassicClientApi {
   /** 10 Hz snapshot store of the sim (structurally shared: unchanged sub-objects keep identity). */
@@ -589,8 +630,15 @@ export interface ClassicClientApi {
   castSlot(slot: number): void;
   /** Drink belt slot 0..3 (same as Q W E R). */
   drink(slot: number): void;
-  /** Wipes the local save and starts a new hero. */
+  /** Wipes the local save and starts a new hero (server mode: a fresh server instance). */
   newGame(): void;
+  // Wave B. Optional only so older test fakes stay valid: game.ts always sets all three.
+  /** Server sync state (LOCAL_SYNC_VIEW when there is no server). */
+  readonly sync?: Store<SyncView>;
+  /** Platform services (auth, chat, guilds, leaderboards); null without a server. */
+  readonly platform?: PlatformServices | null;
+  /** The signed-in account (session) or null. */
+  readonly session?: { accountId: string; name: string } | null;
   /** Leaves the mode (services.exit). */
   exit(): void;
 }

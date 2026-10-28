@@ -14,6 +14,8 @@ export interface BucketSpec {
 /** Limits for the client messages that cost the server work or fan out to others. */
 export const RATE_LIMITS = {
   moveTo: { burst: 5, perSecond: 5 },
+  /** Wave B: client-pose reports (presence worlds). */
+  pose: { burst: 5, perSecond: 5 },
   ping: { burst: 3, perSecond: 1 },
 } as const satisfies Record<string, BucketSpec>;
 
@@ -58,6 +60,7 @@ export class SocketLimiter {
   constructor(now: number) {
     this.#buckets = {
       moveTo: new TokenBucket(RATE_LIMITS.moveTo, now),
+      pose: new TokenBucket(RATE_LIMITS.pose, now),
       ping: new TokenBucket(RATE_LIMITS.ping, now),
     };
   }
@@ -69,7 +72,7 @@ export class SocketLimiter {
 
   /** Total messages dropped on this socket, across all kinds. */
   get dropped(): number {
-    return this.#buckets.moveTo.dropped + this.#buckets.ping.dropped;
+    return this.#buckets.moveTo.dropped + this.#buckets.pose.dropped + this.#buckets.ping.dropped;
   }
 
   /** True at most once per RATE_NOTICE_MS; records the notice when it returns true. */

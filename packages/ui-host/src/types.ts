@@ -5,12 +5,15 @@
 import type { AssetManifest } from "@gamez/assets";
 import type { DispatchResult, GameEvent, LoadedMode, SimSnapshot, World } from "@gamez/kernel";
 import type { ModeInfo } from "@gamez/protocol";
+import type { PlatformServices, PresenceConnection, VerifiedConnection } from "./platform.ts";
 import type { WorldRenderer } from "./render.ts";
 
 export interface Session {
   token: string;
   accountId: string;
   name: string;
+  /** Wave B: "guest" (default when absent) or "registered". */
+  kind?: "guest" | "registered";
 }
 
 /** Live view of an instance as seen by a mode's UI. */
@@ -54,6 +57,15 @@ export interface ClientServices {
   createWorldRenderer(): WorldRenderer;
   /** Opens (or reuses) the instance connection for an instance-based mode. */
   connectInstance(mode: string): InstanceConnection;
+  /**
+   * Wave B: socket to the InstanceDO of a client-driven mode (classic). Absent
+   * in hosts without a server (QA gallery, unit tests): the mode plays local-only.
+   */
+  connectVerified?(mode: string): VerifiedConnection;
+  /** Wave B: presence in a pose world (e.g. "classic-town"). Absent = no presence. */
+  joinPresence?(world: string): PresenceConnection;
+  /** Wave B: auth, leaderboards, chat, guilds, account. Absent = offline host. */
+  platform?: PlatformServices;
   /** Returns to the mode picker. */
   exit(): void;
 }

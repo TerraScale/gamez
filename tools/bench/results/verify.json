@@ -1,0 +1,105 @@
+{
+  "node": "v24.22.1",
+  "rates": [
+    {
+      "case": "warrior Auto x1",
+      "ticks": 2400,
+      "segments": 60,
+      "replayMs": 2390.180031,
+      "msPerPlayerMinute": 1195.0900155,
+      "coreShare": 0.019918166924999998,
+      "hashSharePct": 37.07531677558391
+    },
+    {
+      "case": "warrior Full Idle x8",
+      "ticks": 9600,
+      "segments": 30,
+      "replayMs": 6309.785939000001,
+      "msPerPlayerMinute": 6309.785939000001,
+      "coreShare": 0.10516309898333336,
+      "hashSharePct": 9.138305365259088
+    },
+    {
+      "case": "rogue Auto x1",
+      "ticks": 2400,
+      "segments": 60,
+      "replayMs": 2360.9326340000043,
+      "msPerPlayerMinute": 1180.4663170000022,
+      "coreShare": 0.019674438616666703,
+      "hashSharePct": 40.392531970905715
+    },
+    {
+      "case": "rogue Full Idle x8",
+      "ticks": 9600,
+      "segments": 30,
+      "replayMs": 5663.770082000003,
+      "msPerPlayerMinute": 5663.770082000003,
+      "coreShare": 0.09439616803333338,
+      "hashSharePct": 7.0741405318226045
+    },
+    {
+      "case": "sorcerer Auto x1",
+      "ticks": 2400,
+      "segments": 60,
+      "replayMs": 2333.7184990000023,
+      "msPerPlayerMinute": 1166.8592495000012,
+      "coreShare": 0.01944765415833335,
+      "hashSharePct": 44.012397358127195
+    },
+    {
+      "case": "sorcerer Full Idle x8",
+      "ticks": 9600,
+      "segments": 30,
+      "replayMs": 5029.71010299999,
+      "msPerPlayerMinute": 5029.71010299999,
+      "coreShare": 0.0838285017166665,
+      "hashSharePct": 10.881839386201529
+    }
+  ],
+  "depths": [
+    {
+      "depth": 1,
+      "tick": 250,
+      "snapshotBytes": 152883,
+      "gzipBytes": 12927,
+      "snapshotMs": 2.576496000008774,
+      "hashMs": 15.24850499999593,
+      "restoreMs": 2.7621149999977206,
+      "msPerPlayerMinute": 1063.4856
+    },
+    {
+      "depth": 5,
+      "tick": 13750,
+      "snapshotBytes": 172777,
+      "gzipBytes": 14685,
+      "snapshotMs": 2.8921249999984866,
+      "hashMs": 17.832569000005606,
+      "restoreMs": 2.9670585000058054,
+      "msPerPlayerMinute": 1257.5100390000007
+    },
+    {
+      "depth": 10,
+      "tick": 30500,
+      "snapshotBytes": 177570,
+      "gzipBytes": 15796,
+      "snapshotMs": 2.927491499998723,
+      "hashMs": 17.92989800000214,
+      "restoreMs": 3.1507540000020526,
+      "msPerPlayerMinute": 1191.293988000005
+    }
+  ],
+  "frames": [
+    {
+      "case": "Auto x1, 40 ticks, no inputs",
+      "bytes": 99
+    },
+    {
+      "case": "Full Idle x8, 320 ticks, no inputs",
+      "bytes": 101
+    },
+    {
+      "case": "Manual, 40 ticks, 40 inputs (worst-case clicking)",
+      "bytes": 2268
+    }
+  ]
+}

@@ -27,8 +27,11 @@ This guide is for anyone (human or AI agent) adding **modules**, **game modes** 
 apps/game/                 The one Worker: API + Durable Objects + static client (Vite + @cloudflare/vite-plugin)
   cloudflare.config.ts     cf config: DOs, D1, queues, assets, secrets
   migrations/              D1 SQL migrations (read model)
-  src/server/              Worker routes, DOs (relay, chunk, character, instance), auth, projections
-  src/client/              React app shell, mode views, net, Pixi renderer
+  src/server/              Worker, DOs (relay, chunk, character, instance, account, identity, chat, guild), projections
+    routes/                One file per feature and path prefix (auth, account, leaderboards, guilds, chat, presence)
+    instance/              InstanceHost (event-ticked modes) and VerifiedHost (client-driven classic)
+    auth/ account/ chat/ guild/ presence/ leaderboards/   Pure logic behind the DOs and routes (unit-tested)
+  src/client/              React app shell, mode views (lazy chunks), net, Pixi renderer, platform SDK, verified + presence connections
   src/shared/catalog.ts    THE module catalog + list of modes (shared by client and server)
 packages/
   kernel/                  Module loader, registries, ECS, sim, RNG, overrides  ← read its README
@@ -80,11 +83,12 @@ client ──WS /ws──────────► RelayDO (near player) ─�
    │                                                        │ fan-out once per relay
    └──WS /ws/instance────► InstanceDO "<mode>:<account>" (runs a kernel Sim for instanced modes)
                          CharacterDO "<account>:<mode>" (authoritative character state)
+client ──HTTP /api/*, WS /ws/chat──► AccountDO "<account>", IdentityDO "<login>", ChatChannelDO "<channel>", GuildDO "<slug>"
 DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read model: leaderboards, market search, admin)
 ```
 
 - **Presence is shared and simulation is sharded.** The overworld only broadcasts _where avatars are and what they visibly do_. Combat, loot and progress run per player (or per instance), so the cost stays flat as worlds get crowded.
-- **PvE is ping-independent.** The client runs the module sim locally for instant feedback, and the server re-runs it to verify. Rewards only become tradable after verification.
+- **PvE is ping-independent.** The client runs the module sim locally for instant feedback, and the server re-runs it to verify. Rewards only become tradable after verification. Classic is **client-driven**: the browser streams input segments with its hash and the InstanceDO's `VerifiedHost` replays every one (ADR 0005).
 - **PvP exists only in instanced arenas**, never in the overworld.
 - **Each mode has its own world. The economy (wallet, universal items) is shared across modes, and characters are per mode.**
 
@@ -274,6 +278,7 @@ Overrides that target an unknown id fail loudly at load time. Declare the target
 2. Choose a **tick policy**:
    - `{ kind: "event" }` for turn- or step-based modes. Systems run after each successful action.
    - `{ kind: "fixed", hz }` for real-time modes.
+   - A fixed-tick mode that must run in the browser without lag adds `instance.clientDriven` (`ClientDrivenPolicy`: segment limits, `speedOf`, `maxSpeed`, `serverOnlyActions`, offline progress, `reports`). The InstanceDO then verifies it with `VerifiedHost`. Copy `modules/classic/src/platform/policy.ts`.
 3. Choose a **world**:
    - `world: null` for instance-only modes. They run in `InstanceDO "<mode>:<accountId>"`.
    - `world: "<id>"` for a persistent shared world. That uses presence, the chunks and the relay.
@@ -293,6 +298,7 @@ Examples to copy: `modules/steps` (event tick, Pixi grid, keyboard and tap) and 
   - `manifest`, `assetBaseUrl`
   - `createWorldRenderer()` for the Pixi isometric view
   - `connectInstance(mode)`, which returns an `InstanceConnection` with `getView`, `subscribe`, `act`, `restart`
+  - optional `connectVerified(mode, handlers)` for client-driven modes, `joinPresence(world)` for presence worlds, and `platform` (auth, leaderboards, chat, guilds, account). Shared React components for them are in `@gamez/ui-host` `social/`.
   - `exit()`
 - **Prediction is built in.** `connection.act(name, payload)` dispatches locally on a cloned sim, shows the predicted snapshot, and reconciles with the server result. Your UI only renders `view.world`, `view.events` and `view.error`.
 - **React** handles menus and panels. **Pixi** handles the world and in-world HUD (health bars, damage numbers). Keep game state out of React state: read it via `subscribe` with selectors, so 60 fps rendering never re-renders React.
@@ -323,11 +329,16 @@ A "feature system" is something like professions, player shops, an auction house
 | Wire format                                            | Extend `packages/protocol` (and both codecs), or reuse instance actions for instance modes                         |
 | UI                                                     | A module client panel in a UI slot                                                                                 |
 
+### Adding an HTTP route
+
+Add a file in `apps/game/src/server/routes/` that returns `null` for paths it does not own, list it in `routes/index.ts`, and authenticate with `authenticateRequest` (`auth/session.ts`), never by parsing tokens yourself. Use `http.ts` (`json`, `apiError`, `readJson`) for bodies and errors.
+
 ### Adding a DO
 
 1. Write the class in `apps/game/src/server/do/<name>.ts`, export it from `src/server/index.ts`, and add `exports.durableObject({ storage: "sqlite" })` plus a binding in `cloudflare.config.ts` and the `Env` in `contracts.ts`.
 2. Write its RPC surface as an interface in `contracts.ts` first.
 3. Create schema in the constructor inside `ctx.blockConcurrencyWhile`. Use hibernatable WebSockets (`ctx.acceptWebSocket`) for sockets, and alarms for timers.
+4. Keep the DO a thin adapter over a logic class that takes a `SqlStore` (`sqlStoreOf(ctx.storage)`), and test that class with `apps/game/tests/support/fake-sql.ts` (real SQLite through `node:sqlite`).
 
 ### Replicating to D1 (the sync engine, `packages/sync`)
 
@@ -349,15 +360,15 @@ A "feature system" is something like professions, player shops, an auction house
 
 ## 12. Testing and quality gates
 
-| Layer        | Required                                                                                                             |
-| ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                     |
-| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                           |
-| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes. |
-| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                |
-| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph      |
-| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                           |
-| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`                                   |
+| Layer        | Required                                                                                                                                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                                                                                                                           |
+| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                                                                                                                                 |
+| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes.                                                                                                       |
+| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                                                                                                                      |
+| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph, then the platform features (`E2eFeature`s in `tools/e2e/src/features.ts`: `run`, optional `afterRestart`) |
+| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                                                                                                                                 |
+| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`                                                                                                                                         |
 
 Before saying something is done: `node_modules/.bin/vp check`, `node_modules/.bin/vp run -r test`, `node_modules/.bin/vp -C apps/game build` and `node_modules/.bin/vp run e2e`, all green. Report failures honestly, with output.
 

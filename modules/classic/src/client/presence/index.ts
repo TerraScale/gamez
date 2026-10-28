@@ -1,0 +1,352 @@
+/**
+ * Other players in the classic town (wave-B.md §7). OWNER: T-classic-presence.
+ *
+ * - While the hero is in town (AreaState.depth === 0) a PresenceConnection to
+ *   world "classic-town" is open. It closes LEAVE_GRACE_MS after the hero
+ *   leaves town (or on destroy); avatars disappear as soon as the hero leaves.
+ * - The hero's pose is reported at most POSE_INTERVAL_MS apart and only when it
+ *   changed (pose.ts).
+ * - Every other avatar is drawn with renderer.upsertEntity under ids "p:<id>".
+ *   Moving avatars are interpolated with walkAt(state, serverNow()) every frame;
+ *   stationary ones are upserted only when the view changes.
+ * - Reads the sim only; never mutates it. update() never throws.
+ */
+import type { FrozenRegistry, Sim } from "@gamez/kernel";
+import type {
+  ArpgRenderEntity,
+  ArpgWorldRenderer,
+  ClientServices,
+  Facing,
+  PresenceConnection,
+  PresenceView,
+} from "@gamez/ui-host";
+import { walkAt } from "@gamez/world";
+import { facingOf } from "../../fixed.ts";
+import { currentDepth, heroOf } from "../../resources.ts";
+import { copyPose, makePose, readPose, samePose, toPoseUpdate, type PoseState } from "./pose.ts";
+
+export const PRESENCE_WORLD = "classic-town";
+/** Minimum spacing between two pose reports (4 per second). */
+export const POSE_INTERVAL_MS = 250;
+/** How long the connection stays open after the hero leaves town. */
+export const LEAVE_GRACE_MS = 3000;
+/** Wait before reconnecting after the server dropped the presence socket. */
+export const RETRY_MS = 3000;
+export const AVATAR_PREFIX = "p:";
+/** Offset from a presence tile to the classic render position of its centre (tiles). */
+export const TILE_CENTRE = 0.5;
+
+export interface TownPresenceDeps {
+  services: Pick<ClientServices, "joinPresence">;
+  renderer: ArpgWorldRenderer;
+  registry: FrozenRegistry;
+}
+
+type Other = PresenceView["others"][number];
+
+interface Avatar {
+  other: Other;
+  /** Generation of the last view that contained this avatar. */
+  gen: number;
+  /** True while the last draw showed the avatar walking. */
+  moving: boolean;
+  facing: Facing;
+  /** Reused render object (never re-allocated after creation). */
+  entity: ArpgRenderEntity;
+}
+
+/** Facing a stationary avatar shows: the last segment of its path, or south. */
+function restFacing(o: Other): Facing {
+  const p = o.path;
+  const last = p[p.length - 1];
+  if (!last) return "s";
+  const prev = (p.length > 1 ? p[p.length - 2] : undefined) ?? o.pos;
+  return facingOf(last.x - prev.x, last.y - prev.y, "s");
+}
+
+export class TownPresence {
+  private conn: PresenceConnection | null = null;
+  private unsub: (() => void) | null = null;
+  private view: PresenceView | null = null;
+  private viewDirty = false;
+  /** Epoch ms the hero left town while the connection was still open. */
+  private leftAt: number | null = null;
+  private retryAt = Number.NEGATIVE_INFINITY;
+  private readonly shown = new Map<string, Avatar>();
+  private gen = 0;
+  private readonly cur: PoseState = makePose();
+  private readonly sent: PoseState = makePose();
+  private sentValid = false;
+  private lastSendMs = Number.NEGATIVE_INFINITY;
+  private destroyed = false;
+  private error: string | null = null;
+  private debugGetter: (() => TownPresence) | null = null;
+  private debugTried = false;
+
+  constructor(readonly deps: TownPresenceDeps) {}
+
+  /** Per frame: open/close by area, report pose, draw others. Never throws. */
+  update(sim: Sim, nowMs: number): void {
+    if (this.destroyed) return;
+    try {
+      if (!this.debugTried) this.publishDebug();
+      this.tick(sim, nowMs);
+    } catch (err) {
+      this.error = String(err);
+    }
+  }
+
+  /** Number of other players drawn (HUD / QA). */
+  get othersShown(): number {
+    return this.shown.size;
+  }
+
+  /** True while the presence connection is open (QA / tests). */
+  get connected(): boolean {
+    return this.conn !== null;
+  }
+
+  /**
+   * The drawn avatars as plain objects (QA hook window.__gamez.presence).
+   * Allocates on every call: debug/QA reads only, never per frame.
+   */
+  get avatars(): {
+    id: string;
+    name: string;
+    tag: string | null;
+    x: number;
+    y: number;
+    moving: boolean;
+  }[] {
+    const out: {
+      id: string;
+      name: string;
+      tag: string | null;
+      x: number;
+      y: number;
+      moving: boolean;
+    }[] = [];
+    for (const a of this.shown.values()) {
+      const e = a.entity;
+      out.push({
+        id: e.id,
+        name: e.name ?? "",
+        tag: e.subtitle ?? null,
+        x: e.x,
+        y: e.y,
+        moving: a.moving,
+      });
+    }
+    return out;
+  }
+
+  /** Last swallowed error, or null (QA / tests). */
+  get lastError(): string | null {
+    return this.error;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.close();
+    this.unpublishDebug();
+  }
+
+  /**
+   * QA hook: when the page runs with `?debug=1` (window.__gamez already exists,
+   * created by the renderer and debug.ts), publishes `window.__gamez.presence`
+   * as a live getter for this instance. Tried once; nothing happens without debug.
+   */
+  private publishDebug(): void {
+    this.debugTried = true;
+    try {
+      const root = (globalThis as { __gamez?: unknown }).__gamez;
+      if (!root || typeof root !== "object") return;
+      const get = (): TownPresence => this;
+      Object.defineProperty(root, "presence", { get, enumerable: true, configurable: true });
+      this.debugGetter = get;
+    } catch (err) {
+      this.error = String(err);
+    }
+  }
+
+  private unpublishDebug(): void {
+    const get = this.debugGetter;
+    if (!get) return;
+    this.debugGetter = null;
+    try {
+      const root = (globalThis as { __gamez?: Record<string, unknown> }).__gamez;
+      if (root && Object.getOwnPropertyDescriptor(root, "presence")?.get === get) {
+        delete root.presence;
+      }
+    } catch (err) {
+      this.error = String(err);
+    }
+  }
+
+  private tick(sim: Sim, nowMs: number): void {
+    const world = sim.world;
+    const hero = heroOf(world);
+    const inTown = hero !== 0 && currentDepth(world) === 0;
+
+    if (inTown) {
+      this.leftAt = null;
+    } else {
+      if (this.conn && this.leftAt === null) this.leftAt = nowMs;
+      // Avatars leave the scene at once; the connection lingers for the grace period.
+      this.clearAvatars();
+      if (this.conn && this.leftAt !== null && nowMs - this.leftAt >= LEAVE_GRACE_MS) this.close();
+      return;
+    }
+
+    if (!this.conn) {
+      this.open(nowMs);
+      if (!this.conn) return;
+    }
+    if (this.view?.status === "offline") {
+      this.close();
+      this.retryAt = nowMs + RETRY_MS;
+      return;
+    }
+
+    if (this.viewDirty && this.view) {
+      this.viewDirty = false;
+      this.reconcile();
+    }
+    this.reportPose(world, hero, nowMs);
+    this.drawMoving();
+  }
+
+  private open(nowMs: number): void {
+    const join = this.deps.services.joinPresence;
+    if (!join || nowMs < this.retryAt) return;
+    try {
+      const conn = join(PRESENCE_WORLD);
+      const unsub = conn.subscribe((v) => {
+        this.view = v;
+        this.viewDirty = true;
+      });
+      this.view = conn.getView();
+      this.viewDirty = true;
+      this.conn = conn;
+      this.unsub = unsub;
+      this.sentValid = false;
+    } catch (err) {
+      this.error = String(err);
+      this.retryAt = nowMs + RETRY_MS;
+    }
+  }
+
+  private close(): void {
+    const conn = this.conn;
+    const unsub = this.unsub;
+    this.conn = null;
+    this.unsub = null;
+    this.view = null;
+    this.viewDirty = false;
+    this.leftAt = null;
+    this.sentValid = false;
+    this.clearAvatars();
+    try {
+      unsub?.();
+      conn?.close();
+    } catch (err) {
+      this.error = String(err);
+    }
+  }
+
+  private reportPose(world: Sim["world"], hero: number, nowMs: number): void {
+    const conn = this.conn;
+    if (!conn) return;
+    if (!readPose(world, hero, this.deps.registry, this.cur)) return;
+    if (this.sentValid && samePose(this.cur, this.sent)) return;
+    if (nowMs - this.lastSendMs < POSE_INTERVAL_MS) return;
+    conn.setPose(toPoseUpdate(this.cur));
+    copyPose(this.cur, this.sent);
+    this.sentValid = true;
+    this.lastSendMs = nowMs;
+  }
+
+  /** Brings the avatars in line with the latest view (new, changed, removed). */
+  private reconcile(): void {
+    const view = this.view;
+    const conn = this.conn;
+    if (!view || !conn) return;
+    this.gen++;
+    const now = conn.serverNow();
+    for (const o of view.others) {
+      if (o.id === view.selfId) continue;
+      const key = o.id;
+      let a = this.shown.get(key);
+      if (!a) {
+        a = {
+          other: o,
+          gen: this.gen,
+          moving: false,
+          facing: restFacing(o),
+          entity: {
+            id: AVATAR_PREFIX + key,
+            name: o.name,
+            appearance: o.appearance,
+            fallbackAppearance: "unit.hero",
+            kind: "unit",
+            x: o.pos.x,
+            y: o.pos.y,
+            facing: "s",
+            moving: false,
+            isSelf: false,
+            showLabel: true,
+          },
+        };
+        a.entity.facing = a.facing;
+        this.shown.set(key, a);
+      }
+      a.gen = this.gen;
+      a.other = o;
+      const e = a.entity;
+      if (e.name !== o.name) e.name = o.name;
+      if (e.appearance !== o.appearance) e.appearance = o.appearance;
+      if (o.tag !== undefined) e.subtitle = o.tag;
+      else delete e.subtitle;
+      this.draw(a, now);
+    }
+    for (const [key, a] of this.shown) {
+      if (a.gen === this.gen) continue;
+      this.deps.renderer.removeEntity(a.entity.id);
+      this.shown.delete(key);
+    }
+  }
+
+  /** Per-frame interpolation of avatars that are still walking. */
+  private drawMoving(): void {
+    if (this.shown.size === 0 || !this.conn) return;
+    let now: number | null = null;
+    for (const a of this.shown.values()) {
+      if (!a.moving) continue;
+      if (now === null) now = this.conn.serverNow();
+      this.draw(a, now);
+    }
+  }
+
+  private draw(a: Avatar, now: number): void {
+    const w = walkAt(a.other, now);
+    const e = a.entity;
+    // Presence tiles are integers; classic draws units at pos / SUB, where a tile's centre is t + 0.5.
+    e.x = w.x + TILE_CENTRE;
+    e.y = w.y + TILE_CENTRE;
+    if (w.next) {
+      a.facing = facingOf(w.next.x - w.from.x, w.next.y - w.from.y, a.facing);
+      a.moving = true;
+    } else {
+      a.moving = false;
+    }
+    e.facing = a.facing;
+    e.moving = a.moving;
+    this.deps.renderer.upsertEntity(e);
+  }
+
+  private clearAvatars(): void {
+    if (this.shown.size === 0) return;
+    for (const a of this.shown.values()) this.deps.renderer.removeEntity(a.entity.id);
+    this.shown.clear();
+  }
+}

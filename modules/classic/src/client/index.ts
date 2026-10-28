@@ -5,6 +5,14 @@
  * an offline-progress dispatch after a long absence, the game loop (game.ts),
  * keyboard bindings (input.ts), the React HUD (ClassicHud) on a layer above
  * the world, and save timers. Unmount tears everything down.
+ *
+ * Wave B (docs/design/wave-B.md §2.5): when the host can connect a verified
+ * instance (services.connectVerified) and the run is neither seeded nor
+ * cheats, the hero lives on the server: ServerSync (sync/) starts from the
+ * account cache or the first server state (waiting up to 8 s behind
+ * "Connecting…", else falling back to local mode), records and submits input
+ * segments, and replaces the sim on resync. Otherwise local mode is exactly
+ * the wave A behaviour. Town presence (presence/) runs when the host has it.
  */
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -31,10 +39,21 @@ import {
   CHEATS_SAVE_KEY,
   createSaveStore,
   DEFAULT_SETTINGS,
+  legacySaveForImport,
+  markLegacyMigrated,
   restoreCarried,
   SAVE_KEY,
   type SaveRecord,
+  type SaveStore,
 } from "./persist.ts";
+import { TownPresence } from "./presence/index.ts";
+import {
+  serverSaveStore,
+  ServerSync,
+  SYNC_TEXT,
+  wantsServer,
+  type SyncBoot,
+} from "./sync/index.ts";
 import {
   defaultHeroName,
   EventProbe,
@@ -74,6 +93,18 @@ function showFatal(host: HTMLElement, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   div.textContent = `Classic mode could not start: ${msg}`;
   host.appendChild(div);
+}
+
+/** "Connecting…" notice while the first server state is awaited (no local cache). */
+function showConnecting(host: HTMLElement): HTMLDivElement {
+  const div = document.createElement("div");
+  div.setAttribute("role", "status");
+  div.style.cssText =
+    "position:absolute;inset:0;display:grid;place-items:center;padding:16px;text-align:center;" +
+    "color:#d9cfb8;font:600 16px system-ui;letter-spacing:.04em;background:#0d0b0a";
+  div.textContent = "Connecting…";
+  host.appendChild(div);
+  return div;
 }
 
 function randomSeed(): number {
@@ -190,10 +221,22 @@ export const classicView: ClientModeView = {
     let saveTimer: number | null = null;
     let uninstallDebug: (() => void) | null = null;
     let unsubInsets: (() => void) | null = null;
+    let sync: ServerSync | null = null;
+    let presence: TownPresence | null = null;
+    let hiddenAt: number | null = null;
     const onVisibility = (): void => {
-      if (document.visibilityState === "hidden") game?.save();
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        sync?.flush();
+        game?.save();
+      } else if (hiddenAt !== null) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = null;
+        sync?.visible(away);
+      }
     };
     const onPageHide = (): void => {
+      sync?.flush();
       game?.save();
     };
     const teardown = (): void => {
@@ -207,9 +250,14 @@ export const classicView: ClientModeView = {
       uninstallDebug = null;
       unsubInsets?.();
       unsubInsets = null;
+      sync?.flush();
       game?.save();
       game?.destroy();
       game = null;
+      sync?.destroy();
+      sync = null;
+      presence?.destroy();
+      presence = null;
       root?.unmount();
       root = null;
       renderer?.destroy();
@@ -235,15 +283,58 @@ export const classicView: ClientModeView = {
       const loaded = cheats
         ? loadMode({ ...mode }, [...modules, ...debugModules])
         : loadMode(mode, modules);
+      const storage = browserStorage();
+
+      // Wave B: the server-backed hero (sync/), unless this is a throwaway run.
+      let booted: SyncBoot | null = null;
+      let fellBack = false;
+      if (
+        services.connectVerified &&
+        wantsServer({ canConnect: true, seed: params.seed, cheats: cheats })
+      ) {
+        const s = new ServerSync({
+          loaded,
+          accountId: services.session.accountId,
+          connect: () => {
+            if (!services.connectVerified) throw new Error("no verified connection");
+            return services.connectVerified("classic");
+          },
+          storage,
+          now: () => performance.now(),
+          wall: () => Date.now(),
+          legacy: {
+            load: () => legacySaveForImport(storage, loaded),
+            markMigrated: () => {
+              markLegacyMigrated(storage);
+            },
+          },
+        });
+        sync = s;
+        const connecting = showConnecting(hudLayer);
+        try {
+          booted = await s.boot();
+        } finally {
+          connecting.remove();
+        }
+        if (booted === null) {
+          // No server within the boot timeout: play locally (today's behaviour).
+          s.destroy();
+          sync = null;
+          fellBack = true;
+        }
+      }
+      const activeSync = sync;
+
       // A seeded run is a throwaway: it neither restores nor overwrites the local save.
       const store = createSaveStore(
-        params.seed === null ? browserStorage() : null,
+        params.seed === null ? storage : null,
         cheats ? CHEATS_SAVE_KEY : SAVE_KEY,
       );
-      const saved = store.load(loaded.contentHash);
+      const local = booted === null;
+      const saved = local ? store.load(loaded.contentHash) : null;
       // A save of another content version whose modules all still exist is carried over (dev convenience).
       const carriedRecord =
-        saved === null && !params.fresh && params.seed === null
+        local && saved === null && !params.fresh && params.seed === null
           ? store.loadCarryable(
               loaded.contentHash,
               loaded.modules.map((m) => m.id),
@@ -253,16 +344,30 @@ export const classicView: ClientModeView = {
       const base = saved ?? (carriedSim !== null ? carriedRecord : null);
       let seed = params.seed ?? randomSeed();
       const { sim, fresh } =
-        carriedSim !== null ? { sim: carriedSim, fresh: false } : startSim(loaded, saved, seed);
+        booted !== null
+          ? { sim: booted.sim, fresh: false }
+          : carriedSim !== null
+            ? { sim: carriedSim, fresh: false }
+            : startSim(loaded, saved, seed);
       const probe = params.debug ? new EventProbe() : null;
-      const settings: Settings = base?.settings ?? { ...DEFAULT_SETTINGS };
+      const settings: Settings = booted?.settings ?? base?.settings ?? { ...DEFAULT_SETTINGS };
       const wall = Date.now();
+      const saveStore: SaveStore = activeSync ? serverSaveStore(activeSync) : store;
+
+      if (services.joinPresence) {
+        presence = new TownPresence({
+          services,
+          renderer: created,
+          registry: loaded.registry,
+        });
+      }
+      const townPresence = presence;
 
       game = createClassicGame({
         loaded,
         sim,
         renderer: created,
-        save: store,
+        save: saveStore,
         settings,
         now: () => performance.now(),
         wall: () => Date.now(),
@@ -273,7 +378,16 @@ export const classicView: ClientModeView = {
         viewportWidth: () => window.innerWidth,
         exit: () => services.exit(),
         onEvents: probe ? (events) => probe.push(events, game?.currentSim().tick ?? 0) : undefined,
+        platform: services.platform ?? null,
+        session: { accountId: services.session.accountId, name: services.session.name },
+        ...(activeSync ? { server: activeSync, sync: activeSync.view } : {}),
+        ...(townPresence
+          ? { extraFrame: (s: Sim, nowMs: number) => townPresence.update(s, nowMs) }
+          : {}),
       });
+
+      if (activeSync) activeSync.attach(game);
+      if (fellBack) game.notify("info", SYNC_TEXT.fallbackTitle, SYNC_TEXT.fallbackBody);
 
       if (carriedSim !== null) {
         // Write it back under the new content hash, then tell the player.
@@ -282,7 +396,8 @@ export const classicView: ClientModeView = {
       }
 
       // Offline progress for a long absence, when the hero is in play and the controller drives it.
-      if (!fresh && base && wall - base.savedAt > OFFLINE_MIN_MS) {
+      // (Server mode: the server grants it from its own clock; the client never dispatches it.)
+      if (!activeSync && !fresh && base && wall - base.savedAt > OFFLINE_MIN_MS) {
         const control = sim.world.getResource<ControlState>(RES.control);
         if (control && control.mode !== "manual" && game.api.hud.getSnapshot().phase === "play") {
           const elapsedMs = Math.min(wall - base.savedAt, OFFLINE_MAX_MS);
@@ -302,7 +417,9 @@ export const classicView: ClientModeView = {
           game,
           registry: loaded.registry,
           probe,
-          seed: () => (fresh || game?.currentSim() !== sim ? seed : 0),
+          // Server mode: the server picks the seeds (not known to the client).
+          seed: () => (activeSync ? 0 : fresh || game?.currentSim() !== sim ? seed : 0),
+          ...(activeSync ? { sync: () => activeSync.debugInfo() } : {}),
         });
       }
       autostart(api, params);

@@ -30,11 +30,33 @@ export interface EntityState {
   pathStartedAt: number;
   /** Walking speed in tiles per second. */
   speed: number;
+  /**
+   * Wave B: short cosmetic label under the name ("Lv 12 Warrior <TAG>"),
+   * at most 40 chars. Client-reported in pose worlds; optional everywhere.
+   */
+  tag?: string;
+}
+
+/**
+ * Wave B pose report (worlds with movement "client-pose", e.g. the classic
+ * town, wave-B.md §7): the client's own sim moves the hero; the server only
+ * relays where it is and where it is heading. `path` is at most 8 tiles.
+ */
+export interface PoseUpdate {
+  pos: TilePos;
+  path: TilePos[];
+  /** Tiles per second, clamped by the server to 1..12. */
+  speed: number;
+  /** "unit.hero" or "unit.hero.<x>", at most 64 chars. */
+  appearance?: string;
+  tag?: string;
 }
 
 export type ClientMessage =
   | { t: "hello"; token: string }
   | { t: "moveTo"; target: TilePos }
+  /** Wave B: pose worlds only (moveTo is rejected there, pose in server-path worlds). */
+  | ({ t: "pose" } & PoseUpdate)
   | { t: "ping"; clientTime: number };
 
 export type ServerMessage =

@@ -53,6 +53,9 @@ export function MoreMenu({
             gap: 4,
             padding: 6,
             minWidth: 200,
+            // Short landscape phones: the list scrolls instead of running off the top of the screen.
+            maxHeight: "60vh",
+            overflowY: "auto",
             zIndex: 2,
           }}
         >

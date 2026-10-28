@@ -2,10 +2,11 @@
  * Opens and closes panels from the bottom bar (classic.hud.bottom): Character, Inventory, Skills,
  * Talents, Quests, Automap on every layout; Achievements, Settings and Log in the desktop bar; on
  * phones those three and the Modes control collapse into a "More" menu (>= 44 px targets).
- * Keys C I S N L Tab Y are handled by the input layer (T-client).
+ * Wave B: Chat, Guild, Leaderboards and Account (the social panels) sit in the desktop bar and
+ * the phone "More" menu. Keys C I S N L Tab Y are handled by the input layer (T-client).
  */
 import { useState } from "react";
-import type { PanelId } from "../../contract.ts";
+import type { ClassicClientApi, PanelId } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
 import { bottomOrderFor, modesControlVisible } from "../layout.ts";
@@ -35,8 +36,46 @@ export const SECONDARY_BUTTONS: readonly PanelSpec[] = [
   { id: "settings", label: "⚙", title: "Settings", text: "Settings" },
 ];
 
+/** Wave B social panels: desktop bar and phone "More" menu. Their content needs the game server. */
+export const SOCIAL_BUTTONS: readonly PanelSpec[] = [
+  { id: "chat", label: "Chat", title: "Chat", text: "Chat" },
+  { id: "guild", label: "Guild", title: "Guild", text: "Guild" },
+  { id: "leaderboard", label: "Ranks", title: "Leaderboards", text: "Leaderboards" },
+  { id: "account", label: "Account", title: "Account", text: "Account" },
+];
+
 /** Phone "More" menu only (the desktop bar has no room for it). */
 const MORE_ONLY: readonly PanelSpec[] = [{ id: "log", label: "Log", title: "Log", text: "Log" }];
+
+/**
+ * The rows of the phone "More" menu (pure, tested): secondary and social panels, then the Log row,
+ * then the Modes control when it is shown. Each panel row toggles its panel.
+ */
+export function buildMoreItems(
+  api: Pick<ClassicClientApi, "togglePanel" | "exit">,
+  open: readonly PanelId[],
+  showModes: boolean,
+): MoreItem[] {
+  const items: MoreItem[] = [];
+  for (const b of [...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, ...MORE_ONLY]) {
+    items.push({
+      id: b.id,
+      text: b.text,
+      title: b.title,
+      pressed: open.includes(b.id),
+      onSelect: () => api.togglePanel(b.id),
+    });
+  }
+  if (showModes) {
+    items.push({
+      id: "modes",
+      text: "Modes",
+      title: "Modes: back to the mode picker",
+      onSelect: () => api.exit(),
+    });
+  }
+  return items;
+}
 
 export function PanelButtons({ api }: SlotProps) {
   const open = useSelect(api.ui, (u) => u.panels);
@@ -45,27 +84,10 @@ export function PanelButtons({ api }: SlotProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   // The mode picker control. The shell has no back button for classic (ClientModeView.ownsExitControl).
   const showModes = modesControlVisible(layout, open.length > 0);
-  const primary = compact ? PRIMARY_BUTTONS : [...PRIMARY_BUTTONS, ...SECONDARY_BUTTONS];
-  const moreItems: MoreItem[] = [];
-  if (compact) {
-    for (const b of [...SECONDARY_BUTTONS, ...MORE_ONLY]) {
-      moreItems.push({
-        id: b.id,
-        text: b.text,
-        title: b.title,
-        pressed: open.includes(b.id),
-        onSelect: () => api.togglePanel(b.id),
-      });
-    }
-    if (showModes) {
-      moreItems.push({
-        id: "modes",
-        text: "Modes",
-        title: "Modes: back to the mode picker",
-        onSelect: () => api.exit(),
-      });
-    }
-  }
+  const primary = compact
+    ? PRIMARY_BUTTONS
+    : [...PRIMARY_BUTTONS, ...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS];
+  const moreItems: MoreItem[] = compact ? buildMoreItems(api, open, showModes) : [];
   return (
     <div
       role="toolbar"

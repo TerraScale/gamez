@@ -21,6 +21,7 @@ import type { EntityState, ServerMessage, TilePos } from "@gamez/protocol";
 import { findPath, isWalkable, pathDuration } from "@gamez/world";
 import { BotClient, loginGuest, type Received } from "./client.ts";
 import { crawlClientGraph } from "./client-graph.ts";
+import { FEATURES, type E2eContext } from "./features.ts";
 import { startDevServer, type DevServer } from "./dev-server.ts";
 import { play, resume, SCRIPTS, type PlayedInstance } from "./instance.ts";
 import { LocalD1 } from "./local-d1.ts";
@@ -202,6 +203,19 @@ async function run(): Promise<void> {
     const played: PlayedInstance[] = [];
     for (const script of SCRIPTS) played.push(await play(server.url, guestA, script));
 
+    // 5b. wave B features (features.ts), each with its own fresh guests
+    const [wbA, wbB] = await Promise.all([loginGuest(server.url), loginGuest(server.url)]);
+    const wave: E2eContext = { url: server.url, db, guestA: wbA, guestB: wbB, state: new Map() };
+    for (const f of FEATURES) {
+      const t0 = performance.now();
+      try {
+        await f.run(wave);
+      } catch (err) {
+        fail(`${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      timings[`wave B ${f.name}`] = performance.now() - t0;
+    }
+
     // 6. restart the dev server (every DO restarts) and reconnect A
     await server.stop();
     server = null;
@@ -221,6 +235,15 @@ async function run(): Promise<void> {
     );
     await a2.close();
     for (const run of played) await resume(server.url, run);
+    wave.url = server.url;
+    for (const f of FEATURES) {
+      if (!f.afterRestart) continue;
+      try {
+        await f.afterRestart(wave);
+      } catch (err) {
+        fail(`${f.name} after restart: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
     // 7. the client module graph, including every classic module (sim + client)
     const graphStart = performance.now();

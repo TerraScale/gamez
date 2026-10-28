@@ -75,7 +75,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function isSnapshot(v: unknown): v is SimSnapshot {
+/** Shape check of a stored SimSnapshot (the server sync cache uses it too). */
+export function isSnapshot(v: unknown): v is SimSnapshot {
   if (!isRecord(v)) return false;
   const rng = v.rng;
   return (
@@ -261,4 +262,63 @@ export function createSaveStore(storage: KeyValueStorage | null, key = SAVE_KEY)
       }
     },
   };
+}
+
+// ---- wave B: one-time import of the local save into the server (wave-B.md §2.7)
+
+/** Where the legacy save is kept as a backup once it was imported into the account. */
+export const MIGRATED_SUFFIX = ".migrated";
+
+/** A legacy local save ready to import: its snapshot under the loaded content hash. */
+export interface LegacyImport {
+  snapshot: SimSnapshot;
+  savedAt: number;
+  settings: Settings;
+}
+
+/**
+ * The legacy local save (SAVE_KEY) as an importable snapshot: the save of the
+ * current content as is, or one of another version carried over with
+ * restoreCarried (relabelled and validated). Null when there is none or it
+ * does not restore. Never throws.
+ */
+export function legacySaveForImport(
+  storage: KeyValueStorage | null,
+  loaded: LoadedMode,
+  key = SAVE_KEY,
+): LegacyImport | null {
+  if (!storage) return null;
+  try {
+    const store = createSaveStore(storage, key);
+    const current = store.load(loaded.contentHash);
+    if (current !== null) {
+      // It must restore here too, or the server would refuse it anyway.
+      createSim(loaded, { seed: 0, from: current.snapshot });
+      return { snapshot: current.snapshot, savedAt: current.savedAt, settings: current.settings };
+    }
+    const old = store.loadCarryable(
+      loaded.contentHash,
+      loaded.modules.map((m) => m.id),
+    );
+    if (old === null) return null;
+    const sim = restoreCarried(loaded, old);
+    if (sim === null) return null;
+    return { snapshot: sim.snapshot(), savedAt: old.savedAt, settings: old.settings };
+  } catch {
+    return null;
+  }
+}
+
+/** Moves the legacy save to `${key}${MIGRATED_SUFFIX}` (kept as a backup). False when storage refused. */
+export function markLegacyMigrated(storage: KeyValueStorage | null, key = SAVE_KEY): boolean {
+  if (!storage) return false;
+  try {
+    const text = storage.getItem(key);
+    if (text === null) return false;
+    storage.setItem(`${key}${MIGRATED_SUFFIX}`, text);
+    storage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
 }

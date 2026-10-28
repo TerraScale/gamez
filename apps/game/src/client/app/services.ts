@@ -5,9 +5,12 @@
  */
 import type { AssetManifest } from "@gamez/assets";
 import type { ModeInfo } from "@gamez/protocol";
-import type { ClientServices, Session } from "@gamez/ui-host";
+import type { ClientServices, PlatformServices, Session } from "@gamez/ui-host";
 import { MODES } from "../../shared/catalog.ts";
 import { instanceConnector } from "../instance/index.ts";
+import { verifiedConnector } from "../instance/verified.ts";
+import { createPlatform } from "../platform/index.ts";
+import { presenceConnector } from "../presence/index.ts";
 import { classicInfo } from "../modes/index.ts";
 import { createWorldRenderer } from "../render/pixi-renderer.ts";
 
@@ -50,11 +53,14 @@ export function modeInfos(): ModeInfo[] {
 export interface BootData {
   session: Session;
   manifest: AssetManifest;
+  /** The app-wide platform (absent = offline). Modes get the same instance as the picker. */
+  platform?: PlatformServices;
 }
 
 /** Services for one mode run. `exit` returns the app to the mode picker. */
 export function createServices(boot: BootData, exit: () => void): ClientServices {
-  return {
+  const session = () => boot.session;
+  const services: ClientServices = {
     session: boot.session,
     manifest: boot.manifest,
     assetBaseUrl: ART_BASE,
@@ -64,4 +70,12 @@ export function createServices(boot: BootData, exit: () => void): ClientServices
     connectInstance: instanceConnector(boot.session),
     exit,
   };
+  // Wave B (docs/design/wave-B.md §8): each is absent until its implementation lands.
+  const verified = verifiedConnector(session);
+  if (verified) services.connectVerified = verified;
+  const presence = presenceConnector(session);
+  if (presence) services.joinPresence = presence;
+  const platform = boot.platform ?? createPlatform(session);
+  if (platform) services.platform = platform;
+  return services;
 }

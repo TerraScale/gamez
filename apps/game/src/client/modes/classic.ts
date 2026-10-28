@@ -4,7 +4,7 @@
  * the socket and destroys the renderer.
  */
 import { townMap } from "@gamez/classic.town";
-import type { EntityId, ModeInfo, ServerMessage } from "@gamez/protocol";
+import type { EntityId, ServerMessage } from "@gamez/protocol";
 import type { ClientModeView } from "@gamez/ui-host";
 import { planWalk, walkAt } from "../../shared/walk.ts";
 import { ClockSync } from "../clock.ts";
@@ -15,16 +15,7 @@ import type { Facing } from "../render/types.ts";
 import { clearSession, getSession, type GuestSession } from "../session.ts";
 import { WorldState } from "../state.ts";
 
-const CLASSIC_WORLD = "classic-world";
-
-/** Catalog entry for the classic mode; the picker always lists it. */
-export const classicInfo: ModeInfo = {
-  id: "plaza",
-  name: "Town Plaza",
-  description:
-    "Multiplayer presence demo: a shared isometric town. Tap to walk, meet other players.",
-  world: CLASSIC_WORLD,
-};
+export { classicInfo } from "./plaza-info.ts";
 
 function wsUrl(token: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";

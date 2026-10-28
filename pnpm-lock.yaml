@@ -487,6 +487,9 @@ importers:
       '@gamez/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@gamez/mode-classic':
+        specifier: workspace:*
+        version: link:../../modules/classic
       '@gamez/sync':
         specifier: workspace:*
         version: link:../../packages/sync
@@ -521,6 +524,9 @@ importers:
       '@gamez/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@gamez/mode-classic':
+        specifier: workspace:*
+        version: link:../../modules/classic
       '@gamez/mode-duel':
         specifier: workspace:*
         version: link:../../modules/duel
@@ -530,6 +536,9 @@ importers:
       '@gamez/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@gamez/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       '@gamez/world':
         specifier: workspace:*
         version: link:../../packages/world

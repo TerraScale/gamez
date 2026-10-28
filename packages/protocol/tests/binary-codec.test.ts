@@ -10,6 +10,21 @@ const clientMessages: ClientMessage[] = [
   { t: "moveTo", target: { x: 0, y: 0 } },
   { t: "moveTo", target: { x: 65535, y: 65535 } },
   { t: "ping", clientTime: 1_767_225_600_000.123 },
+  { t: "pose", pos: { x: 36, y: 46 }, path: [], speed: 4 },
+  {
+    t: "pose",
+    pos: { x: 36, y: 46 },
+    path: [
+      { x: 37, y: 46 },
+      { x: 38, y: 47 },
+    ],
+    speed: 4,
+    appearance: "unit.hero.warrior",
+    tag: "Lv 12 Warrior",
+  },
+  { t: "pose", pos: { x: 0, y: 71 }, path: [], speed: 1, tag: "" },
+  { t: "pose", pos: { x: 71, y: 0 }, path: [], speed: 12, appearance: "unit.hero" },
+  { t: "pose", pos: { x: 1, y: 1 }, path: [{ x: 1, y: 2 }], speed: 2.5, tag: "ünïcödé 🎲" },
 ];
 
 const serverMessages: ServerMessage[] = [
@@ -20,6 +35,21 @@ const serverMessages: ServerMessage[] = [
   { t: "delta", chunkId: "c", seq: 4294967295, upserts: [], removes: ["a", "b", "c"] },
   { t: "pong", clientTime: 0.1 + 0.2, serverTime: 1e-300 },
   { t: "error", code: "rate_limited", message: "slow down" },
+  {
+    t: "delta",
+    chunkId: "classic-town:0:0",
+    seq: 3,
+    upserts: [{ ...makeEntity(8, 2), tag: "Lv 3 Mage" }],
+    removes: [],
+  },
+  {
+    t: "welcome",
+    selfId: "a",
+    chunkId: "classic-town:0:0",
+    seq: 2,
+    serverTime: 5,
+    entities: [{ ...makeEntity(9), tag: "" }, makeEntity(10)],
+  },
 ];
 
 /** Returns a copy of the bytes as a standalone ArrayBuffer. */
@@ -320,5 +350,90 @@ describe("binaryCodec size", () => {
     const jsonBytes = new TextEncoder().encode(json as string).length;
     console.log(`welcome(200 entities): json=${jsonBytes} bytes, binary=${binary.length} bytes`);
     expect(binary.length).toBeLessThan(jsonBytes);
+  });
+});
+
+describe("binaryCodec pose and entity tag (format v2)", () => {
+  it("omits absent optional fields on decode", () => {
+    const decoded = binaryCodec.decodeClient(
+      binaryCodec.encodeClient({ t: "pose", pos: { x: 2, y: 3 }, path: [], speed: 4 }),
+    );
+    expect(decoded).toEqual({ t: "pose", pos: { x: 2, y: 3 }, path: [], speed: 4 });
+    expect(decoded).not.toHaveProperty("tag");
+    expect(decoded).not.toHaveProperty("appearance");
+  });
+
+  it("round-trips an entity without a tag as having no tag", () => {
+    const entity = makeEntity(11);
+    const decoded = binaryCodec.decodeServer(
+      binaryCodec.encodeServer({
+        t: "delta",
+        chunkId: "c",
+        seq: 1,
+        upserts: [entity],
+        removes: [],
+      }),
+    );
+    expect(decoded.t === "delta" && decoded.upserts[0]).not.toHaveProperty("tag");
+  });
+
+  it("keeps an empty tag distinct from no tag", () => {
+    const entity = { ...makeEntity(12), tag: "" };
+    const decoded = binaryCodec.decodeServer(
+      binaryCodec.encodeServer({
+        t: "delta",
+        chunkId: "c",
+        seq: 1,
+        upserts: [entity],
+        removes: [],
+      }),
+    );
+    expect(decoded.t === "delta" && decoded.upserts[0]?.tag).toBe("");
+  });
+
+  it("rejects unknown entity flag bits", () => {
+    const frame = binaryCodec.encodeServer({
+      t: "delta",
+      chunkId: "c",
+      seq: 1,
+      upserts: [makeEntity(13)],
+      removes: [],
+    }) as Uint8Array;
+    const copy = frame.slice();
+    // The entity's flags byte comes just before the trailing removes count (0).
+    copy[copy.length - 2] = 0x80;
+    expect(() => binaryCodec.decodeServer(copy)).toThrow(/unknown entity flags/);
+  });
+
+  it("rejects unknown pose flag bits", () => {
+    const frame = binaryCodec.encodeClient({
+      t: "pose",
+      pos: { x: 1, y: 1 },
+      path: [],
+      speed: 2,
+    }) as Uint8Array;
+    const copy = frame.slice();
+    copy[copy.length - 1] = 0x40;
+    expect(() => binaryCodec.decodeClient(copy)).toThrow(/unknown pose flags/);
+  });
+
+  it("throws on every strict prefix of a pose frame", () => {
+    const frame = binaryCodec.encodeClient({
+      t: "pose",
+      pos: { x: 3, y: 4 },
+      path: [{ x: 4, y: 4 }],
+      speed: 4,
+      appearance: "unit.hero",
+      tag: "Lv 1",
+    }) as Uint8Array;
+    for (let n = 0; n < frame.length; n++) {
+      expect(() => binaryCodec.decodeClient(frame.subarray(0, n))).toThrow();
+    }
+  });
+
+  it("rejects pose coordinates outside uint16 on encode", () => {
+    expect(() =>
+      binaryCodec.encodeClient({ t: "pose", pos: { x: 70000, y: 0 }, path: [], speed: 1 }),
+    ).toThrow(RangeError);
   });
 });

@@ -1,5 +1,8 @@
-import type { ModeInfo } from "@gamez/protocol";
-import type { Session } from "@gamez/ui-host";
+import type { ModeInfo, AccountView } from "@gamez/protocol";
+import type { PlatformServices, Session } from "@gamez/ui-host";
+import { AccountChip } from "./AccountChip.tsx";
+import { ChatDock } from "./ChatDock.tsx";
+import { SocialBar } from "./SocialBar.tsx";
 
 export interface ModePickerProps {
   session: Session;
@@ -7,16 +10,44 @@ export interface ModePickerProps {
   /** True when this client has a view for the mode. */
   isAvailable: (modeId: string) => boolean;
   onPick: (mode: ModeInfo) => void;
+  /** Absent = offline host: no account chip actions, leaderboards, guilds or chat. */
+  platform?: PlatformServices;
+  /** Current account (null while loading). */
+  account: AccountView | null;
+  onOpenAccount: () => void;
+  onOpenLeaderboards: () => void;
+  onOpenGuild: () => void;
 }
 
 /** Full-width mode list with large touch targets; usable down to 375 px. */
-export function ModePicker({ session, modes, isAvailable, onPick }: ModePickerProps) {
+export function ModePicker({
+  session,
+  modes,
+  isAvailable,
+  onPick,
+  platform,
+  account,
+  onOpenAccount,
+  onOpenLeaderboards,
+  onOpenGuild,
+}: ModePickerProps) {
+  const online = platform !== undefined;
   return (
     <main className="picker">
       <header className="picker-header">
-        <h1>gamez</h1>
+        <div className="picker-top">
+          <h1>gamez</h1>
+          <AccountChip session={session} account={account} online={online} onOpen={onOpenAccount} />
+        </div>
         <p className="picker-who">Playing as {session.name}</p>
       </header>
+      {online ? (
+        <SocialBar
+          guildTag={account?.guildTag ?? null}
+          onLeaderboards={onOpenLeaderboards}
+          onGuild={onOpenGuild}
+        />
+      ) : null}
       <h2 className="picker-title">Choose a mode</h2>
       <ul className="mode-list">
         {modes.map((mode) => {
@@ -37,6 +68,13 @@ export function ModePicker({ session, modes, isAvailable, onPick }: ModePickerPr
           );
         })}
       </ul>
+      {platform ? (
+        <ChatDock
+          chat={platform.chat}
+          guildId={account?.guildId ?? null}
+          selfId={account?.accountId ?? null}
+        />
+      ) : null}
     </main>
   );
 }

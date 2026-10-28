@@ -35,6 +35,11 @@ export const PANEL_IDS: readonly PanelId[] = [
   "rift",
   "achievements",
   "lootFilter",
+  // wave B
+  "chat",
+  "guild",
+  "leaderboard",
+  "account",
 ];
 
 export function panelSlot(id: PanelId): string {
