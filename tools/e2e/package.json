@@ -5,6 +5,9 @@
   "type": "module",
   "dependencies": {
     "@gamez/classic.town": "workspace:*",
+    "@gamez/kernel": "workspace:*",
+    "@gamez/mode-duel": "workspace:*",
+    "@gamez/mode-steps": "workspace:*",
     "@gamez/protocol": "workspace:*",
     "@gamez/world": "workspace:*"
   },

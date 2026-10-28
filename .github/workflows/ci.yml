@@ -38,8 +38,9 @@ jobs:
       - name: Build game
         run: vp -C apps/game build
 
-      # Phase-0 end to end in local workerd: two bots, a walk, DO -> D1 replication
-      # and persistence across a dev-server restart. Uses the example dev secret.
+      # End to end in local workerd: two bots, a walk, DO -> D1 replication, the
+      # steps and duel instances over /ws/instance (replayed against a local sim),
+      # and persistence of both across a dev-server restart. Uses the example dev secret.
       - name: End to end (local dev server)
         run: |
           cp apps/game/.dev.vars.example apps/game/.dev.vars

@@ -1,13 +1,15 @@
 import { applyBatch, type ReplicationBatch } from "@gamez/sync";
-import { newGuest, signToken, verifyToken } from "./auth.ts";
+import { GUEST_TOKEN_MAX_AGE_MS, newGuest, signToken, verifyToken } from "./auth.ts";
 import { RELAY_HEADERS, type Env } from "./contracts.ts";
 import { projections } from "./projections.ts";
 import { relayLocation } from "./routing.ts";
+import { connectInstance, INSTANCE_PATH } from "./instance/route.ts";
 import { CLOSE_UNAUTHORIZED } from "../shared/codec.ts";
 
 export { RelayDO } from "./do/relay.ts";
 export { ChunkDO } from "./do/chunk.ts";
 export { CharacterDO } from "./do/character.ts";
+export { InstanceDO } from "./do/instance.ts";
 
 export default {
   async fetch(request, env) {
@@ -15,6 +17,7 @@ export default {
     if (url.pathname === "/api/health") return Response.json({ ok: true });
     if (url.pathname === "/api/guest" && request.method === "POST") return guestLogin(env);
     if (url.pathname === "/ws") return connect(request, env, url);
+    if (url.pathname === INSTANCE_PATH) return connectInstance(request, env, url);
     return env.ASSETS.fetch(request);
   },
 
@@ -43,7 +46,11 @@ async function connect(request: Request, env: Env, url: URL): Promise<Response> 
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("expected websocket", { status: 426 });
   }
-  const identity = await verifyToken(env.AUTH_SECRET, url.searchParams.get("token") ?? "");
+  const identity = await verifyToken(
+    env.AUTH_SECRET,
+    url.searchParams.get("token") ?? "",
+    GUEST_TOKEN_MAX_AGE_MS,
+  );
   if (!identity) return rejectSocket();
 
   const cf = request.cf as IncomingRequestCfProperties | undefined;

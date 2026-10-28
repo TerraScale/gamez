@@ -3,6 +3,7 @@ import type { ClientMessage, EntityId, EntityState, ServerMessage } from "@gamez
 import { DurableObject } from "cloudflare:workers";
 import { PHASE0_CHUNK, PHASE0_MODE, RELAY_HEADERS, type Env, type RelayApi } from "../contracts.ts";
 import { codec } from "../../shared/codec.ts";
+import { SocketLimiter } from "../rate-limit.ts";
 
 /** Per-socket state; survives hibernation via serializeAttachment. */
 interface SocketInfo {
@@ -25,6 +26,11 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   #building: Promise<void> | null = null;
   /** Serialises deliveries so they're applied in arrival order. */
   #queue: Promise<unknown> = Promise.resolve();
+  /**
+   * Token buckets per socket. In memory only: hibernation resets them, which is
+   * harmless because a sleeping relay has no traffic to limit.
+   */
+  readonly #limits = new WeakMap<WebSocket, SocketLimiter>();
 
   get name(): string {
     return this.ctx.id.name ?? this.ctx.storage.kv.get<string>("name") ?? "relay:XX:0";
@@ -88,6 +94,9 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       this.#send(ws, { t: "error", code: "bad-message", message: "could not decode message" });
       return;
     }
+    if (msg.t === "moveTo" || msg.t === "ping") {
+      if (!this.#admit(ws, msg.t)) return;
+    }
     switch (msg.t) {
       case "ping":
         this.#send(ws, { t: "pong", clientTime: msg.clientTime, serverTime: Date.now() });
@@ -112,6 +121,25 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
         // Identity comes from the verified token at upgrade time; nothing to do.
         return;
     }
+  }
+
+  /** Applies the per-socket rate limit; over-limit messages are dropped, with at most one notice a second. */
+  #admit(ws: WebSocket, kind: "moveTo" | "ping"): boolean {
+    const now = Date.now();
+    let limiter = this.#limits.get(ws);
+    if (!limiter) {
+      limiter = new SocketLimiter(now);
+      this.#limits.set(ws, limiter);
+    }
+    if (limiter.admit(kind, now)) return true;
+    if (limiter.noticeDue(now)) {
+      this.#send(ws, {
+        t: "error",
+        code: "rate_limited",
+        message: `slow down: ${limiter.dropped} message(s) dropped`,
+      });
+    }
+    return false;
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
@@ -243,6 +271,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       t: "welcome",
       selfId: info.characterId,
       chunkId: PHASE0_CHUNK,
+      seq: this.#seq,
       serverTime: Date.now(),
       entities: [...(this.#entities?.values() ?? [])],
     };

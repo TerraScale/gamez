@@ -7,7 +7,7 @@ type Delta = Extract<ServerMessage, { t: "delta" }>;
 /**
  * How a delta relates to the last applied seq: the next one ("apply"), an old
  * or duplicate one ("stale"), or one past a missed delta ("gap", resync).
- * `last` is null right after a welcome, when any seq is accepted as the base.
+ * `last` is null only before any welcome, when any seq is accepted as the base.
  */
 export function checkSeq(last: number | null, seq: number): "apply" | "stale" | "gap" {
   if (last === null || seq === last + 1) return "apply";
@@ -26,7 +26,10 @@ export class WorldState {
   #prediction: Walk | null = null;
   #removed: EntityId[] = [];
 
-  /** Replaces everything with a welcome snapshot. */
+  /**
+   * Replaces everything with a welcome snapshot. The snapshot is the state at
+   * `msg.seq`, so the next delta must be seq + 1 (anything else is a gap or stale).
+   */
   reset(msg: Welcome): void {
     const next = new Map(msg.entities.map((e) => [e.id, e]));
     for (const id of this.entities.keys()) if (!next.has(id)) this.#removed.push(id);
@@ -34,7 +37,7 @@ export class WorldState {
     for (const [id, e] of next) this.entities.set(id, e);
     this.selfId = msg.selfId;
     this.chunkId = msg.chunkId;
-    this.#lastSeq = null;
+    this.#lastSeq = msg.seq;
     this.#prediction = null;
   }
 

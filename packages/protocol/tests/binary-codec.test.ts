@@ -81,6 +81,7 @@ describe("binaryCodec round trip", () => {
       t: "welcome",
       selfId: "char-2",
       chunkId: "chunk:0:0",
+      seq: 7,
       serverTime: 0,
       entities: [entity],
     };
@@ -106,6 +107,7 @@ describe("binaryCodec round trip", () => {
       t: "welcome",
       selfId: "char-3",
       chunkId: "c",
+      seq: 7,
       serverTime: 1,
       entities: [entity],
     };
@@ -123,6 +125,7 @@ describe("binaryCodec round trip", () => {
       t: "welcome",
       selfId: "x",
       chunkId: "c",
+      seq: 7,
       serverTime: 0.1 + 0.2,
       entities: [entity, tiny],
     };
@@ -135,6 +138,7 @@ describe("binaryCodec round trip", () => {
       t: "welcome",
       selfId: "",
       chunkId: "",
+      seq: 7,
       serverTime: 0,
       entities: [],
     };
@@ -228,8 +232,22 @@ describe("binaryCodec errors", () => {
   });
 
   it("throws on a count larger than the remaining bytes", () => {
-    // welcome tag, selfId "", chunkId "", serverTime f64, then an entity count of 2^30.
-    const frame = new Uint8Array([1, 0, 0, ...new Uint8Array(8), 0x80, 0x80, 0x80, 0x80, 0x04]);
+    // welcome tag, selfId "", chunkId "", seq u32, serverTime f64, then an entity count of 2^30.
+    const frame = new Uint8Array([
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      ...new Uint8Array(8),
+      0x80,
+      0x80,
+      0x80,
+      0x80,
+      0x04,
+    ]);
     expect(() => binaryCodec.decodeServer(frame)).toThrow(/count .* exceeds remaining/);
   });
 
@@ -260,6 +278,37 @@ describe("binaryCodec errors", () => {
       removes: [],
     };
     expect(() => binaryCodec.encodeServer(msg)).toThrow(RangeError);
+  });
+});
+
+describe("binaryCodec welcome seq", () => {
+  const welcome = (seq: number): ServerMessage => ({
+    t: "welcome",
+    selfId: "me",
+    chunkId: "classic:0:0",
+    seq,
+    serverTime: 1,
+    entities: [makeEntity(1)],
+  });
+
+  it("round-trips the seq at both ends of uint32", () => {
+    for (const seq of [0, 1, 255, 65536, 4294967295]) {
+      const decoded = binaryCodec.decodeServer(binaryCodec.encodeServer(welcome(seq)));
+      expect(decoded).toEqual(welcome(seq));
+      expect(decoded.t === "welcome" && decoded.seq).toBe(seq);
+    }
+  });
+
+  it("rejects a seq outside uint32 on encode", () => {
+    expect(() => binaryCodec.encodeServer(welcome(4294967296))).toThrow(RangeError);
+    expect(() => binaryCodec.encodeServer(welcome(-1))).toThrow(RangeError);
+  });
+
+  it("throws when the seq bytes are missing", () => {
+    const frame = binaryCodec.encodeServer(welcome(3)) as Uint8Array;
+    // tag, selfId "me", chunkId "classic:0:0" then seq: drop the seq and everything after it.
+    const cut = 1 + 1 + 2 + 1 + 11;
+    expect(() => binaryCodec.decodeServer(frame.subarray(0, cut + 2))).toThrow(/truncated/);
   });
 });
 
