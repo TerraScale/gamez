@@ -787,7 +787,7 @@ describe("panels", () => {
     expect(markup).toContain('aria-label="Zoom"');
     expect(markup).toContain("Drink a life potion below");
     expect(markup).toContain("Apply automation");
-    expect(markup).toContain("New game");
+    expect(markup).toContain("Reset progress");
     expect(markup).toContain("Exit");
   });
 

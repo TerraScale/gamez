@@ -316,6 +316,25 @@ export function SettingsPanel({ api }: SlotProps) {
   const handlers = settingsHandlers(api);
   return (
     <PanelFrame api={api} id="settings" title="Settings" width={440}>
+      <Section title="Game">
+        <Row>
+          <Btn
+            label="Reset progress: delete this hero and start from scratch"
+            onClick={() => resetProgress(api)}
+            style={{ borderColor: C.danger, color: C.danger }}
+          >
+            Reset progress
+          </Btn>
+          <Btn label="Exit the mode" onClick={() => api.exit()}>
+            Exit
+          </Btn>
+        </Row>
+        <p style={{ ...labelStyle, color: C.muted }}>
+          Reset progress deletes your Classic hero, items, gold, quests and achievements (here and
+          on the server) and starts from scratch. Your account, bank and cosmetics are kept. Exit
+          leaves the classic mode.
+        </p>
+      </Section>
       <Section title="Display">
         {FLAGS.map((f) => (
           <Toggle
@@ -378,25 +397,6 @@ export function SettingsPanel({ api }: SlotProps) {
         </Row>
       </Section>
       <AutoConfigEditor api={api} handlers={handlers} />
-      <Section title="Game">
-        <Row>
-          <Btn
-            label="Reset progress: delete this hero and start from scratch"
-            onClick={() => resetProgress(api)}
-            style={{ borderColor: C.danger, color: C.danger }}
-          >
-            Reset progress
-          </Btn>
-          <Btn label="Exit the mode" onClick={() => api.exit()}>
-            Exit
-          </Btn>
-        </Row>
-        <p style={{ ...labelStyle, color: C.muted }}>
-          Reset progress deletes your Classic hero, items, gold, quests and achievements (here and
-          on the server) and starts from scratch. Your account, bank and cosmetics are kept. Exit
-          leaves the classic mode.
-        </p>
-      </Section>
     </PanelFrame>
   );
 }

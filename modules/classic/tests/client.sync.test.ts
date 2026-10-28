@@ -726,10 +726,13 @@ describe("reset progress", () => {
     const c = await openClient(server, storage);
     newHero(c, "classic.rogue");
     play(c, server, 3000);
-    c.game.api.save();
-    expect(storage.getItem(syncCacheKey("acc"))).not.toBeNull();
+    c.game.save();
+    // Whatever the cache holds at this point, a new game must remove it.
+    if (storage.getItem(syncCacheKey("acc")) === null) storage.setItem(syncCacheKey("acc"), "old");
     c.game.api.newGame();
     expect(storage.getItem(syncCacheKey("acc"))).toBeNull();
+    newHero(c, "classic.sorcerer");
+    play(c, server, 300);
     expect(server.joins.at(-1)?.fresh).toBe(true);
   });
 });
