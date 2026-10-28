@@ -73,7 +73,8 @@ export const leaderboardsFeature: E2eFeature = {
 
     // Rank from D1 (level DESC, xp DESC). Only rows inside the top 100 must show up.
     const ahead = await ctx.db.query<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM classic_hero WHERE _deleted = 0 AND mode = 'classic' AND (level > ? OR (level = ? AND xp > ?))",
+      // Imported heroes are never ranked (ADR 0007 R1).
+      "SELECT COUNT(*) AS n FROM classic_hero WHERE _deleted = 0 AND COALESCE(imported, 0) = 0 AND mode = 'classic' AND (level > ? OR (level = ? AND xp > ?))",
       [row.level, row.level, row.xp],
     );
     const rank = (ahead[0]?.n ?? 0) + 1;

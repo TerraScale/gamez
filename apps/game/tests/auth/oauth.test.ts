@@ -21,6 +21,9 @@ import { ctxFor, fakeWorld, req, SECRET, type FakeWorld } from "./fakes.ts";
 
 flowConfig.iterations = 1000;
 
+/** The browser's fragment nonce (ADR 0007 R4). */
+const NONCE = "test-nonce-0123456789abcdef";
+
 let w: FakeWorld;
 beforeEach(() => {
   w = fakeWorld();
@@ -37,14 +40,18 @@ async function guest(env: Env): Promise<GuestResponse> {
   return (await (await route(env, req("/api/guest", { method: "POST" }))).json()) as GuestResponse;
 }
 
-/** Walks start -> stub page -> stub form -> callback like a browser; returns the final fragment. */
+/**
+ * Walks start -> stub page -> stub form -> callback like a browser; returns the final fragment.
+ * A link flow (`link` = the SPA's bearer) then redeems the #oauth_link code with
+ * POST /api/auth/oauth/link, and its outcome is reported as `auth=` / `auth_error=`.
+ */
 async function stubFlow(
   env: Env,
   provider: string,
   opts: { subject: string; email?: string; name?: string; link?: string; origin?: string },
 ): Promise<{ fragment: string; start: Response; callback: Response }> {
   const origin = opts.origin ?? "http://localhost:5173";
-  const q = opts.link ? `?link=1&token=${encodeURIComponent(opts.link)}` : "?link=0";
+  const q = `?n=${NONCE}&link=${opts.link ? 1 : 0}`;
   const start = await route(env, req(`/api/auth/oauth/${provider}/start${q}`, { origin }));
   expect(start.status).toBe(302);
   const setCookie = start.headers.get("set-cookie") ?? "";
@@ -76,12 +83,30 @@ async function stubFlow(
   const callback = await route(env, new Request(callbackUrl, { headers: { cookie } }));
   expect(callback.status).toBe(302);
   expect(callback.headers.get("set-cookie")).toContain("Max-Age=0");
-  return { fragment: new URL(callback.headers.get("location")!).hash.slice(1), start, callback };
+  const fragment = new URL(callback.headers.get("location")!).hash.slice(1);
+  const params = new URLSearchParams(fragment);
+  expect(params.get("n")).toBe(NONCE);
+  if (!opts.link) return { fragment, start, callback };
+  const code = params.get("oauth_link");
+  expect(code).toBeTruthy();
+  const redeemed = await route(
+    env,
+    req("/api/auth/oauth/link", { origin, token: opts.link, body: { code } }),
+  );
+  const body = (await redeemed.json()) as AuthResponse & { error?: { code: string } };
+  return {
+    fragment: redeemed.ok
+      ? `auth=${encodeURIComponent(body.token)}`
+      : `auth_error=${body.error?.code ?? "?"}`,
+    start,
+    callback,
+  };
 }
 
 function tokenOf(fragment: string): string {
-  expect(fragment.startsWith("auth=")).toBe(true);
-  return decodeURIComponent(fragment.slice(5));
+  const token = new URLSearchParams(fragment).get("auth");
+  expect(token).toBeTruthy();
+  return token!;
 }
 
 describe("state cookie and PKCE", () => {
@@ -96,7 +121,8 @@ describe("state cookie and PKCE", () => {
     const st = newOAuthState({
       provider: "google",
       stub: true,
-      link: null,
+      link: false,
+      nonce: NONCE,
       redirectUri: "http://localhost/api/auth/oauth/google/callback",
       now: 1000,
     });
@@ -121,7 +147,7 @@ describe("state cookie and PKCE", () => {
   });
 
   it("sets an HttpOnly SameSite=Lax 10-minute cookie, Secure on https", async () => {
-    const dev = await route(w.env, req("/api/auth/oauth/google/start?link=0"));
+    const dev = await route(w.env, req(`/api/auth/oauth/google/start?n=${NONCE}&link=0`));
     const c = dev.headers.get("set-cookie")!;
     expect(c).toMatch(
       /^gz_oauth=[^;]+; Path=\/api\/auth\/oauth; Max-Age=600; HttpOnly; SameSite=Lax$/,
@@ -129,7 +155,9 @@ describe("state cookie and PKCE", () => {
     const live = fakeWorld({ GOOGLE_CLIENT_ID: "gid", GOOGLE_CLIENT_SECRET: "gs" });
     const prod = await route(
       live.env,
-      req("/api/auth/oauth/google/start?link=0", { origin: "https://gamez.example.com" }),
+      req(`/api/auth/oauth/google/start?n=${NONCE}&link=0`, {
+        origin: "https://gamez.example.com",
+      }),
     );
     expect(prod.headers.get("set-cookie")).toMatch(/; Secure$/);
   });
@@ -218,9 +246,18 @@ describe("OAuth stub flow", () => {
     expect(me.identities.map((i) => i.provider)).toEqual(["discord", "google"]);
   });
 
-  it("link mode needs a valid token", async () => {
-    const start = await route(w.env, req("/api/auth/oauth/google/start?link=1&token=nope"));
-    expect(start.headers.get("location")).toBe("http://localhost:5173/#auth_error=unauthorized");
+  it("link mode reads no token at /start; the redeem needs a valid bearer (ADR 0007 R3)", async () => {
+    const start = await route(
+      w.env,
+      req(`/api/auth/oauth/google/start?n=${NONCE}&link=1&token=nope`),
+    );
+    expect(new URL(start.headers.get("location")!).pathname).toBe("/api/auth/oauth/google/stub");
+    const cookie = start.headers.get("set-cookie")!.split(";")[0]!.slice("gz_oauth=".length);
+    const st = await openState(SECRET, cookie);
+    expect(st).toMatchObject({ link: true, nonce: NONCE });
+    expect(JSON.stringify(st)).not.toContain("nope");
+    const redeem = await route(w.env, req("/api/auth/oauth/link", { token: "nope", body: {} }));
+    expect(redeem.status).toBe(401);
   });
 
   it("an email account can register after OAuth on the same account", async () => {
@@ -238,7 +275,7 @@ describe("OAuth stub flow", () => {
   });
 
   it("rejects a missing or forged cookie, a wrong state and a PKCE mismatch", async () => {
-    const start = await route(w.env, req("/api/auth/oauth/google/start"));
+    const start = await route(w.env, req(`/api/auth/oauth/google/start?n=${NONCE}`));
     const cookie = start.headers.get("set-cookie")!.split(";")[0]!;
     const loc = new URL(start.headers.get("location")!);
     const state = loc.searchParams.get("state")!;
@@ -263,9 +300,10 @@ describe("OAuth stub flow", () => {
       name: null,
       cc: "A".repeat(43),
     });
-    expect(frag(await cb(q(wrongPkce), cookie))).toBe("#auth_error=oauth_failed");
+    // With a valid state the flow's nonce is known and echoed.
+    expect(frag(await cb(q(wrongPkce), cookie))).toBe(`#auth_error=oauth_failed&n=${NONCE}`);
     expect(frag(await cb(`error=access_denied&state=${state}`, cookie))).toBe(
-      "#auth_error=oauth_failed",
+      `#auth_error=oauth_failed&n=${NONCE}`,
     );
     // Another provider's callback with this cookie fails too.
     const discord = await route(
@@ -276,7 +314,7 @@ describe("OAuth stub flow", () => {
     );
     expect(frag(discord)).toBe("#auth_error=oauth_failed");
     // The honest callback works.
-    expect(frag(await cb(q(good), cookie))).toMatch(/^#auth=/);
+    expect(frag(await cb(q(good), cookie))).toMatch(new RegExp(`^#auth=[^&]+&n=${NONCE}$`));
   });
 
   it("validates stub codes and form fields", async () => {
@@ -319,7 +357,9 @@ describe("real providers", () => {
     const live = fakeWorld({ GOOGLE_CLIENT_ID: "gid", GOOGLE_CLIENT_SECRET: "gs" });
     const res = await route(
       live.env,
-      req("/api/auth/oauth/google/start?link=0", { origin: "https://gamez.example.com" }),
+      req(`/api/auth/oauth/google/start?n=${NONCE}&link=0`, {
+        origin: "https://gamez.example.com",
+      }),
     );
     const loc = new URL(res.headers.get("location")!);
     expect(loc.origin + loc.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
@@ -341,7 +381,7 @@ describe("real providers", () => {
     const live = fakeWorld({ DISCORD_CLIENT_ID: "did", DISCORD_CLIENT_SECRET: "ds" });
     const res = await route(
       live.env,
-      req("/api/auth/oauth/discord/start", { origin: "https://gamez.example.com" }),
+      req(`/api/auth/oauth/discord/start?n=${NONCE}`, { origin: "https://gamez.example.com" }),
     );
     const loc = new URL(res.headers.get("location")!);
     expect(loc.origin + loc.pathname).toBe("https://discord.com/oauth2/authorize");

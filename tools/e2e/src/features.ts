@@ -19,6 +19,7 @@ import { classicQuestsFeature } from "./classic-quests.ts";
 import { classicVerifyFeature } from "./classic-verify.ts";
 import { guildsFeature } from "./guilds.ts";
 import { leaderboardsFeature } from "./leaderboards.ts";
+import { securityFeature } from "./security.ts";
 // wave C (docs/design/wave-C.md §11): one file per owner under ./waveC/.
 import { adminFeature } from "./waveC/admin.ts";
 import { arenaFeature } from "./waveC/arena.ts";
@@ -60,6 +61,8 @@ export const FEATURES: readonly E2eFeature[] = [
   // wave C: admin first (flags must be on), bank before trade/market/shops (they use vault items).
   adminFeature,
   bankFeature,
+  // ADR 0007: needs the bank flag on (admin) and runs after leaderboards (it adds an imported row).
+  securityFeature,
   tradeFeature,
   marketFeature,
   shopsFeature,

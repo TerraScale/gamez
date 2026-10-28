@@ -17,3 +17,8 @@ declare module "node:sqlite" {
     close(): void;
   }
 }
+
+/** Minimal typings for Node's `node:v8` (outbox.bytes.test.ts measures queue bodies with it). */
+declare module "node:v8" {
+  export function serialize(value: unknown): Uint8Array;
+}

@@ -7,17 +7,28 @@
  * This class only adapts WebSockets, SQLite, the outbox alarm and waitUntil to
  * ChatHost (chat/host.ts), which holds the logic. Blocks are kept in the
  * channel's SQLite (a socket attachment is capped at 2 KB), refreshed from
- * AccountDO on each join and written back to AccountDO on change.
+ * AccountDO on each join and written back to AccountDO on change. They are a
+ * cache of the connected accounts only (R9): an account's last socket close
+ * drops its rows.
  */
 import type { AccountKind, ChatMessage } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
-import { ChatHost, type ChatSocket, type ChatSocketInfo } from "../chat/host.ts";
+import { ChatHost, MEMBERSHIP_TTL_MS, type ChatSocket, type ChatSocketInfo } from "../chat/host.ts";
 import { createModerator } from "../chat/moderation.ts";
 import { ChatStore } from "../chat/store.ts";
 import { CHAT_HEADERS, sqlStoreOf, type ChatChannelApi, type Env } from "../contracts.ts";
 
 const FLUSH_BATCH = 200;
+/** Same default delay as Outbox.scheduleFlush. */
+const OUTBOX_FLUSH_DELAY_MS = 2000;
+/** A failed outbox flush is retried after this long. */
+const OUTBOX_RETRY_MS = 10_000;
+
+/** Hibernation tag of an account's sockets (R9: per-account lookups without scanning every socket). */
+function accountTag(accountId: string): string {
+  return `acct:${accountId}`;
+}
 
 export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi {
   readonly #store: ChatStore;
@@ -51,16 +62,20 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
       request.headers.get(CHAT_HEADERS.kind) === "registered" ? "registered" : "guest";
     const tag = request.headers.get(CHAT_HEADERS.tag) || null;
     const { 0: client, 1: server } = new WebSocketPair();
-    this.ctx.acceptWebSocket(server);
+    this.ctx.acceptWebSocket(server, [accountTag(accountId)]);
     const info: ChatSocketInfo = { accountId, name, kind, tag };
     server.serializeAttachment(info);
-    await this.#hostOf().open(this.#wrap(server));
+    const host = this.#hostOf();
+    await host.open(this.#wrap(server));
+    // R10: a guild channel re-checks every open socket's membership on an alarm.
+    if (host.needsMembershipSweep()) await this.#alarmAt(Date.now() + MEMBERSHIP_TTL_MS);
     return new Response(null, { status: 101, webSocket: client });
   }
 
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
     if (!ws.deserializeAttachment()) return;
-    this.#hostOf().handleMessage(this.#wrap(ws), message);
+    // Never rejects (ChatHost.handleMessage handles its own failures).
+    void this.#hostOf().handleMessage(this.#wrap(ws), message);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
@@ -69,17 +84,52 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
     } catch {
       // Already closed.
     }
+    this.#released(ws);
   }
 
-  /** Drains reports into the sync queue. A throw makes the runtime retry the alarm. */
+  async webSocketError(ws: WebSocket): Promise<void> {
+    this.#released(ws);
+  }
+
+  /** R9: the account's cached block rows go when its last socket here does. */
+  #released(ws: WebSocket): void {
+    if (!ws.deserializeAttachment()) return;
+    this.#hostOf().socketClosed(this.#wrap(ws));
+  }
+
+  /**
+   * Guild channels: sweeps membership (R10) and keeps the sweep alarm while
+   * guild sockets are open. Then drains reports into the sync queue; a failed
+   * flush is retried after OUTBOX_RETRY_MS (the sweep schedule never depends on
+   * the runtime's alarm retries).
+   */
   async alarm(): Promise<void> {
+    const host = this.#hostOf();
+    await host.sweepMembers();
+    if (host.needsMembershipSweep()) await this.#alarmAt(Date.now() + MEMBERSHIP_TTL_MS);
     const sink = {
       send: async (batch: ReplicationBatch) => {
         await this.env.SYNC_QUEUE.send(batch);
       },
     };
-    await this.#outbox.flush(sink, FLUSH_BATCH);
-    if (this.#outbox.size() > 0) await this.#outbox.scheduleFlush(this.ctx.storage, 0);
+    try {
+      await this.#outbox.flush(sink, FLUSH_BATCH);
+    } catch (err) {
+      console.error(`chat ${this.#store.channel}: outbox flush failed`, err);
+      await this.#alarmAt(Date.now() + OUTBOX_RETRY_MS);
+      return;
+    }
+    if (this.#outbox.size() > 0) await this.#alarmAt(Date.now());
+  }
+
+  /**
+   * One alarm serves both the outbox and the membership sweep: moves it
+   * earlier, never later (Outbox.scheduleFlush would keep a later sweep alarm
+   * and delay reports by up to a minute).
+   */
+  async #alarmAt(at: number): Promise<void> {
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || current > at) await this.ctx.storage.setAlarm(at);
   }
 
   // ---- ChatChannelApi (admin tools; the Worker route checks the caller) ----
@@ -100,11 +150,16 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
     return this.#hostOf().recent(limit);
   }
 
+  async revoke(accountId: string, reason: string): Promise<number> {
+    return this.#hostOf().revoke(accountId, reason);
+  }
+
   #hostOf(): ChatHost {
     this.#host ??= new ChatHost({
       channel: this.#store.channel,
       store: this.#store,
       sockets: () => this.#sockets(),
+      socketsOf: (accountId) => this.#sockets(accountTag(accountId)),
       now: () => Date.now(),
       moderator: createModerator(this.env),
       outbox: {
@@ -112,7 +167,7 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
           this.#outbox.append(table, pk, "upsert", payload);
         },
         scheduleFlush: () => {
-          this.#outbox.scheduleFlush(this.ctx.storage).catch((err: unknown) => {
+          this.#alarmAt(Date.now() + OUTBOX_FLUSH_DELAY_MS).catch((err: unknown) => {
             console.error(`chat ${this.#store.channel}: scheduleFlush failed`, err);
           });
         },
@@ -120,6 +175,8 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
       remoteBlocks: (accountId) => this.env.ACCOUNT.getByName(accountId).blocks(),
       remoteSetBlocked: (accountId, target, blocked) =>
         this.env.ACCOUNT.getByName(accountId).setBlocked(target, blocked),
+      guildLookup: async (accountId) =>
+        (await this.env.ACCOUNT.getByName(accountId).guild())?.guildId ?? null,
       waitUntil: (promise) => this.ctx.waitUntil(promise),
       log: (message, err) => console.error(message, err),
     });
@@ -127,9 +184,9 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
   }
 
   /** Open sockets with their attachments (hibernation-safe). */
-  #sockets(): ChatSocket[] {
+  #sockets(tag?: string): ChatSocket[] {
     const out: ChatSocket[] = [];
-    for (const ws of this.ctx.getWebSockets()) {
+    for (const ws of this.ctx.getWebSockets(tag)) {
       if (ws.readyState !== WebSocket.OPEN || !ws.deserializeAttachment()) continue;
       out.push(this.#wrap(ws));
     }

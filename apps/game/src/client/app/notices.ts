@@ -3,7 +3,8 @@
  * API error codes (docs/design/wave-B.md §3, §8.2). Pure, no DOM.
  */
 import { DISPLAY_NAME_MAX, DISPLAY_NAME_MIN, PASSWORD_MAX, PASSWORD_MIN } from "@gamez/protocol";
-import type { GuestSession } from "../session.ts";
+import type { ApiResult } from "@gamez/ui-host";
+import type { AuthFragmentResult, GuestSession } from "../session.ts";
 
 export type NoticeTone = "info" | "ok" | "error";
 
@@ -20,7 +21,7 @@ export interface Notice {
 }
 
 /** Result of consumeAuthFragment() (session.ts). */
-export type AuthFragment = { session: GuestSession } | { error: string } | null;
+export type AuthFragment = AuthFragmentResult | null;
 
 const ERROR_TEXT: Readonly<Record<string, string>> = {
   access_denied: "Sign-in was cancelled.",
@@ -34,6 +35,7 @@ const ERROR_TEXT: Readonly<Record<string, string>> = {
   locked: "Too many attempts. Wait a few minutes and try again.",
   provider_disabled: "That sign-in method is not available right now.",
   oauth_failed: "Sign-in did not complete. Try again.",
+  oauth_expired: "Sign-in expired. Try again.",
   unauthorized: "Your session ended. Sign in again.",
   rate_limited: "Too many requests. Wait a moment and try again.",
   not_found: "That could not be found.",
@@ -54,14 +56,39 @@ export function describeError(code: string): string {
 /**
  * Handles the OAuth return at boot. A session replaces the stored one
  * (`setSession`); either outcome becomes a toast. Returns null when the page
- * was not an OAuth return.
+ * was not an OAuth return, and for a link code (see applyOAuthLink).
+ * consumeAuthFragment only yields a session for a flow this tab started.
  */
 export function applyAuthFragment(
   fragment: AuthFragment,
   setSession: (s: GuestSession) => void,
 ): Notice | null {
-  if (fragment === null) return null;
+  if (fragment === null || "link" in fragment) return null;
   if ("error" in fragment) return { tone: "error", text: describeError(fragment.error) };
   setSession(fragment.session);
   return { tone: "ok", text: `Signed in as ${fragment.session.name}.` };
+}
+
+/**
+ * Finishes a link return (`#oauth_link=<code>`, ADR 0007 R3): redeems the
+ * code with the current session as the bearer and stores the session it
+ * answers (same account, now registered). Failures keep `current`.
+ */
+export async function applyOAuthLink(
+  code: string,
+  current: GuestSession,
+  redeem: (code: string, token: string) => Promise<ApiResult<GuestSession>>,
+  setSession: (s: GuestSession) => void,
+): Promise<{ session: GuestSession; notice: Notice }> {
+  let res: ApiResult<GuestSession>;
+  try {
+    res = await redeem(code, current.token);
+  } catch {
+    res = { ok: false, code: "network", message: "network" };
+  }
+  if (!res.ok) {
+    return { session: current, notice: { tone: "error", text: describeError(res.code) } };
+  }
+  setSession(res.value);
+  return { session: res.value, notice: { tone: "ok", text: `Login linked to ${res.value.name}.` } };
 }

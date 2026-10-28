@@ -12,8 +12,8 @@
  * The "verified" ack goes out only after the segment row committed.
  *
  * Messages are handled strictly one at a time through a promise queue:
- * packSnapshot/unpackSnapshot are async (CompressionStream) and a DO does not
- * block other events during non-storage awaits.
+ * packSnapshot is async (CompressionStream) and a DO does not block other
+ * events during non-storage awaits.
  */
 import {
   checkSegment,
@@ -27,8 +27,10 @@ import {
 } from "@gamez/kernel";
 import {
   BANK_ACTOR,
+  jsonWithinLimits,
+  MAX_IMPORT_SNAPSHOT_DEPTH,
+  MAX_IMPORT_SNAPSHOT_NODES,
   packSnapshot,
-  unpackSnapshot,
   VAULT_MAX_ITEMS,
   VERIFIED_ACTOR,
   type ArenaBuild,
@@ -134,6 +136,14 @@ interface BankOutcome {
 }
 
 const WITHDRAWALS: ReadonlySet<BankOp["kind"]> = new Set(["withdrawCoin", "withdrawItem"]);
+
+/**
+ * ADR 0007 R1: an imported hero (a client-authored local save) is quarantined
+ * from everything shared across players: bank, arena, season progress, ranked
+ * leaderboards. Only a new game clears the flag.
+ */
+export const IMPORTED_BANK_MESSAGE =
+  "This hero was imported from a local save and can't use the bank. Start a new hero to trade.";
 
 /** "<mode>:<accountId>" -> accountId. */
 export function accountOfInstance(name: string): string {
@@ -609,6 +619,15 @@ export class VerifiedHost {
       return fail("unavailable", "the game was updated, try again");
     }
     const rec = this.#rec!;
+    // ADR 0007 R1: before any bank row or account call, deposits and withdrawals alike.
+    if (rec.imported) {
+      this.#log("info", `verified ${this.#d.name}: bank refused for an imported hero`, {
+        opId: msg.opId,
+        kind: msg.op.kind,
+        imported: true,
+      });
+      return fail("not_eligible", IMPORTED_BANK_MESSAGE);
+    }
     const fast = msg.at.tick === rec.verifiedTick && msg.at.hash === rec.verifiedHash;
     const accountId = socket.info.accountId;
 
@@ -798,7 +817,7 @@ export class VerifiedHost {
   /** Credits a committed deposit; a provisional ok result while the account is unreachable. */
   async #creditOp(p: VerifiedPlatformDeps, row: BankOpRow): Promise<BankResult> {
     try {
-      const r = await creditAccount(p.account, this.#d.name, this.mode, row);
+      const r = await creditAccount(p.account, this.#d.name, this.mode, row, this.#sagaLog);
       if (r) {
         this.#finishOp(p, row, r);
         return r;
@@ -822,7 +841,7 @@ export class VerifiedHost {
     row.result = result;
     p.store.put(row);
     try {
-      await refundToAccount(p.account, this.#d.name, this.mode, row);
+      await refundToAccount(p.account, this.#d.name, this.mode, row, this.#sagaLog);
       this.#finishOp(p, row, result);
     } catch (err) {
       this.#log("warn", `verified ${this.#d.name}: refund of ${row.opId} failed`, err);
@@ -845,7 +864,9 @@ export class VerifiedHost {
           return;
         }
         if (!taken.ok) {
-          this.#finishOp(p, row, interrupted);
+          // Nothing was taken. A reused opId (conflict) says so; anything else was undone.
+          const r = taken.result;
+          this.#finishOp(p, row, !r.ok && r.code === "conflict" ? r : interrupted);
           return;
         }
         row.effect = taken.effect;
@@ -910,6 +931,8 @@ export class VerifiedHost {
       this.#ensure();
       const sim = this.#sim;
       if (!sim) return null;
+      // ADR 0007 R1: an imported hero never fights in the arena.
+      if (this.#rec?.imported) return null;
       const b = this.#safe(() => hooks.build?.(sim.world, this.#d.loaded.registry) ?? null, null);
       if (!b) return null;
       return {
@@ -926,6 +949,8 @@ export class VerifiedHost {
     const p = this.#d.platform;
     const hooks = this.#d.policy.platform;
     if (!p?.seasonProgress || !hooks?.seasonTotal || this.#seasonInFlight) return;
+    // ADR 0007 R1: an imported hero earns no season progress.
+    if (this.#rec?.imported) return;
     const accountId = this.#rec?.accountId || accountOfInstance(this.#d.name);
     if (!accountId) return;
     const s = this.#safe(
@@ -988,11 +1013,24 @@ export class VerifiedHost {
       });
       return;
     }
-    let snap: SimSnapshot;
-    try {
-      snap = await unpackSnapshot(msg.snapshot);
-    } catch {
-      this.#send(socket, { t: "error", code: "import_rejected", message: "unreadable snapshot" });
+    if (this.#bankBusy()) {
+      this.#sendBankBusy(socket);
+      return;
+    }
+    // R8: the server never inflates client data (workerd's DecompressionStream
+    // does not bound memory), and the save's structure is bounded before any
+    // restore or clone. The frame itself is capped at MAX_VERIFIED_CLIENT_FRAME.
+    if (msg.snapshot.enc !== "json") {
+      this.#send(socket, {
+        t: "error",
+        code: "import_rejected",
+        message: "compressed saves are not accepted",
+      });
+      return;
+    }
+    const snap: SimSnapshot = msg.snapshot.data;
+    if (!jsonWithinLimits(snap, MAX_IMPORT_SNAPSHOT_NODES, MAX_IMPORT_SNAPSHOT_DEPTH)) {
+      this.#send(socket, { t: "error", code: "import_rejected", message: "the save is too large" });
       return;
     }
     const { loaded } = this.#d;
@@ -1020,6 +1058,10 @@ export class VerifiedHost {
     }
     // Re-check after the await: another message cannot have run (queue), but stay strict.
     if (!this.#importable(rec)) return;
+    if (this.#bankBusy()) {
+      this.#sendBankBusy(socket);
+      return;
+    }
     this.#sim = sim;
     rec.epoch++;
     rec.verifiedTick = sim.tick;
@@ -1050,6 +1092,30 @@ export class VerifiedHost {
 
   #importable(rec: VerifiedRecord): boolean {
     return rec.segmentsTotal === 0 && !rec.importUsed;
+  }
+
+  /**
+   * A bank op is still pending (ADR 0007 R1): an import now could land a
+   * half-finished withdrawal on the imported sim. Fails closed when the bank
+   * store is unreadable.
+   */
+  #bankBusy(): boolean {
+    const p = this.#d.platform;
+    if (!p) return false;
+    try {
+      return p.store.pending().length > 0;
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: bank ops unreadable, import refused`, err);
+      return true;
+    }
+  }
+
+  #sendBankBusy(socket: InstanceSocket): void {
+    this.#send(socket, {
+      t: "error",
+      code: "not_importable",
+      message: "finish the pending bank operation first",
+    });
   }
 
   /** A sim restored from `snap` whose clone survives VALIDATE_TICKS ticks; null otherwise. */
@@ -1338,6 +1404,9 @@ export class VerifiedHost {
       // Socket went away; its close handler cleans up.
     }
   }
+
+  /** The bank saga's terminal anomalies (ADR 0007 R2: a conflicting refund or credit). */
+  readonly #sagaLog = (message: string, data?: unknown): void => this.#log("error", message, data);
 
   #log(level: "info" | "warn" | "error", message: string, data?: unknown): void {
     if (this.#d.log) this.#d.log(level, message, data);

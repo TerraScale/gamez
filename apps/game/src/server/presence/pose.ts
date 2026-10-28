@@ -20,12 +20,28 @@ export const APPEARANCE_PATTERN = /^unit\.hero(\.[a-z0-9_]+)*$/;
 
 /** Control characters (C0, DEL, C1) removed from tags. */
 const CONTROL = /\p{Cc}/gu;
+/**
+ * The shape of a client-reported tag (R11): "Lv <level> <word>", plain ASCII,
+ * level 1..9999. The word must also be in the world's `tagWords` vocabulary
+ * (game data, e.g. the classic class names), so a tag carries no free text.
+ */
+export const LEVEL_TAG_PATTERN = /^Lv ([1-9][0-9]{0,3}) ([A-Za-z][A-Za-z' -]{0,30})$/;
+/**
+ * The load-test swarm's latency tag, "lt-<epoch ms>" (tools/loadtest/src/tag.ts):
+ * digits only, so it carries no text either.
+ */
+export const LATENCY_TAG_PATTERN = /^lt-[0-9]{1,16}$/;
 
 export type PoseReason = "bad-pose" | "out-of-bounds" | "path-too-long";
 
 export interface PoseBounds {
   width: number;
   height: number;
+  /**
+   * The words a "Lv <n> <word>" tag may carry in this world (R11). Absent or
+   * empty: only the latency tag is relayed.
+   */
+  tagWords?: readonly string[];
 }
 
 export interface CleanPose {
@@ -64,11 +80,31 @@ export function sanitiseAppearance(v: unknown): string {
   return v;
 }
 
-/** Tag without control characters, at most MAX_TAG code points; undefined when nothing is left. */
+/**
+ * Tag without control characters, at most MAX_TAG code points; undefined when
+ * nothing is left. Operator-authored tags (town fixtures) use this lenient
+ * form; client-reported pose tags use sanitisePoseTag (R11).
+ */
 export function sanitiseTag(v: unknown): string | undefined {
   if (typeof v !== "string") return undefined;
   const clean = Array.from(v.replace(CONTROL, "")).slice(0, MAX_TAG).join("");
   return clean.length > 0 ? clean : undefined;
+}
+
+/**
+ * A client-reported tag, shown above every avatar in town (R11). It is not
+ * free text: only "Lv <1..9999> <word>" with `word` exactly one of
+ * `tagWords` (the world's game-data vocabulary), or the load test's
+ * "lt-<digits>", is relayed. Matching is exact and ASCII, so look-alike
+ * letters, fullwidth forms, links and insults are all dropped. Undefined for
+ * anything else (the avatar then shows no tag).
+ */
+export function sanitisePoseTag(v: unknown, tagWords: readonly string[] = []): string | undefined {
+  if (typeof v !== "string" || v.length > MAX_TAG) return undefined;
+  if (LATENCY_TAG_PATTERN.test(v)) return v;
+  const m = LEVEL_TAG_PATTERN.exec(v);
+  if (!m || !tagWords.includes(m[2]!)) return undefined;
+  return v;
 }
 
 /**
@@ -98,7 +134,7 @@ export function sanitisePose(raw: unknown, bounds: PoseBounds): PoseCheck {
   }
 
   const speed = Math.min(POSE_SPEED_MAX, Math.max(POSE_SPEED_MIN, raw.speed));
-  const tag = sanitiseTag(raw.tag);
+  const tag = sanitisePoseTag(raw.tag, bounds.tagWords);
   const pose: CleanPose = {
     pos,
     path,

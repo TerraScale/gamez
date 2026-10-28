@@ -33,7 +33,15 @@ describe("wallet", () => {
     expect(economy.wallet().balances.coin).toBe(100);
   });
 
-  it("returns the first result for a replay even when the payload differs", () => {
+  it("a replay with the same currency and amount returns the first result (reason not compared)", () => {
+    const economy = fresh();
+    economy.applyWalletTx({ txId: "w-1", currency: "gem", amount: 5, reason: "a" });
+    const replay = economy.applyWalletTx({ txId: "w-1", currency: "gem", amount: 5, reason: "b" });
+    expect(replay).toEqual({ ok: true, balance: 5, replayed: true });
+    expect(economy.wallet().balances.gem).toBe(5);
+  });
+
+  it("ADR 0007: a replay with another amount is a conflict and writes nothing", () => {
     const economy = fresh();
     economy.applyWalletTx({ txId: "w-1", currency: "gem", amount: 5, reason: "a" });
     const replay = economy.applyWalletTx({
@@ -42,7 +50,7 @@ describe("wallet", () => {
       amount: 999,
       reason: "b",
     });
-    expect(replay).toEqual({ ok: true, balance: 5, replayed: true });
+    expect(replay).toEqual({ ok: false, code: "conflict", balance: 5 });
     expect(economy.wallet().balances.gem).toBe(5);
   });
 

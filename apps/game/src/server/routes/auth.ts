@@ -10,9 +10,16 @@
  *   POST /api/auth/login                     {email,password} -> AuthResponse
  *   POST /api/auth/logout                    revokes a registered session
  *   POST /api/account/name                   {displayName} -> AuthResponse
- *   GET  /api/auth/oauth/:p/start?link=&token=  302 to the provider (or the stub page)
- *   GET  /api/auth/oauth/:p/callback         302 to /#auth=<token> or /#auth_error=<code>
+ *   GET  /api/auth/oauth/:p/start?n=&link=   302 to the provider (or the stub page)
+ *   GET  /api/auth/oauth/:p/callback         302 to /#auth=<token>&n=, /#oauth_link=<code>&n=
+ *                                            or /#auth_error=<code>&n=
+ *   POST /api/auth/oauth/link                {code} + Bearer -> AuthResponse (link to the bearer)
  *   GET|POST /api/auth/oauth/:p/stub         local stub provider (dev hosts only)
+ *
+ * ADR 0007 R3/R4: /start reads no account from the URL (`?link=1` is only an
+ * intent) and needs the browser's nonce `n`, which every fragment echoes so
+ * the SPA only accepts flows it started. A link callback claims nothing: it
+ * returns a sealed 5-minute code the SPA redeems with its own bearer.
  */
 import type { AuthErrorCode, ProviderInfo, ProvidersResponse } from "@gamez/protocol";
 import { newGuest, signToken } from "../auth.ts";
@@ -28,20 +35,22 @@ import {
 import {
   checkCallbackState,
   clearStateCookie,
+  isNonce,
   isOAuthProvider,
   newOAuthState,
   OAUTH_COOKIE,
   OAUTH_PROVIDERS,
+  openLinkCode,
   pkceChallenge,
   readCookie,
+  sealLinkCode,
   sealState,
   stateCookie,
-  type LinkTarget,
   type OAuthProviderId,
 } from "../auth/oauth/state.ts";
 import { decodeStubCode, stubCallbackLocation, stubPage, stubProfile } from "../auth/oauth/stub.ts";
-import { authenticateRequest } from "../auth/session.ts";
-import { apiError, json, readJson } from "../http.ts";
+import { authenticateRequest, authenticateToken } from "../auth/session.ts";
+import { apiError, bearerToken, json, readJson } from "../http.ts";
 import type { RouteContext, RouteHandler } from "./types.ts";
 
 let limiter = new IpLimiter();
@@ -85,15 +94,18 @@ function providers(c: RouteContext): ProvidersResponse {
 
 // ---- OAuth -------------------------------------------------------------------
 
+/** 302 to `/#<fragment>`, plus `&n=<nonce>` when the flow's nonce is known (ADR 0007 R4). */
 function fragmentRedirect(
   url: URL,
   fragment: string,
   extraHeaders: Record<string, string> = {},
+  nonce: string | null = null,
 ): Response {
+  const n = nonce !== null && isNonce(nonce) ? `&n=${nonce}` : "";
   return new Response(null, {
     status: 302,
     headers: {
-      location: `${url.origin}/#${fragment}`,
+      location: `${url.origin}/#${fragment}${n}`,
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",
       ...extraHeaders,
@@ -102,17 +114,18 @@ function fragmentRedirect(
 }
 
 async function oauthStart(c: RouteContext, provider: OAuthProviderId): Promise<Response> {
-  const { env, url, request } = c;
+  const { env, url } = c;
+  const n = url.searchParams.get("n");
+  const nonce = isNonce(n) ? n : null;
   const mode = providerMode(provider, env, url);
-  if (mode === "disabled") return fragmentRedirect(url, "auth_error=provider_disabled");
-  let link: LinkTarget | null = null;
-  if (url.searchParams.get("link") === "1") {
-    const who = await authenticateRequest(request, env, url);
-    if (!who) return fragmentRedirect(url, "auth_error=unauthorized");
-    link = { accountId: who.accountId, name: who.name, kind: who.kind, sid: who.sid };
-  }
+  if (mode === "disabled") return fragmentRedirect(url, "auth_error=provider_disabled", {}, nonce);
+  // Without the browser's nonce the SPA would drop the result anyway: fail now.
+  if (!nonce) return fragmentRedirect(url, "auth_error=oauth_failed");
+  // ADR 0007 R3: a link intent only. No account (and no ?token=) is read here;
+  // the account is the bearer that redeems the link code.
+  const link = url.searchParams.get("link") === "1";
   const redirectUri = redirectUriFor(url, provider);
-  const st = newOAuthState({ provider, stub: mode === "stub", link, redirectUri });
+  const st = newOAuthState({ provider, stub: mode === "stub", link, nonce, redirectUri });
   const challenge = await pkceChallenge(st.verifier);
   let location: string;
   if (mode === "real" && provider !== "apple") {
@@ -183,17 +196,20 @@ async function oauthStub(c: RouteContext, provider: OAuthProviderId): Promise<Re
 async function oauthCallback(c: RouteContext, provider: OAuthProviderId): Promise<Response> {
   const { request, url, env } = c;
   const clear = { "set-cookie": clearStateCookie(url.protocol === "https:") };
-  const failWith = (code: AuthErrorCode) => fragmentRedirect(url, `auth_error=${code}`, clear);
-
-  const mode = providerMode(provider, env, url);
-  if (mode === "disabled") return failWith("provider_disabled");
-  if (url.searchParams.has("error")) return failWith("oauth_failed");
   const st = await checkCallbackState(
     env.AUTH_SECRET,
     readCookie(request.headers.get("cookie"), OAUTH_COOKIE),
     provider,
     url.searchParams.get("state"),
   );
+  const nonce = st?.nonce ?? null;
+  const failWith = (code: AuthErrorCode) =>
+    fragmentRedirect(url, `auth_error=${code}`, clear, nonce);
+  const done = (fragment: string) => fragmentRedirect(url, fragment, clear, nonce);
+
+  const mode = providerMode(provider, env, url);
+  if (mode === "disabled") return failWith("provider_disabled");
+  if (url.searchParams.has("error")) return failWith("oauth_failed");
   if (!st) return failWith("oauth_failed");
   if (st.stub !== (mode === "stub") || st.redirectUri !== redirectUriFor(url, provider)) {
     return failWith("oauth_failed");
@@ -221,9 +237,41 @@ async function oauthCallback(c: RouteContext, provider: OAuthProviderId): Promis
     }
   }
 
-  const result = await completeOAuth(env, provider, profile, st.link, userAgent(request));
+  if (st.link) {
+    // ADR 0007 R3: claim nothing here. The SPA redeems the code with its own bearer.
+    const code = await sealLinkCode(env.AUTH_SECRET, {
+      provider,
+      subject: profile.subject,
+      email: profile.email,
+      name: profile.name,
+    });
+    return done(`oauth_link=${code}`);
+  }
+  const result = await completeOAuth(env, provider, profile, null, userAgent(request));
   if (!result.ok) return failWith(result.code);
-  return fragmentRedirect(url, `auth=${encodeURIComponent(result.response.token)}`, clear);
+  return done(`auth=${encodeURIComponent(result.response.token)}`);
+}
+
+/**
+ * POST /api/auth/oauth/link {code}: attaches the login sealed in `code` to
+ * the account of the Authorization bearer (never a URL token), upgrading a
+ * guest in place. Answers the same AuthResponse as a sign-in.
+ */
+async function oauthLink(c: RouteContext): Promise<Response> {
+  const { request, env, url } = c;
+  if (request.method !== "POST") return methodNotAllowed();
+  const who = await authenticateToken(env, bearerToken(request));
+  if (!who) return unauthorized();
+  const body = await readJson(request);
+  if (!body) return err(400, "bad_request", "expected a JSON object");
+  const grant = await openLinkCode(env.AUTH_SECRET, body.code);
+  if (!grant) return err(400, "oauth_failed", "That sign-in expired. Try again.");
+  if (providerMode(grant.provider, env, url) === "disabled") {
+    return err(400, "provider_disabled", "That sign-in method is not available right now.");
+  }
+  const link = { accountId: who.accountId, name: who.name, kind: who.kind, sid: who.sid };
+  const profile = { subject: grant.subject, email: grant.email, name: grant.name };
+  return flowResponse(await completeOAuth(env, grant.provider, profile, link, userAgent(request)));
 }
 
 // ---- router ------------------------------------------------------------------
@@ -279,12 +327,15 @@ export const authRoutes: RouteHandler = async (c) => {
     if (request.method !== "POST") return methodNotAllowed();
     const body = await readJson(request);
     if (!body) return err(400, "bad_request", "expected a JSON object");
-    if (path === "/api/auth/login") return flowResponse(await login(env, body, userAgent(request)));
+    const client = clientIp(request);
+    if (path === "/api/auth/login") {
+      return flowResponse(await login(env, body, userAgent(request), client));
+    }
     // A bearer, when sent, must be valid: it names the guest to upgrade.
     const hasBearer = (request.headers.get("authorization") ?? "") !== "";
     const who = hasBearer ? await authenticateRequest(request, env, url) : null;
     if (hasBearer && !who) return unauthorized();
-    return flowResponse(await register(env, body, who, userAgent(request)));
+    return flowResponse(await register(env, body, who, userAgent(request), client));
   }
 
   if (path === "/api/auth/logout") {
@@ -296,6 +347,8 @@ export const authRoutes: RouteHandler = async (c) => {
     }
     return json({ ok: true });
   }
+
+  if (path === "/api/auth/oauth/link") return oauthLink(c);
 
   const m = OAUTH_PATH.exec(path);
   if (m) {

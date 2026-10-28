@@ -293,4 +293,6 @@ export type ChatErrorCode =
   | "duplicate"
   | "filtered"
   | "forbidden"
+  /** ADR 0007 R9: the blocker already blocks BLOCK_LIMIT accounts in this channel. */
+  | "block_limit"
   | "internal";

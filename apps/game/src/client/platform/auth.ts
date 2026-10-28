@@ -16,6 +16,7 @@ import {
 } from "@gamez/protocol";
 import type { ApiResult, AuthApi } from "@gamez/ui-host";
 import {
+  beginOAuthNonce,
   clearSession,
   getSession,
   notifySessionChange,
@@ -23,12 +24,14 @@ import {
   type GuestSession,
   setSession,
 } from "../session.ts";
-import { badResponse, type HttpClient, unwrap } from "./http.ts";
+import { badResponse, createHttp, type FetchFn, type HttpClient, unwrap } from "./http.ts";
 
 export interface AuthDeps {
   http: HttpClient;
-  /** The current session token (for OAuth link URLs). */
+  /** The current session token. ADR 0007 R3: never put into an OAuth URL. */
   token(): string | null | undefined;
+  /** Injectable for tests; defaults to ../session.ts beginOAuthNonce (stores it per tab). */
+  oauthNonce?: () => string;
   /** Injectable for tests; defaults to ../session.ts getSession (POST /api/guest). */
   newGuest?: () => Promise<GuestSession>;
   /** Injectable for tests; defaults to ../session.ts setSession. */
@@ -64,6 +67,7 @@ export function createAuthApi(deps: AuthDeps): AuthApi {
   const save = deps.saveSession ?? setSession;
   const newGuest = deps.newGuest ?? (() => getSession());
   const subscribe = deps.subscribe ?? onSessionChange;
+  const oauthNonce = deps.oauthNonce ?? beginOAuthNonce;
 
   /** Shared path of register/login/setDisplayName: store the new session. */
   async function adopt(res: ApiResult<unknown>, what: string): Promise<ApiResult<AccountView>> {
@@ -132,10 +136,12 @@ export function createAuthApi(deps: AuthDeps): AuthApi {
       }
     },
 
+    // ADR 0007 R3/R4: no token in the URL (a link names no account; the
+    // return is redeemed with the bearer), and a fresh per-tab nonce that the
+    // return fragment must echo.
     oauthUrl(provider: AuthProvider, opts: { link: boolean }): string {
-      if (!opts.link) return `/api/auth/oauth/${provider}/start?link=0`;
-      const token = deps.token() ?? "";
-      return `/api/auth/oauth/${provider}/start?link=1&token=${encodeURIComponent(token)}`;
+      const n = encodeURIComponent(oauthNonce());
+      return `/api/auth/oauth/${provider}/start?n=${n}&link=${opts.link ? 1 : 0}`;
     },
 
     async setDisplayName(name) {
@@ -159,4 +165,26 @@ export function createAuthApi(deps: AuthDeps): AuthApi {
       return subscribe(cb);
     },
   };
+}
+
+/**
+ * Redeems the `#oauth_link=<code>` of a link flow this tab started (ADR 0007
+ * R3): POST /api/auth/oauth/link with the current session as the bearer. The
+ * login is attached to that account (a guest is upgraded in place). Resolves
+ * to the session to store; nothing here throws or stores.
+ */
+export async function redeemOAuthLink(
+  code: string,
+  token: string,
+  fetchFn?: FetchFn,
+): Promise<ApiResult<GuestSession>> {
+  const http = createHttp({ token: () => token, ...(fetchFn ? { fetch: fetchFn } : {}) });
+  const res = await http.request<AuthResponse>({
+    method: "POST",
+    path: "/api/auth/oauth/link",
+    body: { code },
+  });
+  if (!res.ok) return res;
+  if (!isAuthResponse(res.value)) return badResponse("/api/auth/oauth/link");
+  return { ok: true, value: sessionFromAuth(res.value) };
 }

@@ -6,10 +6,15 @@ import {
   sameStanding,
   sanitiseAppearance,
   sanitisePose,
+  sanitisePoseTag,
   sanitiseTag,
 } from "../../src/server/presence/pose.ts";
+import { BLOCK_WORDS } from "../../src/server/chat/words.ts";
+import { presenceWorld } from "../../src/shared/worlds.ts";
+import { PRESENCE_TAG_WORDS, presenceTag } from "@gamez/mode-classic";
+import { latencyTag, parseLatencyTag } from "../../../../tools/loadtest/src/tag.ts";
 
-const BOUNDS = { width: 72, height: 72 };
+const BOUNDS = { width: 72, height: 72, tagWords: PRESENCE_TAG_WORDS };
 
 function pose(over: Record<string, unknown> = {}): Record<string, unknown> {
   return { pos: { x: 36, y: 46 }, path: [{ x: 37, y: 46 }], speed: 4, ...over };
@@ -183,5 +188,94 @@ describe("sameStanding: keepalive poses", () => {
     expect(sameStanding(walking, next({ ...still, tag: "Lv 1 Warrior" }, walking), NOW)).toBe(
       false,
     );
+  });
+});
+
+describe("sanitisePoseTag: game-data vocabulary only (R11)", () => {
+  const WORDS = PRESENCE_TAG_WORDS;
+  const TOWN = presenceWorld("classic-town")!;
+
+  it("the classic town world carries the classic class vocabulary", () => {
+    expect(TOWN.tagWords).toBe(PRESENCE_TAG_WORDS);
+    expect([...WORDS]).toEqual(["Hero", "Rogue", "Sorcerer", "Warrior"]);
+  });
+
+  it("relays the swarm's latency tag unchanged (the e2e loadtest measures delivery with it)", () => {
+    const tag = latencyTag(1793200000000);
+    expect(sanitisePoseTag(tag)).toBe(tag);
+    const out = sanitisePose(pose({ tag }), TOWN);
+    expect(out.ok && parseLatencyTag(out.pose.tag)).toBe(1793200000000);
+  });
+
+  it("keeps the tag the classic client builds, for every class and the fallback", () => {
+    for (const word of WORDS) {
+      for (const level of [1, 12, 99, 9999]) {
+        const tag = presenceTag(level, word);
+        expect(sanitisePoseTag(tag, WORDS)).toBe(tag);
+      }
+    }
+    expect(presenceTag(3, undefined)).toBe("Lv 3 Hero");
+    const r = sanitisePose(pose({ tag: "Lv 12 Warrior" }), TOWN);
+    expect(r.ok && r.pose.tag).toBe("Lv 12 Warrior");
+  });
+
+  it.each([
+    // Free text in the word slot, whether or not the word list knows it.
+    `Lv 12 ${BLOCK_WORDS[0]}`,
+    "Lv 12 kill yourself",
+    "Lv 12 Idiot",
+    "Lv 12 Damn Warrior",
+    "Lv 7 Hero's Son",
+    "Lv 2 Ann-Marie.",
+    "Lv 12 warrior",
+    "Lv 12 Warrior ",
+    // Links, including TLDs the chat link check does not know.
+    "Lv 12 https://example.com",
+    "Lv 12 www.example.com",
+    "Lv 12 scam.ru",
+    "Lv 12 freegold.shop",
+    "scam.ru",
+    // Non-ASCII look-alikes (the reviewer's probes).
+    "Lv 12 ｋｙｓ",
+    "Lv 12 куѕ",
+    "Lv 12 𝐤𝐲𝐬",
+    "Lv 12 ｋｉｌｌｙｏｕｒｓｅｌｆ",
+    "Lv 12 example.соm",
+    "Lv 12 ｅｘａｍｐｌｅ.ｃｏｍ",
+    "Lv 12 Wаrrior", // Cyrillic а
+    "Lv 12 Ｗａｒｒｉｏｒ",
+    "Ｌｖ １２ Warrior",
+    "Lv １２ Warrior",
+    // Symbols, emoji, markup, control characters.
+    "Lv 12 Warrior 🔥",
+    "★ Hero ★",
+    "<b>Hero</b>",
+    "Hero",
+    "Lv\u0007 12 Warrior",
+    "Lv 0 Warrior",
+    "Lv 10000 Warrior",
+    "Lv 012 Warrior",
+    "lt-12a",
+    "lt-",
+  ])("drops %j", (tag) => {
+    expect(sanitisePoseTag(tag, WORDS)).toBeUndefined();
+    const r = sanitisePose(pose({ tag }), TOWN);
+    expect(r).toEqual({
+      ok: true,
+      pose: { pos: { x: 36, y: 46 }, path: [{ x: 37, y: 46 }], speed: 4, appearance: "unit.hero" },
+    });
+  });
+
+  it("drops every level tag in a world without a vocabulary", () => {
+    expect(sanitisePoseTag("Lv 12 Warrior")).toBeUndefined();
+    expect(sanitisePoseTag("Lv 12 Warrior", [])).toBeUndefined();
+    const r = sanitisePose(pose({ tag: "Lv 12 Warrior" }), { width: 72, height: 72 });
+    expect(r.ok && r.pose.tag).toBeUndefined();
+  });
+
+  it("drops non-strings and over-long tags", () => {
+    expect(sanitisePoseTag(42, WORDS)).toBeUndefined();
+    expect(sanitisePoseTag({ tag: "Lv 1 Rogue" }, WORDS)).toBeUndefined();
+    expect(sanitisePoseTag(`lt-${"1".repeat(40)}`, WORDS)).toBeUndefined();
   });
 });

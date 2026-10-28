@@ -282,9 +282,12 @@ export interface IdentityApi {
   }): Promise<{ record: IdentityRecord; created: boolean }>;
   /**
    * Email identities: verifies `password` against the stored hash with
-   * attempt limiting (5 failures -> locked, doubling from 1 min, max 1 h).
+   * attempt limiting. ADR 0007: the lockout is per (login, client), where
+   * `client` is the caller's network identity (the Worker passes
+   * clientIp(request); the store hashes it before storing). One client's
+   * failures never lock out another client. Absent = "unknown".
    */
-  checkPassword(password: string): Promise<PasswordCheck>;
+  checkPassword(password: string, client?: string): Promise<PasswordCheck>;
 }
 
 export function identityKey(provider: AuthProvider, subject: string): string {
@@ -320,7 +323,12 @@ export interface WalletTx {
 
 export type WalletTxResult =
   | { ok: true; balance: number; replayed: boolean }
-  | { ok: false; code: "insufficient_funds" | "bad_tx"; balance: number };
+  | { ok: false; code: "insufficient_funds" | "bad_tx"; balance: number }
+  /**
+   * ADR 0007: the txId was already applied with different parameters
+   * (currency or amount). Nothing changed; never treat it as a replay.
+   */
+  | { ok: false; code: "conflict"; balance: number };
 
 /** One entitlement grant (payment webhook, achievement, admin); idempotent by txId. */
 export interface EntitlementGrant {
@@ -440,6 +448,11 @@ export interface ChatChannelApi {
   /** System notice to everyone in the channel. */
   notice(text: string): Promise<void>;
   recent(limit: number): Promise<ChatMessage[]>;
+  /**
+   * ADR 0007: closes every socket of `accountId` in this channel (guild kick
+   * or leave) and returns how many were closed. Idempotent.
+   */
+  revoke(accountId: string, reason: string): Promise<number>;
 }
 
 // ---- D1 outbox payloads (§4; projections.ts maps them to columns) ----------
@@ -512,11 +525,15 @@ export interface WalletTxC extends WalletTx {
 
 export type VaultPutResult =
   | { ok: true; item: VaultItem; replayed: boolean }
-  | { ok: false; code: "vault_full" | "bad_item" };
+  | { ok: false; code: "vault_full" | "bad_item" }
+  /** ADR 0007: the txId was already used for a different item. Nothing changed. */
+  | { ok: false; code: "conflict" };
 
 export type VaultTakeResult =
   | { ok: true; item: VaultItem; replayed: boolean }
-  | { ok: false; code: "not_found" };
+  | { ok: false; code: "not_found" }
+  /** ADR 0007: the txId was already used to take a different uid. Nothing changed. */
+  | { ok: false; code: "conflict" };
 
 /** Wave C order record kept by AccountDO (account/purchases.ts). */
 export interface OrderRecord extends OrderView {

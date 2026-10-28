@@ -1,8 +1,8 @@
-import { applyBatch, type ReplicationBatch } from "@gamez/sync";
 import type { Env } from "./contracts.ts";
-import { projections } from "./projections.ts";
+import { consumeSyncBatch } from "./sync-consumer.ts";
 import { connectInstance, INSTANCE_PATH } from "./instance/route.ts";
 import { ROUTES } from "./routes/index.ts";
+import type { ReplicationBatch } from "@gamez/sync";
 
 export { RelayDO } from "./do/relay.ts";
 export { ChunkDO } from "./do/chunk.ts";
@@ -39,17 +39,8 @@ export default {
     return env.ASSETS.fetch(request);
   },
 
-  /** Sync consumer: each message is one ReplicationBatch from a DO outbox. */
+  /** Sync consumer: each message is one ReplicationBatch from a DO outbox (see sync-consumer.ts). */
   async queue(batch, env) {
-    for (const msg of batch.messages) {
-      try {
-        const res = await applyBatch(env.DB, msg.body, projections);
-        if (res.unknown > 0) console.warn("sync: records without projection", msg.body.source, res);
-        msg.ack();
-      } catch (err) {
-        console.error("sync: apply failed", msg.body.source, err);
-        msg.retry();
-      }
-    }
+    await consumeSyncBatch(batch, env);
   },
 } satisfies ExportedHandler<Env, ReplicationBatch>;

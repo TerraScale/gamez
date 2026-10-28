@@ -5,7 +5,7 @@
  *
  * Latency is measured two ways:
  * - end to end: every pose carries its send time in the cosmetic tag
- *   ("lt:<epoch ms>"); a bot receiving another bot's upsert records
+ *   ("lt-<epoch ms>", tag.ts); a bot receiving another bot's upsert records
  *   receive time - send time. All bots of a run share the host clock, so this
  *   needs no clock sync and is the pose -> delivery latency players see.
  * - server stamp: receive time (moved to the server clock with the ping
@@ -17,8 +17,9 @@ import type { ClientMessage, EntityId, ServerMessage, TilePos } from "@gamez/pro
 // The same codec constant the browser client uses, so the swarm follows a wire-format switch.
 import { codec } from "../../../apps/game/src/shared/codec.ts";
 import { Histogram } from "./stats.ts";
+import { latencyTag, parseLatencyTag } from "./tag.ts";
 
-export const TAG_PREFIX = "lt:";
+export { TAG_PREFIX } from "./tag.ts";
 const PING_EVERY_MS = 5000;
 const WALK_SPEED = 4;
 const MAX_PATH = 8;
@@ -216,10 +217,8 @@ export class PoseBot {
           this.others.set(e.id, e.kind);
           if (e.kind !== "player") continue;
           this.sink.upserts++;
-          if (e.tag?.startsWith(TAG_PREFIX)) {
-            const sent = Number(e.tag.slice(TAG_PREFIX.length));
-            if (Number.isFinite(sent)) this.sink.e2e.add(now - sent);
-          }
+          const sent = parseLatencyTag(e.tag);
+          if (sent !== null) this.sink.e2e.add(now - sent);
           this.sink.server.add(now + this.clockOffset - e.pathStartedAt);
         }
         break;
@@ -258,7 +257,7 @@ export class PoseBot {
       path: this.#route.slice(0, MAX_PATH),
       speed: WALK_SPEED,
       appearance: "unit.hero",
-      tag: `${TAG_PREFIX}${Date.now()}`,
+      tag: latencyTag(Date.now()),
     });
     this.sink.posesSent++;
   }

@@ -69,6 +69,16 @@ export interface ApplyResult {
   unknown: number;
 }
 
+/** Byte-size controls for `Outbox.flush`. Estimates, see `estimateRecordBytes`. */
+export interface FlushOptions {
+  /** Estimated bytes per batch. Default 96 KiB. */
+  maxBytes?: number;
+  /** A record estimated above this is dropped and reported. Default 120 KiB. */
+  hardMaxBytes?: number;
+  /** Called for each dropped record with its estimated size. Default: console.error. */
+  onOversize?: (record: OutboxRecord, bytes: number) => void;
+}
+
 /** Destination the outbox drains into (a Queue in production, anything in tests). */
 export interface BatchSink {
   send(batch: ReplicationBatch): Promise<void>;

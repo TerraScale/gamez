@@ -209,6 +209,7 @@ async function leave(request: Request, env: Env, url: URL): Promise<Response> {
     accountId: who.accountId,
   });
   await account.releaseGuild(opId, membership.guildId);
+  await revokeGuildChat(env, membership.guildId, who.accountId, "left");
   return json({ guild: res.guild });
 }
 
@@ -235,12 +236,34 @@ async function kick(request: Request, env: Env, url: URL): Promise<Response> {
   // release is only healing a slot left behind by an earlier crash.
   if (res.ok || res.code === "not_found") {
     await env.ACCOUNT.getByName(target).releaseGuild(opId, membership.guildId);
+    // Also on not_found: a retried kick whose first attempt failed after
+    // GuildDO.kick must still close the target's guild chat (R10).
+    await revokeGuildChat(env, membership.guildId, target, "kicked");
   }
   if (!res.ok) return guildError(res.code);
   return json({ guild: res.guild });
 }
 
 // ---- helpers ----------------------------------------------------------------
+
+/**
+ * Closes the account's sockets in the guild's chat channel (R10), so a kicked or
+ * departed member stops reading and posting at once. Best effort: a failure is
+ * logged and the guild change still stands: the channel's membership sweep
+ * (an alarm every MEMBERSHIP_TTL_MS) and the send re-check close the socket.
+ */
+async function revokeGuildChat(
+  env: Env,
+  guildId: string,
+  accountId: string,
+  reason: "kicked" | "left",
+): Promise<void> {
+  try {
+    await env.CHAT.getByName(`guild:${guildId}`).revoke(accountId, reason);
+  } catch (err) {
+    console.error(`guild ${guildId}: chat revoke failed`, err);
+  }
+}
 
 /** Guilds are an account feature: a guest token authenticates (kick checks, leave) but create/join refuse it. */
 function unauthorized(): Response {

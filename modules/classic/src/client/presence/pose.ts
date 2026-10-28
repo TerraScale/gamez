@@ -9,6 +9,7 @@
 import type { Entity, FrozenRegistry, World } from "@gamez/kernel";
 import { CombatStats, Hero, Level, Mover, Pos } from "../../components.ts";
 import { SUB, TICK_HZ } from "../../fixed.ts";
+import { presenceTag } from "../../presence-tag.ts";
 import { KIND, type ClassProto } from "../../types.ts";
 import type { PresenceConnection } from "@gamez/ui-host";
 
@@ -78,7 +79,7 @@ export function readPose(
     out.classId = classId;
     out.level = level;
     out.appearance = proto?.appearance ?? "unit.hero";
-    out.tag = `Lv ${level} ${proto?.name ?? "Hero"}`;
+    out.tag = presenceTag(level, proto?.name);
   }
 
   const mover = world.get(hero, Mover);

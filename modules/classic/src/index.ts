@@ -77,3 +77,4 @@ export * from "./platform/bank.ts";
 export * from "./platform/vault-codec.ts";
 export * from "./platform/build.ts";
 export * from "./platform/season.ts";
+export * from "./presence-tag.ts";

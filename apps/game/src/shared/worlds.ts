@@ -17,6 +17,7 @@
  * Pure: no Workers or DOM APIs.
  */
 import { townMap } from "@gamez/classic.town";
+import { PRESENCE_TAG_WORDS } from "@gamez/mode-classic";
 import type { TilePos } from "@gamez/protocol";
 import type { TileMap } from "@gamez/world";
 
@@ -36,6 +37,11 @@ export interface PresenceWorldSpec {
   characterMode: string | null;
   /** RelayDOs per region (>= 1). Plaza keeps exactly one, under its legacy name. */
   relayShards: number;
+  /**
+   * client-pose only: the words a reported "Lv <n> <word>" tag may carry
+   * (ADR 0007 R11). Game data, never free text; other tags are dropped.
+   */
+  tagWords?: readonly string[];
 }
 
 /** Size of the classic mode's town (modules/classic/src/world/town.ts TOWN_SIZE). */
@@ -63,6 +69,7 @@ export const PRESENCE_WORLDS: Readonly<Record<string, PresenceWorldSpec>> = {
     spawn: { x: 36, y: 46 },
     characterMode: null,
     relayShards: 4,
+    tagWords: PRESENCE_TAG_WORDS,
   },
 };
 

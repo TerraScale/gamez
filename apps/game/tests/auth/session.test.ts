@@ -167,16 +167,22 @@ describe("authenticateToken", () => {
     expect(await authenticateToken(broken, t)).toBeNull();
   });
 
-  it("reads the bearer header first, then ?token=", async () => {
+  it("reads the bearer header first, then ?token= on WebSocket upgrades only", async () => {
     const { env } = fakeWorld();
     const a = await signToken(SECRET, { accountId: "A", name: "n", issuedAt: Date.now() });
     const b = await signToken(SECRET, { accountId: "B", name: "n", issuedAt: Date.now() });
     const both = new Request(`https://g.test/ws?token=${b}`, {
-      headers: { authorization: `Bearer ${a}` },
+      headers: { authorization: `Bearer ${a}`, upgrade: "websocket" },
     });
     expect((await authenticateRequest(both, env))?.accountId).toBe("A");
-    const query = new Request(`https://g.test/ws?token=${b}`);
+    const query = new Request(`https://g.test/ws?token=${b}`, {
+      headers: { Upgrade: "WebSocket" },
+    });
     expect((await authenticateRequest(query, env))?.accountId).toBe("B");
+    // ADR 0007 R3: a URL token on a plain request (a cross-site link) is ignored.
+    expect(await authenticateRequest(new Request(`https://g.test/ws?token=${b}`), env)).toBeNull();
+    const notWs = new Request(`https://g.test/api/me?token=${b}`, { headers: { upgrade: "h2c" } });
+    expect(await authenticateRequest(notWs, env)).toBeNull();
     expect(await authenticateRequest(new Request("https://g.test/ws"), env)).toBeNull();
     expect(await authenticateToken(env, "x".repeat(5000))).toBeNull();
   });

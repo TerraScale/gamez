@@ -33,7 +33,7 @@ export class IdentityDO extends DurableObject<Env> implements IdentityApi {
     return this.#store.claim(input);
   }
 
-  async checkPassword(password: string): Promise<PasswordCheck> {
-    return this.#store.checkPassword(password);
+  async checkPassword(password: string, client?: string): Promise<PasswordCheck> {
+    return this.#store.checkPassword(password, client);
   }
 }

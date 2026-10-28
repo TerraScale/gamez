@@ -19,8 +19,10 @@ import {
 } from "@gamez/kernel";
 import * as classic from "@gamez/mode-classic";
 import {
+  packSnapshot,
   unpackSnapshot,
   VERIFIED_ACTOR,
+  type PackedSnapshot,
   type VerifiedClientMessage,
   type VerifiedServerMessage,
 } from "@gamez/protocol";
@@ -172,6 +174,35 @@ export class ClassicBot {
     // A continued join keeps the ledger's credit (unknown here): assume none.
     this.#setCredit(v.continued ? 0 : START_CREDIT_MS);
     return v;
+  }
+
+  /**
+   * Sends a legacy-save import (`snapshot`, or a raw packed frame for tamper
+   * tests) and waits for the answer. A vstate is adopted like a join (the bot
+   * continues from the imported sim); an error is returned as-is.
+   */
+  async importSave(
+    snapshot: SimSnapshot | PackedSnapshot,
+  ): Promise<{ vstate: VState } | { error: Extract<VerifiedServerMessage, { t: "error" }> }> {
+    const packed: PackedSnapshot =
+      "enc" in snapshot ? (snapshot as PackedSnapshot) : await packSnapshot(snapshot);
+    this.sendRaw({ t: "import", snapshot: packed, savedAt: Date.now() });
+    const m = await this.waitFor(
+      "import answer",
+      (x): x is VState | Extract<VerifiedServerMessage, { t: "error" }> =>
+        x.t === "vstate" || x.t === "error",
+    );
+    if (m.t === "error") return { error: m };
+    this.#vstate = m;
+    this.#epoch = m.epoch;
+    this.#verifiedTick = m.tick;
+    this.#verifiedHash = m.hash;
+    if (m.snapshot) {
+      this.#sim = createSim(classicLoaded(), { seed: 0, from: await unpackSnapshot(m.snapshot) });
+    }
+    this.#rec = new SegmentRecorder(this.#sim.tick);
+    this.#setCredit(START_CREDIT_MS);
+    return { vstate: m };
   }
 
   /** Dispatches locally and records the input (throws when the sim rejects it). */

@@ -27,9 +27,24 @@ Optional flags: `--primary-location-hint <wnam|enam|weur|eeur|apac|oc>`, `--juri
 
 ```sh
 cf queues create --queue-name gamez-sync
+cf queues create --queue-name gamez-sync-dlq
 ```
 
-`cf queues consumers create <queue-id>` creates a consumer, but its flags are **unverified**. `cf deploy` provisions missing bindings by default (`--provision`, default `true`), so the consumer may be created on first deploy. Check after the first deploy with `cf queues consumers list`.
+`gamez-sync-dlq` is the dead-letter queue for `gamez-sync`. Messages land there after 10 failed deliveries. Nothing else in the repo creates it, so create it with the command above.
+
+`cf queues consumers create <queue-id>` creates a consumer, but its flags are **unverified**. `cf deploy` provisions missing bindings by default (`--provision`, default `true`), so the consumers may be created on first deploy. Check after the first deploy with `cf queues consumers list`. Two consumers must exist: `gamez-sync` (batch size 4, retry delay 10 s) and `gamez-sync-dlq` (batch size 4, 100 retries, retry delay 900 s). Both are declared in `apps/game/cloudflare.config.ts`.
+
+### Draining the DLQ
+
+The `gamez-sync-dlq` consumer runs the same `consumeSyncBatch` as `gamez-sync`. It re-applies each dead-lettered batch (applying is idempotent and version-guarded) and logs every failure at error level as `sync: DLQ apply failed`, with `source` and `records`. Failed batches are retried every 15 minutes, up to 100 times, and are then dropped. To check the backlog, use `cf queues list` (message counts are **unverified**). Alert on `sync: DLQ apply failed` in the Worker logs. A growing DLQ means D1 cannot take the writes, so fix the cause before the 100 retries run out.
+
+### Free plan
+
+The free plan allows 50 D1 queries per invocation, not 1000. A message with `n` records costs `n + 1` statements, so one invocation must stay within 50. Lower these before deploying on the free plan:
+
+- `maxBatchSize` for `gamez-sync` and `gamez-sync-dlq` to `1`.
+- `FLUSH_BATCH` in the Durable Objects (`200` in `do/*.ts`) to `48` or less, so each message costs at most 49 statements.
+- `SYNC_STATEMENT_BUDGET` in `apps/game/src/server/sync-consumer.ts` to `49`.
 
 ## 3. Apply D1 migrations (remote)
 

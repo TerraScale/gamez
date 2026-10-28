@@ -31,12 +31,24 @@ export default defineConfig({
       ConfigDO: exports.durableObject({ storage: "sqlite" }),
     },
     triggers: [
+      // 4 x (FLUSH_BATCH 200 + 1) <= 1000, the paid plan's D1 queries per invocation.
+      // The consumer also enforces SYNC_STATEMENT_BUDGET (sync-consumer.ts). Free plan: see docs/deploy.md.
       triggers.queue({
         name: "gamez-sync",
-        maxBatchSize: 100,
+        maxBatchSize: 4,
         maxBatchTimeout: 1,
         maxRetries: 10,
+        // Default delay for a retried message. The consumer sets a per-message backoff.
+        retryDelay: 10,
         deadLetterQueue: "gamez-sync-dlq",
+      }),
+      // Drains dead-lettered batches. Re-applying is idempotent (version-guarded).
+      // It has no DLQ of its own, so after 100 retries a message is dropped.
+      triggers.queue({
+        name: "gamez-sync-dlq",
+        maxBatchSize: 4,
+        maxRetries: 100,
+        retryDelay: 900,
       }),
     ],
     env: {

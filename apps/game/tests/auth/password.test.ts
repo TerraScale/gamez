@@ -188,7 +188,7 @@ describe("IdentityStore", () => {
     });
     clock.advance(120_000);
     expect((await store.checkPassword("correct-horse-battery-9")).ok).toBe(true);
-    expect(store.lockState()).toEqual({ failures: 0, lockedUntil: 0 });
+    expect(await store.lockState()).toEqual({ failures: 0, lockedUntil: 0 });
     expect(await store.checkPassword("nope-nope-nope")).toEqual({
       ok: false,
       reason: "bad_password",
@@ -202,7 +202,7 @@ describe("IdentityStore", () => {
     );
     expect(results.filter((r) => !r.ok && r.reason === "bad_password")).toHaveLength(4);
     expect(results.filter((r) => !r.ok && r.reason === "locked")).toHaveLength(8);
-    expect(store.lockState()?.failures).toBe(5);
+    expect((await store.lockState())?.failures).toBe(5);
   });
 
   it("rehashes a weaker stored hash after a successful login", async () => {

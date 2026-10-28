@@ -7,6 +7,11 @@
  * negative; integers only; cosmetics can only be equipped when owned
  * (owned = granted entitlements with a "cosmetic." sku).
  *
+ * ADR 0007 R2: a wallet txId is bound to its currency and amount. A known
+ * txId with other parameters answers { ok: false, code: "conflict" } and
+ * writes nothing, so a reused txId can never pass as a replay of a different
+ * change (a 1-coin debit replayed "ok" for 1e9 coin).
+ *
  * Every mutation runs in one transactionSync: a throw (or a rejected input)
  * leaves no partial write behind. Insufficient funds are returned, not thrown,
  * and write nothing, so the same txId can be retried later.
@@ -58,6 +63,7 @@ const SKU_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 // Row shapes (SqlStorage.exec requires Record<string, SqlStorageValue>: use type aliases).
 type BalanceRow = { currency: string; amount: number };
 type TxRow = { result: string };
+type WalletTxRow = { result: string; currency: string | null; amount: number | null };
 type StashRow = { uid: string; item_id: string; origin: string; count: number };
 type EntitlementRow = { tx_id: string; sku: string; source: string; granted_at: number };
 type EquippedRow = { slot: string; cosmetic_id: string };
@@ -230,10 +236,14 @@ export class AccountEconomy {
     }
     const currency = tx.currency;
     return this.store.transactionSync((): WalletTxResult => {
-      const prior = this.#findTx(TX_WALLET, tx.txId);
+      const prior = this.#findWalletTx(tx.txId);
       if (prior) {
-        const first = JSON.parse(prior.result) as { balance: number };
-        return { ok: true, balance: first.balance, replayed: true };
+        // Strict replay: only the same change replays (rows without the columns can't prove it).
+        const first = parseBalance(prior.result);
+        if (prior.currency !== currency || prior.amount !== tx.amount || first === null) {
+          return { ok: false, code: "conflict", balance: this.balanceOf(currency) };
+        }
+        return { ok: true, balance: first, replayed: true };
       }
       const current = this.balanceOf(currency);
       const next = current + tx.amount;
@@ -451,6 +461,18 @@ export class AccountEconomy {
     );
   }
 
+  #findWalletTx(txId: string): WalletTxRow | null {
+    return (
+      this.store.sql
+        .exec<WalletTxRow>(
+          "SELECT result, currency, amount FROM tx WHERE kind = ? AND tx_id = ?",
+          TX_WALLET,
+          txId,
+        )
+        .toArray()[0] ?? null
+    );
+  }
+
   #recordTx(kind: string, txId: string, result: unknown): void {
     this.store.sql.exec(
       "INSERT INTO tx (kind, tx_id, result, at) VALUES (?, ?, ?, ?)",
@@ -479,6 +501,16 @@ export class AccountEconomy {
       )
       .toArray()
       .map((r) => r.sku);
+  }
+}
+
+/** The balance stored in a wallet tx result, or null when the row is unreadable. */
+function parseBalance(result: string): number | null {
+  try {
+    const v = (JSON.parse(result) as { balance?: unknown } | null)?.balance;
+    return typeof v === "number" && Number.isSafeInteger(v) ? v : null;
+  } catch {
+    return null;
   }
 }
 

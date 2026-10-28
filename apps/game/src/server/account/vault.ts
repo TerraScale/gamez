@@ -9,6 +9,13 @@
  * so a uid always names exactly what was put. Rejections (vault_full,
  * not_found, bad_item) write nothing, so the same txId can be retried later.
  *
+ * ADR 0007 R2: a txId is bound to its parameters. A known "vault.take" txId
+ * replays only for the same uid; a known "vault.put" txId only for the same
+ * item (itemId, origin, count, universal, tradable, summary, data: compared
+ * as the canonical cleanInput JSON of the stored item). Anything else
+ * answers { ok: false, code: "conflict" } and writes nothing; a stored result
+ * that cannot be proven equal is a conflict too.
+ *
  * walletTx = economy.applyWalletTx with a flow. Telemetry: every applied
  * (non-replayed) wallet change — through walletTx or the wave B
  * applyWalletTx — appends "economy_ledger" (signed delta, flow, reasonGroup)
@@ -182,6 +189,29 @@ function toItem(r: VaultRow): VaultItem {
   };
 }
 
+/** Canonical form of a valid input: equal items give equal strings (key order fixed by cleanInput). */
+function canonicalInput(i: VaultItemInput): string {
+  return JSON.stringify(cleanInput(i));
+}
+
+/** The stored item of a tx result, or null when the row is unreadable. */
+function storedItem(result: string): VaultItem | null {
+  try {
+    const v: unknown = JSON.parse(result);
+    if (!v || typeof v !== "object" || typeof (v as { uid?: unknown }).uid !== "string")
+      return null;
+    return v as VaultItem;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the stored put result is exactly `input` (plus its uid). */
+function samePut(stored: VaultItem, input: VaultItemInput): boolean {
+  const { uid: _uid, ...rest } = stored;
+  return vaultItemProblem(rest) === null && canonicalInput(rest) === canonicalInput(input);
+}
+
 function isTxId(v: unknown): v is string {
   return typeof v === "string" && v.length > 0 && v.length <= MAX_TX_ID;
 }
@@ -233,7 +263,11 @@ export class AccountVault {
     const input = cleanInput(item);
     return this.store.transactionSync((): VaultPutResult => {
       const prior = this.#findTx(TX_VAULT_PUT, txId);
-      if (prior) return { ok: true, item: JSON.parse(prior.result) as VaultItem, replayed: true };
+      if (prior) {
+        const first = storedItem(prior.result);
+        if (!first || !samePut(first, input)) return { ok: false, code: "conflict" };
+        return { ok: true, item: first, replayed: true };
+      }
       if (this.size() >= VAULT_MAX_ITEMS) return { ok: false, code: "vault_full" };
       const seq = this.#nextSeq();
       const uid = `v${seq}`;
@@ -261,7 +295,11 @@ export class AccountVault {
       return { ok: false, code: "not_found" };
     return this.store.transactionSync((): VaultTakeResult => {
       const prior = this.#findTx(TX_VAULT_TAKE, txId);
-      if (prior) return { ok: true, item: JSON.parse(prior.result) as VaultItem, replayed: true };
+      if (prior) {
+        const first = storedItem(prior.result);
+        if (!first || first.uid !== uid) return { ok: false, code: "conflict" };
+        return { ok: true, item: first, replayed: true };
+      }
       const item = this.vaultGet(uid);
       if (!item) return { ok: false, code: "not_found" };
       this.store.sql.exec("DELETE FROM stash WHERE uid = ?", uid);

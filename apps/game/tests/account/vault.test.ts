@@ -78,7 +78,9 @@ describe("vault: put and take", () => {
     expect(first).toMatchObject({ ok: true, replayed: false });
     if (!first.ok) throw new Error("put failed");
     expect(first.item.uid).toBe("v1");
-    expect(vault.vaultPut("tx-1", testItem("other"))).toEqual({ ...first, replayed: true });
+    expect(vault.vaultPut("tx-1", testItem("sword"))).toEqual({ ...first, replayed: true });
+    // ADR 0007: the same txId for another item is a conflict, not a replay.
+    expect(vault.vaultPut("tx-1", testItem("other"))).toEqual({ ok: false, code: "conflict" });
     expect(vault.vault()).toHaveLength(1);
     expect(vault.vaultGet("v1")).toEqual(first.item);
 

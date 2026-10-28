@@ -19,6 +19,7 @@ import {
   type ReportReason,
 } from "@gamez/protocol";
 import type { ChatReportPayload } from "../contracts.ts";
+import { BLOCK_LIMIT } from "../account/social.ts";
 import { TokenBucket, type BucketSpec } from "../rate-limit.ts";
 import { filterChat } from "./filter.ts";
 import { encodeChatServerMessage, parseChatClientMessage } from "./messages.ts";
@@ -40,6 +41,27 @@ export const STRIKES_TO_MUTE = 3;
 export const AUTO_MUTE_MS = 15 * 60 * 1000;
 /** Pings per socket: burst 3, one per second; excess ones are dropped silently. */
 const PING_RATE: BucketSpec = { burst: 3, perSecond: 1 };
+/** Block messages per socket: burst 10, one per 2 s (R9). Refusals never reach AccountDO. */
+export const BLOCK_RATE: BucketSpec = { burst: 10, perSecond: 0.5 };
+/**
+ * R9: a join drops the cached block rows of accounts with no open socket at
+ * most this often (a backstop for a close the runtime never reported; the
+ * last-socket close and a host start drop them as well).
+ */
+export const BLOCK_SWEEP_MS = 5 * 60 * 1000;
+/** A guild channel re-checks a sender's membership at most this often (R10). */
+export const MEMBERSHIP_TTL_MS = 60_000;
+/**
+ * A guild channel whose membership answers keep failing closes a socket once
+ * its last confirmed answer is this old (R10). The client reconnects and the
+ * upgrade checks membership again.
+ */
+export const MEMBERSHIP_STALE_MS = 3 * MEMBERSHIP_TTL_MS;
+/** Close code for a socket whose account is no longer allowed here (routes/chat.ts CLOSE_CHAT_FORBIDDEN). */
+export const CLOSE_FORBIDDEN = 4403;
+/** Close code when membership could not be confirmed (retryable: "try again later"). */
+export const CLOSE_RETRY = 1013;
+const GUILD_PREFIX = "guild:";
 const MAX_HIDE_IDS = 50;
 
 /** Report author recorded for automatic (moderator) reports. */
@@ -74,6 +96,8 @@ export interface ChatHostDeps {
   store: ChatStore;
   /** Open sockets of this channel. */
   sockets(): ChatSocket[];
+  /** Open sockets of one account (defaults to filtering sockets()). */
+  socketsOf?: (accountId: string) => ChatSocket[];
   now(): number;
   moderator: Moderator;
   outbox: ChatOutbox;
@@ -81,6 +105,11 @@ export interface ChatHostDeps {
   remoteBlocks(accountId: string): Promise<string[]>;
   /** Persists a block change in AccountDO (may throw; the local block still applies). */
   remoteSetBlocked(accountId: string, target: string, blocked: boolean): Promise<unknown>;
+  /**
+   * Guild channels only (R10): the guild id the account belongs to now, or null.
+   * The host caches answers for MEMBERSHIP_TTL_MS. Unset outside guild channels.
+   */
+  guildLookup?: (accountId: string) => Promise<string | null>;
   /** Keeps background work alive past the handler (the DO's ctx.waitUntil). */
   waitUntil(promise: Promise<unknown>): void;
   log?: (message: string, err?: unknown) => void;
@@ -120,19 +149,51 @@ export class ChatHost {
   readonly #d: ChatHostDeps;
   readonly #buckets = new Map<string, TokenBucket>();
   readonly #pings = new WeakMap<ChatSocket, TokenBucket>();
+  readonly #blockBuckets = new WeakMap<ChatSocket, TokenBucket>();
+  /** Sockets this host has closed (revoke is idempotent over them). */
+  readonly #closed = new WeakSet<ChatSocket>();
+  /** Guild id of this channel, or null for a non-guild channel. */
+  readonly #guildId: string | null;
+  /** Last membership answer per account (guild channels). */
+  readonly #members = new Map<string, { guildId: string | null; at: number }>();
+  /**
+   * Guild sockets accepted but not yet confirmed by open()'s fresh membership
+   * lookup. They get no broadcasts until confirmed (R10).
+   */
+  readonly #opening = new WeakSet<ChatSocket>();
+  /** Lookups in flight, shared by concurrent sends of one account (keeps their order). */
+  readonly #lookups = new Map<string, Promise<string | null | undefined>>();
   readonly #log: (message: string, err?: unknown) => void;
   #lastAt = -1;
   #lastN = -1;
+  #lastBlockSweep: number;
 
   constructor(deps: ChatHostDeps) {
     this.#d = deps;
     this.#log = deps.log ?? DEFAULT_LOG;
+    this.#guildId = deps.channel.startsWith(GUILD_PREFIX)
+      ? deps.channel.slice(GUILD_PREFIX.length)
+      : null;
     const last = deps.store.lastMessageId();
     const m = last ? /^([0-9a-z]+)-(\d+)$/.exec(last) : null;
     if (m) {
       this.#lastAt = Number.parseInt(m[1]!, 36);
       this.#lastN = Number(m[2]);
     }
+    // R9: rows of accounts whose sockets went away while no host was running
+    // (a restart drops every socket) are stale cache entries.
+    this.#lastBlockSweep = deps.now();
+    this.#sweepBlocks();
+  }
+
+  /**
+   * The runtime reports that `socket` closed or errored. When it was the
+   * account's last socket here, its cached block rows are dropped (R9): they
+   * live in AccountDO and the next open() restores them.
+   */
+  socketClosed(socket: ChatSocket): void {
+    this.#closed.add(socket);
+    this.#releaseBlocksIfGone(socket.info.accountId);
   }
 
   /**
@@ -141,15 +202,42 @@ export class ChatHost {
    */
   async open(socket: ChatSocket): Promise<void> {
     const { accountId, name } = socket.info;
+    if (this.#guildId !== null && this.#d.guildLookup) {
+      // R10: the upgrade's membership check ran before this socket was
+      // accepted, so a kick could have released the account and revoked (seeing
+      // no socket) in between. A lookup that starts now, after the accept,
+      // either sees the release or the revoke sees this socket.
+      this.#opening.add(socket);
+      let current: string | null;
+      try {
+        current = await withTimeout(this.#d.guildLookup(accountId), BLOCK_REFRESH_MS);
+      } catch (err) {
+        this.#log(`chat ${this.#d.channel}: membership lookup on join failed`, err);
+        this.#closeSocket(socket, CLOSE_RETRY, "membership unavailable");
+        return;
+      }
+      if (this.#closed.has(socket)) return; // revoked while the lookup ran (the revoke wins)
+      this.#members.set(accountId, { guildId: current, at: this.#d.now() });
+      if (current !== this.#guildId) {
+        this.#closeSocket(socket, CLOSE_FORBIDDEN, "not a member");
+        return;
+      }
+      this.#opening.delete(socket);
+    }
     try {
-      this.#d.store.mergeBlocks(
-        accountId,
-        await withTimeout(this.#d.remoteBlocks(accountId), BLOCK_REFRESH_MS),
-      );
+      const remote = await withTimeout(this.#d.remoteBlocks(accountId), BLOCK_REFRESH_MS);
+      // The socket may have closed while AccountDO answered: its close already
+      // dropped the rows, so a merge now would leave them behind (R9).
+      if (this.#closed.has(socket) || !this.#hasLiveSocket(accountId)) return;
+      this.#d.store.mergeBlocks(accountId, remote);
     } catch (err) {
       this.#log(`chat ${this.#d.channel}: block list refresh failed`, err);
     }
     const now = this.#d.now();
+    if (now - this.#lastBlockSweep >= BLOCK_SWEEP_MS) {
+      this.#lastBlockSweep = now;
+      this.#sweepBlocks();
+    }
     const blocked = this.#d.store.blockList(accountId);
     const blockedSet = new Set(blocked);
     const history = this.#d.store
@@ -166,18 +254,194 @@ export class ChatHost {
     });
   }
 
-  /** Handles one client frame. Never throws. */
-  handleMessage(socket: ChatSocket, raw: string | ArrayBuffer): void {
+  /**
+   * Handles one client frame. Never rejects. Non-guild frames are handled
+   * synchronously; a guild send first re-checks the sender's membership (R10),
+   * so it resolves later.
+   */
+  async handleMessage(socket: ChatSocket, raw: string | ArrayBuffer): Promise<void> {
+    // A socket this host closed (revoke, sweep) gets no more service.
+    if (this.#closed.has(socket) || this.#opening.has(socket)) return;
     const msg = parseChatClientMessage(raw);
     if (!msg) {
       this.#reject(socket, "bad_message", "invalid message");
       return;
     }
     try {
+      if (msg.t === "send" && this.#guildId !== null && this.#d.guildLookup) {
+        if (!(await this.#stillMember(socket.info.accountId))) {
+          // Kicked or left: the message is dropped and the socket closed.
+          this.#closeSocket(socket, CLOSE_FORBIDDEN, "not a member");
+          return;
+        }
+      }
       this.#dispatch(socket, msg);
     } catch (err) {
       this.#log(`chat ${this.#d.channel}: ${msg.t} failed`, err);
       this.#reject(socket, "internal", `${msg.t} failed`);
+    }
+  }
+
+  /**
+   * Closes every open socket of `accountId` in this channel with close code
+   * 4403 (a guild kick or leave, R10). Returns how many were closed; a repeat
+   * call closes nothing more.
+   */
+  revoke(accountId: string, reason: string): number {
+    // Later sends and sweeps within the TTL see the departure without a lookup.
+    if (this.#guildId !== null) {
+      this.#members.set(accountId, { guildId: null, at: this.#d.now() });
+    }
+    let closed = 0;
+    for (const s of this.#d.sockets()) {
+      if (s.info.accountId !== accountId || this.#closed.has(s)) continue;
+      this.#closeSocket(s, CLOSE_FORBIDDEN, reason);
+      closed++;
+    }
+    return closed;
+  }
+
+  /** True when this is a guild channel with open sockets (the DO keeps its sweep alarm then). */
+  needsMembershipSweep(): boolean {
+    return this.#guildId !== null && this.#d.sockets().some((s) => !this.#closed.has(s));
+  }
+
+  /**
+   * Guild channels (R10): looks up the membership of every account with an
+   * open socket and closes the sockets of accounts that are no longer in this
+   * guild with 4403. Covers a lost revoke and a member who only reads. A failed
+   * lookup keeps the socket until its last confirmed answer is
+   * MEMBERSHIP_STALE_MS old, then closes it with 1013 (the client reconnects and
+   * the upgrade checks again). Never rejects.
+   */
+  async sweepMembers(): Promise<void> {
+    const guildId = this.#guildId;
+    const lookup = this.#d.guildLookup;
+    if (guildId === null || !lookup) return;
+    const accounts = [
+      ...new Set(
+        this.#d
+          .sockets()
+          .filter((s) => !this.#closed.has(s))
+          .map((s) => s.info.accountId),
+      ),
+    ].sort();
+    const answers = await Promise.all(
+      accounts.map(async (accountId) => {
+        try {
+          return await withTimeout(lookup(accountId), BLOCK_REFRESH_MS);
+        } catch (err) {
+          this.#log(`chat ${this.#d.channel}: membership sweep lookup failed`, err);
+          return undefined;
+        }
+      }),
+    );
+    const now = this.#d.now();
+    accounts.forEach((accountId, i) => {
+      const current = answers[i];
+      let close: { code: number; reason: string } | null = null;
+      if (current === undefined) {
+        const last = this.#members.get(accountId);
+        if (last && last.guildId !== guildId) {
+          close = { code: CLOSE_FORBIDDEN, reason: "not a member" };
+        } else if (!last || now - last.at > MEMBERSHIP_STALE_MS) {
+          close = { code: CLOSE_RETRY, reason: "membership unavailable" };
+        }
+      } else {
+        this.#members.set(accountId, { guildId: current, at: now });
+        if (current !== guildId) close = { code: CLOSE_FORBIDDEN, reason: "not a member" };
+      }
+      if (!close) return;
+      for (const s of this.#d.sockets()) {
+        if (s.info.accountId === accountId && !this.#closed.has(s)) {
+          this.#closeSocket(s, close.code, close.reason);
+        }
+      }
+    });
+  }
+
+  /**
+   * Whether `accountId` is still in this guild channel's guild (R10). An answer
+   * is cached for MEMBERSHIP_TTL_MS. A failed lookup keeps the last known answer,
+   * and with none known the send is allowed (the upgrade already checked it).
+   */
+  async #stillMember(accountId: string): Promise<boolean> {
+    const guildId = this.#guildId;
+    const now = this.#d.now();
+    const known = this.#members.get(accountId);
+    if (known && now - known.at < MEMBERSHIP_TTL_MS) return known.guildId === guildId;
+
+    let pending = this.#lookups.get(accountId);
+    if (!pending) {
+      const lookup = this.#d.guildLookup;
+      if (!lookup) return true;
+      pending = Promise.resolve()
+        .then(() => lookup(accountId))
+        .then(
+          (current) => {
+            this.#members.set(accountId, { guildId: current, at: this.#d.now() });
+            return current;
+          },
+          (err: unknown) => {
+            this.#log(`chat ${this.#d.channel}: membership lookup failed`, err);
+            return undefined;
+          },
+        )
+        .finally(() => {
+          this.#lookups.delete(accountId);
+        });
+      this.#lookups.set(accountId, pending);
+    }
+    const current = await pending;
+    if (current === undefined) {
+      const last = this.#members.get(accountId);
+      return last ? last.guildId === guildId : true;
+    }
+    return current === guildId;
+  }
+
+  #closeSocket(socket: ChatSocket, code: number, reason: string): void {
+    this.#closed.add(socket);
+    try {
+      socket.close(code, reason);
+    } catch (err) {
+      this.#log(`chat ${this.#d.channel}: close failed`, err);
+    }
+    this.#releaseBlocksIfGone(socket.info.accountId);
+  }
+
+  #socketsOf(accountId: string): ChatSocket[] {
+    return this.#d.socketsOf
+      ? this.#d.socketsOf(accountId)
+      : this.#d.sockets().filter((s) => s.info.accountId === accountId);
+  }
+
+  #hasLiveSocket(accountId: string): boolean {
+    return this.#socketsOf(accountId).some((s) => !this.#closed.has(s));
+  }
+
+  /** R9: drops the account's cached block rows once it has no open socket here. */
+  #releaseBlocksIfGone(accountId: string): void {
+    if (this.#hasLiveSocket(accountId)) return;
+    try {
+      this.#d.store.dropBlocks(accountId);
+    } catch (err) {
+      this.#log(`chat ${this.#d.channel}: dropping block rows failed`, err);
+    }
+  }
+
+  /** R9: drops the cached block rows of every account with no open socket here. */
+  #sweepBlocks(): void {
+    const live = new Set<string>();
+    for (const s of this.#d.sockets()) {
+      if (!this.#closed.has(s)) live.add(s.info.accountId);
+    }
+    try {
+      const dropped = this.#d.store.dropBlocksExcept(live);
+      if (dropped > 0)
+        this.#log(`chat ${this.#d.channel}: dropped block rows of ${dropped} gone account(s)`);
+    } catch (err) {
+      this.#log(`chat ${this.#d.channel}: block row sweep failed`, err);
     }
   }
 
@@ -365,8 +629,14 @@ export class ChatHost {
 
   #onBlock(socket: ChatSocket, target: string, blocked: boolean): void {
     const me = socket.info.accountId;
+    const now = this.#d.now();
+    if (!this.#blockBucket(socket, now).take(now)) {
+      return this.#reject(socket, "rate_limited", "slow down");
+    }
     if (target === me) return this.#reject(socket, "bad_message", "you cannot block yourself");
-    this.#d.store.setBlockRow(me, target, blocked);
+    if (this.#d.store.setBlockRow(me, target, blocked) === "block_limit") {
+      return this.#reject(socket, "block_limit", `at most ${BLOCK_LIMIT} blocked accounts`);
+    }
     // Every socket of this account sees the new list at once.
     this.#sendToAccount(me, { t: "blocked", blocked: this.#d.store.blockList(me) });
     this.#d.waitUntil(this.#persistBlock(me, target, blocked));
@@ -389,6 +659,15 @@ export class ChatHost {
     }
     if (!bucket.take(now)) return;
     this.#send(socket, { t: "pong", clientTime, serverTime: now });
+  }
+
+  #blockBucket(socket: ChatSocket, now: number): TokenBucket {
+    let bucket = this.#blockBuckets.get(socket);
+    if (!bucket) {
+      bucket = new TokenBucket(BLOCK_RATE, now);
+      this.#blockBuckets.set(socket, bucket);
+    }
+    return bucket;
   }
 
   #bucket(info: ChatSocketInfo, now: number): TokenBucket {
@@ -439,6 +718,7 @@ export class ChatHost {
     const frame = encodeChatServerMessage(msg);
     for (const s of this.#d.sockets()) {
       if (skipAccounts?.has(s.info.accountId)) continue;
+      if (this.#opening.has(s) || this.#closed.has(s)) continue;
       this.#sendFrame(s, frame);
     }
   }
@@ -446,7 +726,9 @@ export class ChatHost {
   #sendToAccount(accountId: string, msg: ChatServerMessage): void {
     const frame = encodeChatServerMessage(msg);
     for (const s of this.#d.sockets()) {
-      if (s.info.accountId === accountId) this.#sendFrame(s, frame);
+      if (s.info.accountId !== accountId) continue;
+      if (this.#opening.has(s) || this.#closed.has(s)) continue;
+      this.#sendFrame(s, frame);
     }
   }
 }

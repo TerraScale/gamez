@@ -5,9 +5,15 @@
  *
  * Every write is synchronous and runs inside `transact()` when it must be
  * atomic with an outbox append.
+ *
+ * `chat_block` is a cache of the AccountDO block lists of the accounts that
+ * have a socket open here (R9): ChatHost drops an account's rows when its last
+ * socket closes, and open() restores them from AccountDO. So the table is
+ * bounded by open sockets x BLOCK_LIMIT, never by every account that ever joined.
  */
 import type { ChatMessage } from "@gamez/protocol";
 import type { SqlStore } from "../contracts.ts";
+import { BLOCK_LIMIT } from "../account/social.ts";
 
 export type ModerationStatus = "safe" | "unsafe" | "unknown";
 
@@ -205,29 +211,77 @@ export class ChatStore {
     );
   }
 
-  setBlockRow(blocker: string, target: string, blocked: boolean): void {
-    if (blocked) {
-      this.sql.exec(
-        "INSERT OR IGNORE INTO chat_block (blocker, target) VALUES (?, ?)",
-        blocker,
-        target,
-      );
-    } else {
+  /** Blocked accounts a blocker has in this channel's storage. */
+  blockCount(blocker: string): number {
+    return Number(
+      this.sql
+        .exec<Row>("SELECT COUNT(*) AS n FROM chat_block WHERE blocker = ?", blocker)
+        .toArray()[0]?.n ?? 0,
+    );
+  }
+
+  /**
+   * Writes one block change. Blocking a new target is refused with "block_limit"
+   * when the blocker already has BLOCK_LIMIT rows (R9): nothing is written.
+   * Re-blocking a listed target and unblocking always succeed. Returns "ok" or
+   * "block_limit".
+   */
+  setBlockRow(blocker: string, target: string, blocked: boolean): "ok" | "block_limit" {
+    if (!blocked) {
       this.sql.exec("DELETE FROM chat_block WHERE blocker = ? AND target = ?", blocker, target);
+      return "ok";
+    }
+    const listed =
+      this.sql
+        .exec<Row>(
+          "SELECT 1 AS one FROM chat_block WHERE blocker = ? AND target = ?",
+          blocker,
+          target,
+        )
+        .toArray().length > 0;
+    if (!listed && this.blockCount(blocker) >= BLOCK_LIMIT) return "block_limit";
+    this.sql.exec(
+      "INSERT OR IGNORE INTO chat_block (blocker, target) VALUES (?, ?)",
+      blocker,
+      target,
+    );
+    return "ok";
+  }
+
+  /**
+   * Adds targets from the account service's list (never removes local entries).
+   * Stops at BLOCK_LIMIT rows for the blocker, so the union of both lists stays bounded.
+   */
+  mergeBlocks(blocker: string, targets: readonly string[]): void {
+    for (const t of targets.slice(0, BLOCK_LIMIT)) {
+      if (typeof t !== "string" || t.length === 0 || t.length > 100) continue;
+      if (this.blockCount(blocker) >= BLOCK_LIMIT) break;
+      this.sql.exec("INSERT OR IGNORE INTO chat_block (blocker, target) VALUES (?, ?)", blocker, t);
     }
   }
 
-  /** Adds targets from the account service's list (never removes local entries). */
-  mergeBlocks(blocker: string, targets: readonly string[]): void {
-    for (const t of targets.slice(0, 200)) {
-      if (typeof t === "string" && t.length > 0 && t.length <= 100) {
-        this.sql.exec(
-          "INSERT OR IGNORE INTO chat_block (blocker, target) VALUES (?, ?)",
-          blocker,
-          t,
-        );
-      }
-    }
+  /** Drops every local block row of `blocker` (R9: the row set is a cache of AccountDO). */
+  dropBlocks(blocker: string): void {
+    this.sql.exec("DELETE FROM chat_block WHERE blocker = ?", blocker);
+  }
+
+  /**
+   * Drops the block rows of every blocker not in `keep` (R9: accounts with no
+   * open socket). Returns how many blockers were dropped.
+   */
+  dropBlocksExcept(keep: ReadonlySet<string>): number {
+    const gone = this.sql
+      .exec<Row>("SELECT DISTINCT blocker FROM chat_block ORDER BY blocker")
+      .toArray()
+      .map((r) => str(r.blocker))
+      .filter((b) => !keep.has(b));
+    for (const b of gone) this.dropBlocks(b);
+    return gone.length;
+  }
+
+  /** Block rows in this channel's storage, all blockers together. */
+  blockRowCount(): number {
+    return num(this.sql.exec<Row>("SELECT COUNT(*) AS n FROM chat_block").toArray()[0]?.n ?? 0);
   }
 
   seenReport(messageId: string, reporterId: string): boolean {

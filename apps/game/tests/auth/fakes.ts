@@ -89,8 +89,8 @@ export class FakeIdentity implements IdentityApi {
   async claim(input: Parameters<IdentityApi["claim"]>[0]) {
     return this.inner.claim(input);
   }
-  checkPassword(password: string) {
-    return this.inner.checkPassword(password);
+  checkPassword(password: string, client?: string) {
+    return this.inner.checkPassword(password, client);
   }
 }
 

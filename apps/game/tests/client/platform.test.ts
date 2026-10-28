@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { AccountView, AuthResponse } from "@gamez/protocol";
-import { createAuthApi } from "../../src/client/platform/auth.ts";
+import { createAuthApi, redeemOAuthLink } from "../../src/client/platform/auth.ts";
 import { createAccountApi } from "../../src/client/platform/account.ts";
 import { createGuildApi } from "../../src/client/platform/guilds.ts";
 import { buildQuery, createHttp, errorFromBody, wsUrl } from "../../src/client/platform/http.ts";
@@ -272,13 +272,53 @@ describe("auth api", () => {
     expect(h.saved).toHaveLength(1);
   });
 
-  it("builds OAuth URLs: link carries the token, login does not", () => {
-    const h = authHarness("a+b/c");
-    const { api } = h.make([]);
-    expect(api.oauthUrl("google", { link: true })).toBe(
-      "/api/auth/oauth/google/start?link=1&token=a%2Bb%2Fc",
-    );
-    expect(api.oauthUrl("discord", { link: false })).toBe("/api/auth/oauth/discord/start?link=0");
+  it("builds OAuth URLs with a fresh per-flow nonce and never the session token (ADR 0007)", () => {
+    const tab = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => tab.get(k) ?? null,
+      setItem: (k: string, v: string) => void tab.set(k, v),
+      removeItem: (k: string) => void tab.delete(k),
+    });
+    try {
+      const h = authHarness("a+b/c");
+      const { api } = h.make([]);
+      const link = new URL(api.oauthUrl("google", { link: true }), "http://x");
+      expect(link.pathname).toBe("/api/auth/oauth/google/start");
+      expect(link.searchParams.get("link")).toBe("1");
+      expect(link.searchParams.has("token")).toBe(false);
+      expect(link.href).not.toContain("a%2Bb");
+      expect(link.searchParams.get("n")).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+      expect(link.searchParams.get("n")).toBe(tab.get("gamez.oauth.nonce"));
+      const login = new URL(api.oauthUrl("discord", { link: false }), "http://x");
+      expect(login.pathname).toBe("/api/auth/oauth/discord/start");
+      expect(login.searchParams.get("link")).toBe("0");
+      expect(login.searchParams.get("n")).toBe(tab.get("gamez.oauth.nonce"));
+      expect(login.searchParams.get("n")).not.toBe(link.searchParams.get("n"));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("redeemOAuthLink posts the code with the bearer (never a URL token) and returns the session", async () => {
+    const f = fakeFetch([{ body: { token: "reg", account: ACCOUNT } satisfies AuthResponse }]);
+    const res = await redeemOAuthLink("abc.def", "guest-token", f.fetch);
+    expect(res).toEqual({
+      ok: true,
+      value: { token: "reg", accountId: "acc-1", name: "Hero Mario", kind: "registered" },
+    });
+    expect(f.sent[0]).toMatchObject({
+      url: "/api/auth/oauth/link",
+      method: "POST",
+      body: { code: "abc.def" },
+    });
+    expect(f.sent[0]!.headers.authorization).toBe("Bearer guest-token");
+    const bad = fakeFetch([
+      { status: 409, body: { error: { code: "identity_taken", message: "taken" } } },
+    ]);
+    expect(await redeemOAuthLink("abc.def", "t", bad.fetch)).toMatchObject({
+      ok: false,
+      code: "identity_taken",
+    });
   });
 
   it("providers answers [] when the request fails", async () => {

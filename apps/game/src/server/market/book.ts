@@ -14,6 +14,12 @@
  * Steps run in order; a step persists the next step before the call that
  * follows it, so a crash re-runs at most the step that was in flight.
  *
+ * One driver per listing (ADR 0007 R7): `#drive` keeps the in-flight promise
+ * per listing, so a user request and the alarm never run the same saga at once.
+ * Every write that moves a saga on (save, finish, release) is a compare-and-set
+ * on the busy_json the step started from; a step whose write changes nothing
+ * stops without further side effects (another driver moved the saga on).
+ *
  * Failure policy: a saga is released (lock dropped, error returned) only while
  * no money or item has moved. Once a debit or a take has happened, the saga
  * only moves forward or retries.
@@ -159,9 +165,11 @@ function clip(text: string): string {
 }
 
 function walletError(r: Extract<WalletTxResult, { ok: false }>): ErrInfo {
-  return r.code === "insufficient_funds"
-    ? { code: "insufficient_funds", message: "not enough coin" }
-    : { code: "internal", message: "the wallet rejected the transaction" };
+  if (r.code === "insufficient_funds")
+    return { code: "insufficient_funds", message: "not enough coin" };
+  if (r.code === "conflict")
+    return { code: "conflict", message: "this payment id was already used for another payment" };
+  return { code: "internal", message: "the wallet rejected the transaction" };
 }
 
 /** The item as the market holds it (VaultItemInput, data kept for returns). */
@@ -242,6 +250,9 @@ const SCHEMA = [
 ];
 
 export class MarketBook {
+  /** The in-flight drive of each listing (one driver per listing). */
+  readonly #driving = new Map<string, Promise<Outcome>>();
+
   constructor(
     readonly store: SqlStore,
     readonly gateway: AccountGateway,
@@ -315,7 +326,7 @@ export class MarketBook {
         now,
       );
     });
-    return toResult(await this.#drive(id));
+    return toResult(await this.#driveOwn(id));
   }
 
   /** Bids (or buys, when the amount reaches the buyout). Idempotent by opId. */
@@ -345,7 +356,7 @@ export class MarketBook {
     if (amount < min) return fail("too_low", `the next bid must be at least ${min} coin`);
 
     this.#lock(listingId, saga("bid", "debit", { opKey, party: bidder, amount }), opKey, fp);
-    return toResult(await this.#drive(listingId));
+    return toResult(await this.#driveOwn(listingId));
   }
 
   /** Buys at the buyout price. Idempotent by opId. */
@@ -389,7 +400,7 @@ export class MarketBook {
     if (row.bids > 0) return fail("conflict", "a listing with bids cannot be cancelled");
     const seller = { accountId: row.seller_id, displayName: row.seller_name };
     this.#lock(listingId, saga("cancel", "return", { opKey, party: seller }), opKey, fp);
-    return toResult(await this.#drive(listingId));
+    return toResult(await this.#driveOwn(listingId));
   }
 
   /** The public view of a settled listing, or null (unknown, other shard or pending). */
@@ -440,8 +451,33 @@ export class MarketBook {
 
   // ---- saga engine ---------------------------------------------------------
 
+  /**
+   * Drives the listing's saga, or joins the drive already running for it: one
+   * driver per listing, so the alarm and a user request never run it twice.
+   */
+  #drive(id: string): Promise<Outcome> {
+    const running = this.#driving.get(id);
+    if (running) return running;
+    const p = this.#driveLoop(id).finally(() => {
+      if (this.#driving.get(id) === p) this.#driving.delete(id);
+    });
+    this.#driving.set(id, p);
+    return p;
+  }
+
+  /**
+   * Drives a saga the caller just locked. A drive still winding down from the
+   * previous saga (it already ended) is awaited first, so the new saga is the
+   * one driven and its outcome the one answered.
+   */
+  async #driveOwn(id: string): Promise<Outcome> {
+    const running = this.#driving.get(id);
+    if (running) await running.catch(() => undefined);
+    return this.#drive(id);
+  }
+
   /** Runs steps until the saga finishes, fails, or must wait for a retry. */
-  async #drive(id: string): Promise<Outcome> {
+  async #driveLoop(id: string): Promise<Outcome> {
     for (let i = 0; i < 64; i++) {
       const row = this.#row(id);
       if (!row) return { kind: "failed", err: { code: "not_found", message: "no such listing" } };
@@ -449,26 +485,47 @@ export class MarketBook {
         if (row.status === "pending") return { kind: "retry", reason: "lock lost" };
         return { kind: "done", listing: this.#view(row) };
       }
-      const out = await this.#step(id, row, JSON.parse(row.busy_json) as Saga);
+      const out = await this.#step(id, row, row.busy_json);
       if (out) return out;
     }
     return { kind: "retry", reason: "saga did not converge" };
   }
 
-  /** Expiry of a listing whose end time has passed (no opId, no caller). */
-  async #expire(row: Row): Promise<Outcome> {
-    const top = row.top_bidder_id !== null && row.top_bid !== null;
-    const s = saga("expire", top ? "deliver" : "return", {
-      party: top
-        ? { accountId: row.top_bidder_id ?? "", displayName: row.top_bidder_name ?? "" }
-        : null,
-      amount: top ? (row.top_bid ?? 0) : 0,
+  /**
+   * Expiry of a listing whose end time has passed (no opId, no caller). The
+   * lock is taken only if the listing is still active and unlocked (a user saga
+   * may have locked it during an earlier await of the same tick).
+   */
+  async #expire(due: Row): Promise<Outcome> {
+    const claimed = this.store.transactionSync((): boolean => {
+      const row = this.#row(due.id);
+      if (!row || row.status !== "active" || row.busy_json !== null || row.ends_at > this.now()) {
+        return false;
+      }
+      const top = row.top_bidder_id !== null && row.top_bid !== null;
+      const s = saga("expire", top ? "deliver" : "return", {
+        party: top
+          ? { accountId: row.top_bidder_id ?? "", displayName: row.top_bidder_name ?? "" }
+          : null,
+        amount: top ? (row.top_bid ?? 0) : 0,
+        at: this.now(),
+      });
+      return this.#cas(
+        "UPDATE mk_listing SET busy_json = ? WHERE id = ? AND busy_json IS NULL RETURNING id",
+        JSON.stringify(s),
+        row.id,
+      );
     });
-    this.#save(row.id, s);
-    return this.#drive(row.id);
+    if (!claimed) return { kind: "retry", reason: "listing is no longer due" };
+    return this.#drive(due.id);
   }
 
-  async #step(id: string, row: Row, s: Saga): Promise<Outcome | null> {
+  /**
+   * Runs one step of the saga stored as `from` (the exact busy_json read). Every
+   * save/finish/release below is a compare-and-set on `from`.
+   */
+  async #step(id: string, row: Row, from: string): Promise<Outcome | null> {
+    const s = JSON.parse(from) as Saga;
     const t = (base: string): string => (row.gen > 0 ? `${base}.${row.gen}` : base);
     const seller: Party = { accountId: row.seller_id, displayName: row.seller_name };
     const item = (): VaultItemInput => JSON.parse(row.item_json ?? "null") as VaultItemInput;
@@ -481,6 +538,7 @@ export class MarketBook {
         if (!got) {
           return this.#release(
             id,
+            from,
             s,
             { code: "not_found", message: "that item is not in your vault" },
             false,
@@ -488,8 +546,8 @@ export class MarketBook {
         }
         const input = inputOf(got);
         const problem = itemProblem(input, this.shard);
-        if (problem) return this.#release(id, s, problem, false);
-        return this.#save(id, { ...s, step: "fee" }, JSON.stringify(input));
+        if (problem) return this.#release(id, from, s, problem, false);
+        return this.#save(id, from, { ...s, step: "fee" }, JSON.stringify(input));
       }
       case "fee": {
         const r = await this.gateway.walletTx(seller.accountId, {
@@ -499,13 +557,13 @@ export class MarketBook {
           reason: `market.fee:${id}`,
           flow: "sink",
         });
-        if (!r.ok) return this.#release(id, s, walletError(r), false);
-        return this.#save(id, { ...s, step: "take" });
+        if (!r.ok) return this.#release(id, from, s, walletError(r), false);
+        return this.#save(id, from, { ...s, step: "take" });
       }
       case "take": {
         const r = await this.gateway.vaultTake(seller.accountId, `mk:${id}:take`, s.uid);
         if (!r.ok) {
-          return this.#save(id, {
+          return this.#save(id, from, {
             ...s,
             step: "refund",
             err: { code: "not_found", message: "that item is no longer in your vault" },
@@ -514,13 +572,19 @@ export class MarketBook {
         const input = inputOf(r.item);
         const problem = itemProblem(input, this.shard);
         if (problem)
-          return this.#save(id, { ...s, step: "return", err: problem }, JSON.stringify(input));
-        return this.#save(id, { ...s, step: "activate" }, JSON.stringify(input));
+          return this.#save(
+            id,
+            from,
+            { ...s, step: "return", err: problem },
+            JSON.stringify(input),
+          );
+        return this.#save(id, from, { ...s, step: "activate" }, JSON.stringify(input));
       }
       case "activate": {
         const now = this.now();
         return this.#finish(
           id,
+          from,
           s,
           () =>
             this.store.sql.exec(
@@ -554,7 +618,7 @@ export class MarketBook {
             amount: row.top_bid ?? 0,
           });
         }
-        return this.#save(id, { ...s, step: "commit-bid" });
+        return this.#save(id, from, { ...s, step: "commit-bid" });
       }
       case "commit-bid": {
         const now = this.now();
@@ -562,6 +626,7 @@ export class MarketBook {
         const bidder = partyOf(s);
         return this.#finish(
           id,
+          from,
           s,
           () =>
             this.store.sql.exec(
@@ -589,8 +654,11 @@ export class MarketBook {
             reason: `market.bid:${id}`,
             flow: "transfer",
           });
-          if (!r.ok) return this.#release(id, s, walletError(r), false);
-          return this.#save(id, { ...s, step: row.top_bidder_id ? "refund-prev" : "commit-bid" });
+          if (!r.ok) return this.#release(id, from, s, walletError(r), false);
+          return this.#save(id, from, {
+            ...s,
+            step: row.top_bidder_id ? "refund-prev" : "commit-bid",
+          });
         }
         const r = await this.gateway.walletTx(who.accountId, {
           txId: t(`mk:${id}:buy`),
@@ -599,22 +667,22 @@ export class MarketBook {
           reason: `market.buy:${id}`,
           flow: "transfer",
         });
-        if (!r.ok) return this.#release(id, s, walletError(r), false);
-        return this.#save(id, { ...s, step: "deliver" });
+        if (!r.ok) return this.#release(id, from, s, walletError(r), false);
+        return this.#save(id, from, { ...s, step: "deliver" });
       }
       case "deliver": {
         const who = partyOf(s);
         const r = await this.gateway.vaultPut(who.accountId, t(`mk:${id}:deliver`), item());
         if (r.ok)
-          return this.#save(id, { ...s, step: s.kind === "buy" ? "refund-top" : "proceeds" });
+          return this.#save(id, from, { ...s, step: s.kind === "buy" ? "refund-top" : "proceeds" });
         if (s.kind === "buy") {
-          return this.#save(id, {
+          return this.#save(id, from, {
             ...s,
             step: "undo",
             err: { code: "vault_full", message: "the buyer's vault cannot take this item" },
           });
         }
-        return this.#save(id, { ...s, step: "refund-fallback", fallback: true });
+        return this.#save(id, from, { ...s, step: "refund-fallback", fallback: true });
       }
       case "undo": {
         // The buy could not be delivered: the debit goes back, under a fresh gen.
@@ -627,7 +695,13 @@ export class MarketBook {
           flow: "transfer",
         });
         if (!r.ok) return { kind: "retry", reason: "buy refund pending" };
-        return this.#release(id, s, s.err ?? { code: "internal", message: "buy aborted" }, true);
+        return this.#release(
+          id,
+          from,
+          s,
+          s.err ?? { code: "internal", message: "buy aborted" },
+          true,
+        );
       }
       case "refund-top": {
         if (row.top_bidder_id !== null) {
@@ -651,7 +725,7 @@ export class MarketBook {
             });
           }
         }
-        return this.#save(id, { ...s, step: "proceeds" });
+        return this.#save(id, from, { ...s, step: "proceeds" });
       }
       case "proceeds": {
         const r = await this.gateway.walletTx(seller.accountId, {
@@ -662,7 +736,7 @@ export class MarketBook {
           flow: "transfer",
         });
         if (!r.ok) return { kind: "retry", reason: "sale proceeds pending" };
-        return this.#save(id, { ...s, step: "tax" });
+        return this.#save(id, from, { ...s, step: "tax" });
       }
       case "tax": {
         const tax = salesTax(s.amount);
@@ -674,7 +748,7 @@ export class MarketBook {
           flow: "sink",
         });
         if (!r.ok) return { kind: "retry", reason: "sales tax pending" };
-        return this.#save(id, { ...s, step: "notify" });
+        return this.#save(id, from, { ...s, step: "notify" });
       }
       case "notify": {
         const winner = partyOf(s);
@@ -689,7 +763,7 @@ export class MarketBook {
           listingId: id,
           amount: s.amount,
         });
-        return this.#save(id, { ...s, step: "commit-sold" });
+        return this.#save(id, from, { ...s, step: "commit-sold" });
       }
       case "commit-sold": {
         const winner = partyOf(s);
@@ -712,6 +786,7 @@ export class MarketBook {
         };
         return this.#finish(
           id,
+          from,
           s,
           () =>
             this.store.sql.exec(
@@ -735,6 +810,7 @@ export class MarketBook {
           if (s.kind === "cancel" || (s.kind === "expire" && !s.fallback)) {
             return this.#release(
               id,
+              from,
               s,
               { code: "unavailable", message: "your vault cannot take the item back yet" },
               false,
@@ -742,13 +818,14 @@ export class MarketBook {
           }
           return { kind: "retry", reason: "item return pending" };
         }
-        if (s.kind === "list") return this.#save(id, { ...s, step: "refund" });
-        if (s.kind === "cancel") return this.#save(id, { ...s, step: "commit-cancel" });
-        return this.#save(id, { ...s, step: "notify-expired" });
+        if (s.kind === "list") return this.#save(id, from, { ...s, step: "refund" });
+        if (s.kind === "cancel") return this.#save(id, from, { ...s, step: "commit-cancel" });
+        return this.#save(id, from, { ...s, step: "notify-expired" });
       }
       case "commit-cancel": {
         return this.#finish(
           id,
+          from,
           s,
           () =>
             this.store.sql.exec(
@@ -764,11 +841,12 @@ export class MarketBook {
           listingId: id,
           amount: 0,
         });
-        return this.#save(id, { ...s, step: "commit-expired" });
+        return this.#save(id, from, { ...s, step: "commit-expired" });
       }
       case "commit-expired": {
         return this.#finish(
           id,
+          from,
           s,
           () =>
             this.store.sql.exec(
@@ -800,7 +878,7 @@ export class MarketBook {
           listingId: id,
           amount: row.top_bid ?? 0,
         });
-        return this.#save(id, { ...s, step: "return" });
+        return this.#save(id, from, { ...s, step: "return" });
       }
 
       // ---- list, after a failed take: the fee goes back
@@ -815,6 +893,7 @@ export class MarketBook {
         if (!r.ok) return { kind: "retry", reason: "fee refund pending" };
         return this.#release(
           id,
+          from,
           s,
           s.err ?? { code: "internal", message: "listing aborted" },
           false,
@@ -827,24 +906,58 @@ export class MarketBook {
 
   // ---- helpers -------------------------------------------------------------
 
-  /** Persists the saga (the lock) and optionally the item; always returns null (keep going). */
-  #save(id: string, s: Saga, itemJson?: string): null {
+  /**
+   * Persists the next saga state (the lock) and optionally the item, only if the
+   * listing still holds `from` (compare-and-set). Returns null (keep going), or
+   * the stale outcome when another driver moved the saga on: the step stops.
+   */
+  #save(id: string, from: string, s: Saga, itemJson?: string): Outcome | null {
     s.at = this.now();
-    if (itemJson === undefined) {
-      this.store.sql.exec(
-        "UPDATE mk_listing SET busy_json = ? WHERE id = ?",
-        JSON.stringify(s),
+    const saved =
+      itemJson === undefined
+        ? this.#cas(
+            "UPDATE mk_listing SET busy_json = ? WHERE id = ? AND busy_json = ? RETURNING id",
+            JSON.stringify(s),
+            id,
+            from,
+          )
+        : this.#cas(
+            "UPDATE mk_listing SET busy_json = ?, item_json = ? WHERE id = ? AND busy_json = ? RETURNING id",
+            JSON.stringify(s),
+            itemJson,
+            id,
+            from,
+          );
+    return saved ? null : this.#stale(id, s);
+  }
+
+  /** Runs an UPDATE ... RETURNING; true when it changed a row. */
+  #cas(sql: string, ...args: unknown[]): boolean {
+    return this.store.sql.exec(sql, ...args).toArray().length > 0;
+  }
+
+  /** True when the listing still holds exactly the saga `from` (call inside a transaction). */
+  #holds(id: string, from: string): boolean {
+    return (
+      this.#all<{ busy_json: string | null }>(
+        "SELECT busy_json FROM mk_listing WHERE id = ?",
         id,
-      );
-    } else {
-      this.store.sql.exec(
-        "UPDATE mk_listing SET busy_json = ?, item_json = ? WHERE id = ?",
-        JSON.stringify(s),
-        itemJson,
-        id,
-      );
+      )[0]?.busy_json === from
+    );
+  }
+
+  /**
+   * The answer of a step whose compare-and-set failed: another driver moved the
+   * saga on. A finished op answers its listing; anything else asks to retry.
+   */
+  #stale(id: string, s: Saga): Outcome {
+    console.warn(`market: listing ${id} saga ${s.kind}/${s.step} was moved on by another driver`);
+    if (s.opKey !== null) {
+      const op = this.#all<{ done: number }>("SELECT done FROM mk_op WHERE op_key = ?", s.opKey)[0];
+      const row = this.#row(id);
+      if (op?.done === 1 && row) return { kind: "done", listing: this.#view(row) };
     }
-    return null;
+    return { kind: "retry", reason: "another driver moved this saga on" };
   }
 
   /** Takes the lock for a new user saga and records its op, in one transaction. */
@@ -869,7 +982,7 @@ export class MarketBook {
   #lockBuy(row: Row, buyer: Party, opKey: string, fp: string): Promise<Result<MarketListing>> {
     const price = row.buyout ?? 0;
     this.#lock(row.id, saga("buy", "debit", { opKey, party: buyer, amount: price }), opKey, fp);
-    return this.#drive(row.id).then(toResult);
+    return this.#driveOwn(row.id).then(toResult);
   }
 
   /** Common guard of bid/buy/cancel: replay, existence, shard, lock. */
@@ -903,9 +1016,19 @@ export class MarketBook {
     return { ok: true, value: this.#view(row), replayed: true };
   }
 
-  /** Ends a saga successfully: state change, op done, outbox rows, all in one transaction. */
-  #finish(id: string, s: Saga, mutate: () => void, sale: EconomySalePayload | null): Outcome {
+  /**
+   * Ends a saga successfully: state change, op done, outbox rows, all in one
+   * transaction, and only if the listing still holds `from` (compare-and-set).
+   */
+  #finish(
+    id: string,
+    from: string,
+    s: Saga,
+    mutate: () => void,
+    sale: EconomySalePayload | null,
+  ): Outcome {
     return this.store.transactionSync((): Outcome => {
+      if (!this.#holds(id, from)) return this.#stale(id, s);
       mutate();
       if (s.opKey !== null) {
         this.store.sql.exec("UPDATE mk_op SET done = 1 WHERE op_key = ?", s.opKey);
@@ -921,9 +1044,13 @@ export class MarketBook {
     });
   }
 
-  /** Ends a saga that has not moved money: drops the lock, drops a pending listing, deletes its op. */
-  #release(id: string, s: Saga, err: ErrInfo, bumpGen: boolean): Outcome {
-    this.store.transactionSync(() => {
+  /**
+   * Ends a saga that has not moved money: drops the lock, drops a pending
+   * listing, deletes its op; only if the listing still holds `from`.
+   */
+  #release(id: string, from: string, s: Saga, err: ErrInfo, bumpGen: boolean): Outcome {
+    return this.store.transactionSync((): Outcome => {
+      if (!this.#holds(id, from)) return this.#stale(id, s);
       if (s.kind === "list") {
         this.store.sql.exec("DELETE FROM mk_listing WHERE id = ?", id);
       } else if (bumpGen) {
@@ -935,8 +1062,8 @@ export class MarketBook {
         this.store.sql.exec("UPDATE mk_listing SET busy_json = NULL WHERE id = ?", id);
       }
       this.store.sql.exec("DELETE FROM mk_op WHERE listing_id = ? AND done = 0", id);
+      return { kind: "failed", err };
     });
-    return { kind: "failed", err };
   }
 
   async #notify(

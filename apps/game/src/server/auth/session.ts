@@ -56,12 +56,22 @@ export async function sessionStillOpen(
   }
 }
 
-/** authenticateToken of the request's bearer token (or `?token=` for WebSocket upgrades). */
+/** True for a WebSocket upgrade request (`Upgrade: websocket`, any case). */
+export function isWebSocketUpgrade(request: Request): boolean {
+  return (request.headers.get("upgrade") ?? "").trim().toLowerCase() === "websocket";
+}
+
+/**
+ * authenticateToken of the request's bearer token. `?token=` is read only on
+ * WebSocket upgrades (browsers cannot set headers there). ADR 0007 R3: on any
+ * other request a URL token would let a cross-site link act as its owner.
+ */
 export async function authenticateRequest(
   request: Request,
   env: Pick<Env, "AUTH_SECRET" | "ACCOUNT">,
   url: URL = new URL(request.url),
 ): Promise<SessionIdentity | null> {
-  const token = bearerToken(request) || url.searchParams.get("token") || "";
+  const query = isWebSocketUpgrade(request) ? url.searchParams.get("token") : null;
+  const token = bearerToken(request) || query || "";
   return token ? authenticateToken(env, token) : null;
 }

@@ -73,18 +73,44 @@ export async function loginEmail(
   });
 }
 
+/** A fresh OAuth fragment nonce, like the SPA keeps in sessionStorage (ADR 0007 R4). */
+export function oauthNonce(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
+export interface OAuthStubResult {
+  /** The callback's raw `/#…` fragment (`auth=`, `oauth_link=` or `auth_error=`, plus `&n=`). */
+  fragment: string;
+  /** The session token: from `#auth=`, or from redeeming `#oauth_link=` with `linkToken`. */
+  token: string | null;
+  /** `auth_error=<code>`, a failed redeem's error code, or "nonce_mismatch". */
+  error: string | null;
+  /** The `#oauth_link=` code of a link flow (redeemed only when `linkToken` was given). */
+  linkCode: string | null;
+  /** True when the fragment echoed this flow's nonce. */
+  nonceEchoed: boolean;
+  steps: string[];
+}
+
 /**
  * Runs the local stub OAuth round trip like a browser (dev hosts only):
- * /start (cookie) -> stub page -> form POST -> /callback with the cookie.
- * Returns the final `/#…` fragment: `auth=<token>` or `auth_error=<code>`.
+ * /start?n=<nonce> (cookie) -> stub page -> form POST -> /callback with the
+ * cookie. The fragment must echo the nonce (the SPA drops it otherwise). A
+ * link flow (`linkToken`) gets `#oauth_link=<code>`, which is redeemed like
+ * the SPA does: POST /api/auth/oauth/link with `linkToken` as the bearer.
+ * `csrfToken` replays the old CSRF URL `?link=1&token=<csrfToken>` (ADR 0007
+ * R3) and redeems nothing.
  */
 export async function oauthStub(
   baseUrl: string,
   provider: "google" | "discord" | "apple",
-  opts: { subject: string; email?: string; name?: string; linkToken?: string },
-): Promise<{ fragment: string; token: string | null; error: string | null; steps: string[] }> {
+  opts: { subject: string; email?: string; name?: string; linkToken?: string; csrfToken?: string },
+): Promise<OAuthStubResult> {
   const steps: string[] = [];
-  const q = opts.linkToken ? `?link=1&token=${encodeURIComponent(opts.linkToken)}` : "?link=0";
+  const nonce = oauthNonce();
+  const q = opts.csrfToken
+    ? `?link=1&token=${encodeURIComponent(opts.csrfToken)}&n=${nonce}`
+    : `?n=${nonce}&link=${opts.linkToken ? 1 : 0}`;
   const start = await fetch(`${baseUrl}/api/auth/oauth/${provider}/start${q}`, {
     redirect: "manual",
   });
@@ -117,7 +143,22 @@ export async function oauthStub(
     final = new URL(callback.headers.get("location") ?? "/", baseUrl);
   }
   const fragment = final.hash.slice(1);
-  const token = fragment.startsWith("auth=") ? decodeURIComponent(fragment.slice(5)) : null;
-  const error = fragment.startsWith("auth_error=") ? fragment.slice("auth_error=".length) : null;
-  return { fragment, token, error, steps };
+  const params = new URLSearchParams(fragment);
+  const nonceEchoed = params.get("n") === nonce;
+  steps.push(`nonce ${nonceEchoed ? "echoed" : "missing"}`);
+  const linkCode = params.get("oauth_link");
+  let token = params.get("auth");
+  let error = params.get("auth_error");
+  if (!nonceEchoed)
+    return { fragment, token: null, error: "nonce_mismatch", linkCode, nonceEchoed, steps };
+  if (linkCode && opts.linkToken) {
+    const redeemed = await api<AuthResponse & ApiError>(baseUrl, "/api/auth/oauth/link", {
+      token: opts.linkToken,
+      body: { code: linkCode },
+    });
+    steps.push(`redeem ${redeemed.status}`);
+    if (redeemed.status === 200) token = redeemed.body.token;
+    else error = redeemed.body.error?.code ?? `http_${redeemed.status}`;
+  }
+  return { fragment, token, error, linkCode, nonceEchoed, steps };
 }

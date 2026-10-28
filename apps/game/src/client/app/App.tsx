@@ -16,13 +16,14 @@ import {
   onSessionChange,
   setSession,
 } from "../session.ts";
+import { redeemOAuthLink } from "../platform/auth.ts";
 import { createPlatform } from "../platform/index.ts";
 import { loadManifest, createServices, modeInfos } from "./services.ts";
 import { ModeHost } from "./ModeHost.tsx";
 import { ModePicker } from "./ModePicker.tsx";
 import { ShellSheets } from "./ShellSheets.tsx";
 import { Toast } from "./Toast.tsx";
-import { applyAuthFragment, type Notice } from "./notices.ts";
+import { applyAuthFragment, applyOAuthLink, type Notice } from "./notices.ts";
 import { clearShellFragment, firstPaidReturn, parseShellFragment } from "./fragments.ts";
 import {
   flagOn,
@@ -148,11 +149,21 @@ export function App() {
   );
 
   // Boot: OAuth return first (it may replace the stored session), then the guest session and manifest.
+  // ADR 0007 R4: only a return this tab started counts. A link return is
+  // redeemed with the current session as the bearer (R3).
   useEffect(() => {
     let live = true;
-    const fromOauth = applyAuthFragment(consumeAuthFragment(), setSession);
+    const fragment = consumeAuthFragment();
+    const fromOauth = applyAuthFragment(fragment, setSession);
     if (fromOauth) setNotice(fromOauth);
-    Promise.all([getSession(), loadManifest()]).then(
+    const linkCode = fragment !== null && "link" in fragment ? fragment.link : null;
+    const sessionReady = getSession().then(async (current) => {
+      if (linkCode === null) return current;
+      const linked = await applyOAuthLink(linkCode, current, redeemOAuthLink, setSession);
+      if (live) setNotice(linked.notice);
+      return linked.session;
+    });
+    Promise.all([sessionReady, loadManifest()]).then(
       ([session, manifest]) => {
         if (!live) return;
         sessionRef.current = session;

@@ -15,6 +15,9 @@ export const LIMIT_MAX = 100;
 
 const CLASS_ID = /^classic\.[a-z][a-z0-9_]{0,31}$/;
 
+/** Ranked rows only: live and not imported (ADR 0007 R1). */
+const RANKED = "_deleted = 0 AND COALESCE(imported, 0) = 0";
+
 /** A validated leaderboard request (limit already clamped). */
 export interface LeaderboardParams {
   board: LeaderboardBoard;
@@ -66,7 +69,9 @@ export interface SqlQuery {
 
 /**
  * SQL for one board. Rows are never deleted (_deleted = 0). Ties break on id
- * so the order is stable across requests.
+ * so the order is stable across requests. Heroes imported from a local save
+ * are never ranked (ADR 0007 R1: the server cannot verify their history); their
+ * rows stay in D1 with imported = 1 for audit and admin.
  */
 export function buildLeaderboardSql(q: LeaderboardParams): SqlQuery {
   const classClause = q.classId === null ? "" : " AND class_id = ?";
@@ -76,7 +81,7 @@ export function buildLeaderboardSql(q: LeaderboardParams): SqlQuery {
       return {
         sql:
           "SELECT id, account_id, display_name, hero_name, class_id, level, xp, imported, _updated_at" +
-          " FROM classic_hero WHERE _deleted = 0 AND mode = ?" +
+          ` FROM classic_hero WHERE ${RANKED} AND mode = ?` +
           classClause +
           " ORDER BY level DESC, xp DESC, id ASC LIMIT ?",
         params: [q.mode, ...classParams, q.limit],
@@ -85,7 +90,7 @@ export function buildLeaderboardSql(q: LeaderboardParams): SqlQuery {
       return {
         sql:
           "SELECT id, account_id, display_name, hero_name, class_id, level, xp, deepest_depth, imported, _updated_at" +
-          " FROM classic_hero WHERE _deleted = 0 AND mode = ?" +
+          ` FROM classic_hero WHERE ${RANKED} AND mode = ?` +
           classClause +
           " ORDER BY deepest_depth DESC, level DESC, id ASC LIMIT ?",
         params: [q.mode, ...classParams, q.limit],
@@ -98,7 +103,7 @@ export function buildLeaderboardSql(q: LeaderboardParams): SqlQuery {
           "SELECT id, account_id, display_name, hero_name, class_id, hero_level, rift_level, score, ticks, deaths," +
           " end_tick, imported, _updated_at," +
           " ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY score DESC, end_tick ASC, id ASC) AS rn" +
-          " FROM leaderboard_rift WHERE _deleted = 0 AND completed = 1 AND mode = ?" +
+          ` FROM leaderboard_rift WHERE ${RANKED} AND completed = 1 AND mode = ?` +
           classClause +
           ") WHERE rn = 1 ORDER BY score DESC, end_tick ASC, id ASC LIMIT ?",
         params: [q.mode, ...classParams, q.limit],

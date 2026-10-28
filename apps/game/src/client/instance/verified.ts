@@ -9,7 +9,10 @@
  */
 import type { SimSnapshot } from "@gamez/kernel";
 import {
-  packSnapshot,
+  jsonWithinLimits,
+  MAX_IMPORT_SNAPSHOT_DEPTH,
+  MAX_IMPORT_SNAPSHOT_NODES,
+  MAX_VERIFIED_CLIENT_FRAME,
   unpackSnapshot,
   type BankOp,
   type VerifiedClientMessage,
@@ -179,21 +182,30 @@ export class VerifiedClient implements VerifiedConnection {
     return this.#send({ t: "bank", opId: msg.opId, op: msg.op, at: msg.at });
   }
 
+  /**
+   * Sends a local save for import. Always plain JSON: the server never
+   * inflates client data (ADR 0007 R8), and a save over the frame cap or the
+   * import structure limits is refused here without a round trip.
+   */
   importSave(snapshot: SimSnapshot, savedAt: number): void {
     if (this.#closed) return;
-    const gen = this.#generation;
-    void packSnapshot(snapshot)
-      .then((packed) => {
-        if (gen !== this.#generation || this.#status !== "online") {
-          this.#handlers?.error?.("offline", "import needs a connection");
-          return;
-        }
-        this.#send({ t: "import", snapshot: packed, savedAt });
-      })
-      .catch((err: unknown) => {
-        console.warn("verified: could not pack the save", err);
-        this.#handlers?.error?.("import_failed", "the save could not be packed");
-      });
+    if (this.#status !== "online") {
+      this.#handlers?.error?.("offline", "import needs a connection");
+      return;
+    }
+    const msg: VerifiedClientMessage = {
+      t: "import",
+      snapshot: { enc: "json", data: snapshot },
+      savedAt,
+    };
+    if (
+      !jsonWithinLimits(snapshot, MAX_IMPORT_SNAPSHOT_NODES, MAX_IMPORT_SNAPSHOT_DEPTH) ||
+      JSON.stringify(msg).length > MAX_VERIFIED_CLIENT_FRAME
+    ) {
+      this.#handlers?.error?.("import_failed", "the save is too large to import");
+      return;
+    }
+    this.#send(msg);
   }
 
   restart(): void {

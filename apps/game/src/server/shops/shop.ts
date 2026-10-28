@@ -13,6 +13,13 @@
  *
  * Every saga persists its step before each outbound call and every outbound
  * call is idempotent by txId (opId-derived), so drive() re-runs them safely.
+ *
+ * One driver per saga (ADR 0007 R6): `#run` keeps the in-flight promise per op
+ * key (returns and payouts per entry / payout number), so a repeated request
+ * and the alarm's drive() join the running saga instead of starting another.
+ * Every transition that books value (earnings, stock, refunds) is also a
+ * compare-and-set on the op's step and the entry's lock inside its transaction:
+ * a stale driver books nothing and answers the stored outcome.
  */
 import { isAmount, shopTax } from "@gamez/economy";
 import {
@@ -131,6 +138,8 @@ export class ShopBook implements ShopApi {
   readonly #d: ShopBookDeps;
   readonly #pfx: string;
   #backoffUntil = 0;
+  /** In-flight sagas by key (op key, "return:<entryId>", "payout:<n>"). */
+  readonly #running = new Map<string, Promise<unknown>>();
 
   constructor(deps: ShopBookDeps) {
     this.#d = deps;
@@ -503,10 +512,10 @@ export class ShopBook implements ShopApi {
       }
       this.#finishClose();
       for (const e of this.#returningEntries()) {
-        await this.#runReturn(e);
+        await this.#serial(`return:${e.entry_id}`, () => this.#runReturn(e.entry_id));
       }
       for (const p of this.#pendingPayouts()) {
-        await this.#runPayout(p.n);
+        await this.#serial(`payout:${p.n}`, () => this.#runPayout(p.n));
       }
       if (this.#lease().fixture_dirty === 1) {
         await this.#d.plots.refreshFixture(this.#d.plotId);
@@ -529,8 +538,26 @@ export class ShopBook implements ShopApi {
     return Math.max(this.#d.clock.now(), this.#backoffUntil);
   }
 
-  /** Runs one saga to its end (or its failure). Throws only on outbound failures. */
-  async #run(key: string): Promise<EconResult<null>> {
+  /**
+   * Runs one saga to its end (or its failure), or joins the run already in
+   * flight for the same op key. Throws only on outbound failures.
+   */
+  #run(key: string): Promise<EconResult<null>> {
+    return this.#serial(key, () => this.#runOnce(key));
+  }
+
+  /** One in-flight run per key: a second caller gets the running promise. */
+  #serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const running = this.#running.get(key);
+    if (running) return running as Promise<T>;
+    const p = fn().finally(() => {
+      if (this.#running.get(key) === p) this.#running.delete(key);
+    });
+    this.#running.set(key, p);
+    return p;
+  }
+
+  async #runOnce(key: string): Promise<EconResult<null>> {
     const op = this.#op(key);
     if (op === null) return fail("not_found", "no such operation");
     if (op.state === "done") return { ok: true, value: null, replayed: true };
@@ -563,22 +590,27 @@ export class ShopBook implements ShopApi {
       `${this.#pfx}:stock:${opIdOf(key)}`,
       p.uid,
     );
+    const opId = opIdOf(key);
     if (!r.ok) {
-      this.#tx(() => {
+      const moved = this.#tx(() => {
+        if (!this.#holds(key, "take", p.entryId, "taking", opId, "op_id")) return true;
         this.#removeEntry(p.entryId);
         this.#opFail(key, "not_found", "that item is no longer in your vault");
+        return false;
       });
-      return fail("not_found", "that item is no longer in your vault");
+      return moved ? this.#outcome(key) : fail("not_found", "that item is no longer in your vault");
     }
-    this.#tx(() => {
+    const moved = this.#tx(() => {
+      if (!this.#holds(key, "take", p.entryId, "taking", opId, "op_id")) return true;
       this.#setEntry(p.entryId, {
         state: "listed",
         item_json: JSON.stringify(r.item),
         busy_op: null,
       });
       this.#opDone(key);
+      return false;
     });
-    return OK;
+    return moved ? this.#outcome(key) : OK;
   }
 
   async #runBuy(key: string, op: OpRow): Promise<EconResult<null>> {
@@ -595,14 +627,23 @@ export class ShopBook implements ShopApi {
         flow: "transfer",
       });
       if (!res.ok) {
-        if (res.code !== "insufficient_funds") throw new Error(`buy debit failed: ${res.code}`);
-        this.#tx(() => {
+        // Definite refusals (nothing was debited) end the saga; anything else retries.
+        const refused: Record<string, string> = {
+          insufficient_funds: "not enough coin for this item",
+          conflict: "this purchase id was already used for another payment",
+        };
+        const message = refused[res.code];
+        if (message === undefined) throw new Error(`buy debit failed: ${res.code}`);
+        const moved = this.#tx(() => {
+          if (!this.#advance(key, "start", null)) return true;
           this.#releaseEntry(p.entryId, opId);
-          this.#opFail(key, "insufficient_funds", "not enough coin for this item");
+          this.#opFail(key, res.code, message);
+          return false;
         });
-        return fail("insufficient_funds", "not enough coin for this item");
+        if (moved) return this.#outcome(key);
+        return fail(res.code, message);
       }
-      this.#tx(() => this.#setOpStep(key, "debited"));
+      if (!this.#tx(() => this.#advance(key, "start", "debited"))) return this.#outcome(key);
       step = "debited";
     }
     if (step === "debited") {
@@ -617,7 +658,11 @@ export class ShopBook implements ShopApi {
       );
       if (v.ok) {
         const now = this.#d.clock.now();
-        this.#tx(() => {
+        const booked = this.#tx((): boolean => {
+          // Compare-and-set: book only from "debited", with the entry still held by this op.
+          const cur = this.#entry(p.entryId);
+          if (cur === null || cur.busy_op !== opId || cur.state !== "buying") return false;
+          if (!this.#advance(key, "debited", "notify")) return false;
           this.#removeEntry(p.entryId);
           const l = this.#lease();
           this.#setLease({ gross: l.gross + p.price, tax: l.tax + shopTax(p.price) });
@@ -637,11 +682,12 @@ export class ShopBook implements ShopApi {
             at: now,
           };
           this.#d.outbox.append("economy_sale", sale.saleId, "upsert", sale);
-          this.#setOpStep(key, "notify");
+          return true;
         });
+        if (!booked) return this.#outcome(key);
         step = "notify";
       } else {
-        this.#tx(() => this.#setOpStep(key, "refund"));
+        if (!this.#tx(() => this.#advance(key, "debited", "refund"))) return this.#outcome(key);
         step = "refund";
       }
     }
@@ -654,10 +700,13 @@ export class ShopBook implements ShopApi {
         flow: "transfer",
       });
       if (!r.ok) throw new Error(`buy refund failed: ${r.code}`);
-      this.#tx(() => {
+      const moved = this.#tx(() => {
+        if (!this.#advance(key, "refund", null)) return true;
         this.#releaseEntry(p.entryId, opId);
         this.#opFail(key, "vault_full", "the buyer has no room in the vault");
+        return false;
       });
+      if (moved) return this.#outcome(key);
       return fail("vault_full", "the buyer has no room in the vault");
     }
     // step "notify": the sale is booked; tell the owner (idempotent by id).
@@ -668,8 +717,12 @@ export class ShopBook implements ShopApi {
       data: { world: this.#d.world, plotId: this.#d.plotId, entryId: p.entryId, price: p.price },
     };
     await gw.notify(p.owner.accountId, notice);
-    this.#tx(() => this.#opDone(key));
-    return OK;
+    const finished = this.#tx((): boolean => {
+      if (!this.#advance(key, "notify", null)) return false;
+      this.#opDone(key);
+      return true;
+    });
+    return finished ? OK : this.#outcome(key);
   }
 
   async #runUnstock(key: string, op: OpRow): Promise<EconResult<null>> {
@@ -685,23 +738,28 @@ export class ShopBook implements ShopApi {
       `${this.#pfx}:unstock:${opIdOf(key)}`,
       withoutUid(item),
     );
+    const opId = opIdOf(key);
     if (!v.ok) {
-      this.#tx(() => {
-        this.#releaseEntry(p.entryId, opIdOf(key));
+      const moved = this.#tx(() => {
+        if (!this.#holds(key, "start", p.entryId, "unstocking", opId, "busy_op")) return true;
+        this.#releaseEntry(p.entryId, opId);
         this.#opFail(key, "vault_full", "your vault is full");
+        return false;
       });
-      return fail("vault_full", "your vault is full");
+      return moved ? this.#outcome(key) : fail("vault_full", "your vault is full");
     }
-    this.#tx(() => {
+    const moved = this.#tx(() => {
+      if (!this.#holds(key, "start", p.entryId, "unstocking", opId, "busy_op")) return true;
       this.#removeEntry(p.entryId);
       this.#opDone(key);
+      return false;
     });
-    return OK;
+    return moved ? this.#outcome(key) : OK;
   }
 
   async #runClaim(key: string, op: OpRow): Promise<EconResult<null>> {
     const p = payloadOf<ClaimPayload>(op);
-    await this.#runPayout(p.n);
+    await this.#serial(`payout:${p.n}`, () => this.#runPayout(p.n));
     this.#tx(() => this.#opDone(key));
     return OK;
   }
@@ -731,11 +789,19 @@ export class ShopBook implements ShopApi {
       });
       if (!r.ok) throw new Error(`shop tax failed: ${r.code}`);
     }
-    this.#tx(() => execSql(this.#d.store, "UPDATE shop_payouts SET state = 'done' WHERE n = ?", n));
+    this.#tx(() =>
+      execSql(
+        this.#d.store,
+        "UPDATE shop_payouts SET state = 'done' WHERE n = ? AND state = 'pending'",
+        n,
+      ),
+    );
   }
 
   /** Returns one stock entry of a closed lease to its owner's vault. A full vault waits. */
-  async #runReturn(e: EntryRow): Promise<boolean> {
+  async #runReturn(entryId: string): Promise<boolean> {
+    const e = this.#entry(entryId);
+    if (e === null || e.state !== "returning") return true;
     if (e.item_json === null) {
       this.#tx(() => this.#removeEntry(e.entry_id));
       return true;
@@ -750,7 +816,9 @@ export class ShopBook implements ShopApi {
       this.#backoffUntil = this.#d.clock.now() + RETURN_RETRY_MS;
       return false;
     }
-    this.#tx(() => this.#removeEntry(e.entry_id));
+    this.#tx(() => {
+      if (this.#entry(e.entry_id)?.state === "returning") this.#removeEntry(e.entry_id);
+    });
     return true;
   }
 
@@ -975,8 +1043,45 @@ export class ShopBook implements ShopApi {
     );
   }
 
-  #setOpStep(key: string, step: string): void {
-    execSql(this.#d.store, "UPDATE shop_ops SET step = ? WHERE op_key = ?", step, key);
+  /**
+   * Compare-and-set on a pending op's step: moves it from `from` to `to` (or
+   * leaves the step when `to` is null, a pure check) only while the op is still
+   * pending at `from`. Call inside the transaction that books the step's effects.
+   */
+  #advance(key: string, from: string, to: string | null): boolean {
+    const op = this.#op(key);
+    if (op === null || op.state !== "pending" || op.step !== from) return false;
+    if (to !== null) {
+      execSql(this.#d.store, "UPDATE shop_ops SET step = ? WHERE op_key = ?", to, key);
+    }
+    return true;
+  }
+
+  /**
+   * True while the op is pending at `step` and the entry is still in `state`,
+   * held by this op (`lockCol` = the column naming the op). Call inside a transaction.
+   */
+  #holds(
+    key: string,
+    step: string,
+    entryId: string,
+    state: string,
+    opId: string,
+    lockCol: "op_id" | "busy_op",
+  ): boolean {
+    if (!this.#advance(key, step, null)) return false;
+    const e = this.#entry(entryId);
+    return e !== null && e.state === state && e[lockCol] === opId;
+  }
+
+  /** The stored outcome of an op another driver moved on (a stale step books nothing). */
+  #outcome(key: string): EconResult<null> {
+    const op = this.#op(key);
+    if (op === null) return fail("not_found", "no such operation");
+    if (op.state === "done") return { ok: true, value: null, replayed: true };
+    if (op.state === "failed")
+      return fail(op.error_code ?? "internal", op.error_message ?? "failed");
+    return fail("unavailable", "the shop is busy, try again");
   }
 
   #tx<T>(fn: () => T): T {

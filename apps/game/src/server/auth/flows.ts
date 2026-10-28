@@ -61,11 +61,16 @@ export async function issue(
 
 const localPart = (email: string | null) => (email ? (email.split("@")[0] ?? null) : null);
 
+/**
+ * `client` is the caller's network identity (routes pass clientIp(request)):
+ * IdentityDO keys its password-attempt lockout on (login, client), ADR 0007 R5.
+ */
 export async function register(
   env: AuthEnv,
   body: Record<string, unknown>,
   bearer: SessionIdentity | null,
   userAgent: string,
+  client?: string,
 ): Promise<FlowResult> {
   const email = normaliseEmail(body.email);
   if (!email) return fail(400, "bad_email", "Enter a valid email address.");
@@ -101,7 +106,7 @@ export async function register(
     const p = await account.profile();
     const linked = p?.identities.some((i) => i.provider === "email" && i.subject === email);
     if (linked) return fail(409, "email_taken", "That email is already registered.");
-    const check = await ident.checkPassword(password);
+    const check = await ident.checkPassword(password, client);
     if (!check.ok) return fail(409, "email_taken", "That email is already registered.");
   } else {
     const passwordHash = await hashPassword(password, flowConfig.iterations);
@@ -135,13 +140,17 @@ export async function login(
   env: AuthEnv,
   body: Record<string, unknown>,
   userAgent: string,
+  client?: string,
 ): Promise<FlowResult> {
   const email = normaliseEmail(body.email);
   const password = body.password;
   if (!email || typeof password !== "string" || password.length === 0 || password.length > 1024) {
     return fail(401, "bad_credentials", "Wrong email or password.");
   }
-  const check = await env.IDENTITY.getByName(identityKey("email", email)).checkPassword(password);
+  const check = await env.IDENTITY.getByName(identityKey("email", email)).checkPassword(
+    password,
+    client,
+  );
   if (!check.ok) {
     if (check.reason === "locked") {
       const after = check.retryAfterMs ?? 60_000;
@@ -183,7 +192,8 @@ export async function changeName(
 
 /**
  * Finishes an OAuth login (link = null: sign in or sign up) or link (attach
- * the login to `link`'s account, upgrading a guest in place).
+ * the login to `link`'s account, upgrading a guest in place). ADR 0007 R3:
+ * `link` is only ever the authenticated bearer of POST /api/auth/oauth/link.
  */
 export async function completeOAuth(
   env: AuthEnv,

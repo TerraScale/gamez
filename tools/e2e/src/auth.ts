@@ -2,8 +2,9 @@
  * Wave B e2e: accounts and auth (docs/design/wave-B.md §3). OWNER: T-auth.
  * Guest upgrade in place, login from another guest, wrong password and
  * lockout, logout revocation, display names, the OAuth stub round trip
- * (login, link, identity_taken), the account_summary D1 row, and, after the
- * dev-server restart, persisted logins and sessions.
+ * (login, link, identity_taken, the ADR 0007 link-CSRF and ?token= guards),
+ * the account_summary D1 row, and, after the dev-server restart, persisted
+ * logins and sessions.
  */
 import type { AccountView, AuthResponse, ProvidersResponse } from "@gamez/protocol";
 import { api, loginEmail, oauthStub, registerGuest, type Registered } from "./accounts.ts";
@@ -180,10 +181,11 @@ export const authFeature: E2eFeature = {
     });
     const oauthMe = oauthLogin.token ? await me(url, oauthLogin.token) : null;
     check(
-      oauthMe?.status === 200 &&
+      oauthLogin.nonceEchoed &&
+        oauthMe?.status === 200 &&
         oauthMe.body.kind === "registered" &&
         oauthMe.body.identities.some((i) => i.provider === "google"),
-      `auth: OAuth stub start -> page -> callback -> #auth token works (${oauthLogin.steps.join(", ")})`,
+      `auth: OAuth stub start -> page -> callback -> #auth&n token works (${oauthLogin.steps.join(", ")})`,
     );
     const oauthAgain = await oauthStub(url, "google", { subject });
     const againMe = oauthAgain.token ? await me(url, oauthAgain.token) : null;
@@ -212,6 +214,43 @@ export const authFeature: E2eFeature = {
       stolen.error === "identity_taken",
       `auth: a second account linking the same login -> identity_taken (${stolen.fragment})`,
     );
+
+    // 7b. ADR 0007 R3: the old CSRF URL (/start?link=1&token=<attacker>) links nothing
+    const attacker = await loginGuest(url);
+    const csrfSubject = `e2e-csrf-${suffix}`;
+    const forged = await oauthStub(url, "google", {
+      subject: csrfSubject,
+      csrfToken: attacker.token,
+    });
+    const attackerMe = await me(url, attacker.token);
+    check(
+      forged.token === null &&
+        forged.linkCode !== null &&
+        attackerMe.status === 200 &&
+        attackerMe.body.kind === "guest" &&
+        attackerMe.body.identities.length === 0,
+      `auth: a forged /start?link=1&token=<attacker> links nothing to the attacker (${forged.steps.join(", ")})`,
+    );
+    const noBearer = await api<{ error?: { code: string } }>(url, "/api/auth/oauth/link", {
+      body: { code: forged.linkCode ?? "" },
+    });
+    check(noBearer.status === 401, "auth: redeeming a link code needs a bearer token");
+    const csrfVictim = await loginGuest(url);
+    const redeemed = await api<AuthResponse>(url, "/api/auth/oauth/link", {
+      token: csrfVictim.token,
+      body: { code: forged.linkCode ?? "" },
+    });
+    check(
+      redeemed.status === 200 && redeemed.body.account?.accountId === csrfVictim.accountId,
+      "auth: a link code only links the account of the bearer that redeems it",
+    );
+    const plain = await loginGuest(url);
+    const viaQuery = await api(url, `/api/me?token=${encodeURIComponent(plain.token)}`);
+    check(
+      viaQuery.status === 401 && (await me(url, plain.token)).status === 200,
+      `auth: ?token= does not authenticate a plain HTTP request (${viaQuery.status})`,
+    );
+
     const noCookie = await fetch(
       `${url}/api/auth/oauth/google/callback?code=stub%3Ax&state=forged`,
       { redirect: "manual" },

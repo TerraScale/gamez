@@ -9,6 +9,12 @@
  *             crediting -> done                    (deposits, written with the new base)
  *   platform_kv(key PK, value)                     (last season report, …)
  *
+ * ADR 0007 R2: a used opId is never forgotten. prune() only compacts old done
+ * rows into tombstones (op_id, account_id, op, state 'done', result; effect
+ * NULL), so get() keeps finding them: a reused opId is answered with the
+ * stored result (same op) or "conflict" (another op) forever, and the
+ * account-side txIds "bank:<instance>:<opId>:*" can never be reused.
+ *
  * Every method is synchronous.
  */
 import type { BankOp, BankResult, VaultItem, VaultItemInput } from "@gamez/protocol";
@@ -33,6 +39,7 @@ export interface BankOpRow {
   accountId: string;
   state: BankOpState;
   op: BankOp;
+  /** Null before the take, and on a compacted (pruned) done tombstone. */
   effect: BankEffect | null;
   result: BankResult | null;
   /** Epoch ms of the first write. */
@@ -45,7 +52,11 @@ export interface BankStore {
   put(row: BankOpRow): void;
   /** Rows not done, oldest first. */
   pending(): BankOpRow[];
-  /** Deletes done rows written before `before` (epoch ms). */
+  /**
+   * Compacts done rows written before `before` (epoch ms) into permanent
+   * tombstones (the bulky effect is dropped; op, account and result stay).
+   * Never deletes a row. Returns the number of rows compacted.
+   */
   prune(before: number): number;
   kvGet(key: string): string | null;
   kvSet(key: string, value: string): void;
@@ -98,6 +109,9 @@ export class SqlBankStore implements BankStore {
       result TEXT,
       at INTEGER NOT NULL
     )`);
+    // Only rows prune() can still compact, so its scan stays small as tombstones accumulate.
+    db.sql.exec(`CREATE INDEX IF NOT EXISTS bank_op_compact ON bank_op (at)
+      WHERE state = 'done' AND effect IS NOT NULL`);
     db.sql.exec(`CREATE TABLE IF NOT EXISTS platform_kv (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -135,14 +149,12 @@ export class SqlBankStore implements BankStore {
   }
 
   prune(before: number): number {
+    const where = "state = 'done' AND effect IS NOT NULL AND at < ?";
     const rows = this.#db.sql
-      .exec<{ n: number }>(
-        "SELECT COUNT(*) AS n FROM bank_op WHERE state = 'done' AND at < ?",
-        before,
-      )
+      .exec<{ n: number }>(`SELECT COUNT(*) AS n FROM bank_op WHERE ${where}`, before)
       .toArray();
     const n = rows[0]?.n ?? 0;
-    if (n > 0) this.#db.sql.exec("DELETE FROM bank_op WHERE state = 'done' AND at < ?", before);
+    if (n > 0) this.#db.sql.exec(`UPDATE bank_op SET effect = NULL WHERE ${where}`, before);
     return n;
   }
 

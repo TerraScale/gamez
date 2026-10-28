@@ -829,12 +829,70 @@ describe("VerifiedHost: import", () => {
     expect(only(again, "error").code).toBe("not_importable");
   });
 
-  it("accepts gzip-packed saves", async () => {
+  it("refuses gzip-packed saves without inflating them (R8)", async () => {
     const { h, s } = await started();
     const save = await localSave(V1, 50);
     const packed = await packSnapshot(save, { forceGzip: true });
-    const v = only(await h.send(s, { t: "import", snapshot: packed, savedAt: 1 }), "vstate");
+    const real = globalThis.DecompressionStream;
+    let inflations = 0;
+    globalThis.DecompressionStream = class extends real {
+      constructor(format: CompressionFormat) {
+        inflations++;
+        super(format);
+      }
+    };
+    try {
+      const out = await h.send(s, { t: "import", snapshot: packed, savedAt: 1 });
+      expect(only(out, "error")).toMatchObject({
+        code: "import_rejected",
+        message: "compressed saves are not accepted",
+      });
+    } finally {
+      globalThis.DecompressionStream = real;
+    }
+    expect(inflations).toBe(0);
+    expect(h.store.load()!.importUsed).toBe(false);
+    // The same save as plain JSON still imports.
+    h.advance(61_000);
+    const v = only(
+      await h.send(s, { t: "import", snapshot: await packSnapshot(save), savedAt: 1 }),
+      "vstate",
+    );
     expect((v as VState).tick).toBe(50);
+  });
+
+  it("refuses an under-cap save whose structure would amplify in memory (R8)", async () => {
+    const { h, s } = await started();
+    const send = async (snapshot: SimSnapshot) => {
+      h.advance(61_000); // import rate limit
+      const frame = JSON.stringify({
+        t: "import",
+        snapshot: { enc: "json", data: snapshot },
+        savedAt: 1,
+      });
+      expect(frame.length).toBeLessThanOrEqual(MAX_VERIFIED_CLIENT_FRAME);
+      return only(await h.send(s, JSON.parse(frame)), "error");
+    };
+    // About 290k empty objects in an unknown resource, just under the frame cap:
+    // the kernel restores and clones it several times before validation ends.
+    const wide = await localSave(V1, 10);
+    const junk = Array.from({ length: 290_000 }, () => ({}));
+    (wide.world.resources as Record<string, unknown>)["zz.junk"] = junk;
+    expect(await send(wide)).toMatchObject({
+      code: "import_rejected",
+      message: "the save is too large",
+    });
+    // Deep nesting.
+    const deep = await localSave(V1, 10);
+    let nest: unknown = 0;
+    for (let i = 0; i < 1_000; i++) nest = [nest];
+    (deep.world.resources as Record<string, unknown>)["zz.deep"] = nest;
+    expect(await send(deep)).toMatchObject({
+      code: "import_rejected",
+      message: "the save is too large",
+    });
+    expect(h.store.load()!.importUsed).toBe(false);
+    expect(h.store.load()!.imported).toBe(false);
   });
 
   it("is refused after any verified segment", async () => {

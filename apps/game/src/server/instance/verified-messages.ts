@@ -56,7 +56,14 @@ function parseInputs(v: unknown): SegmentInput[] | null {
 function parsePacked(v: unknown): PackedSnapshot | null {
   if (!isRecord(v)) return null;
   if (v.enc === "json" && isRecord(v.data)) return { enc: "json", data: v.data as never };
-  if (v.enc === "gzip64" && typeof v.data === "string" && v.data.length > 0) {
+  // gzip64 keeps its wire shape, bounded by the frame cap, but the host refuses
+  // to inflate it (ADR 0007 R8): imports must be enc "json".
+  if (
+    v.enc === "gzip64" &&
+    typeof v.data === "string" &&
+    v.data.length > 0 &&
+    v.data.length <= MAX_VERIFIED_CLIENT_FRAME
+  ) {
     return { enc: "gzip64", data: v.data };
   }
   return null;

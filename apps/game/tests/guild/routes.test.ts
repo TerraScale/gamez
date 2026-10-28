@@ -285,3 +285,77 @@ describe("browse", () => {
     expect(res).toEqual({ status: 200, body: { guild: null } });
   });
 });
+
+describe("chat revoke on kick and leave (R10)", () => {
+  async function ashWardens() {
+    await create(alice);
+    const joined = await call(world, "POST", "/api/guilds/ash-wardens/join", { token: bob });
+    expect(joined.status).toBe(200);
+  }
+
+  it("kick revokes the kicked account's guild channel with reason kicked", async () => {
+    await ashWardens();
+    const res = await call(world, "POST", "/api/guilds/kick", {
+      token: alice,
+      body: { accountId: "acc-bob" },
+    });
+    expect(res.status).toBe(200);
+    expect(world.chat.revokes).toEqual([
+      { channel: "guild:ash-wardens", accountId: "acc-bob", reason: "kicked" },
+    ]);
+  });
+
+  it("leave revokes the leaver's guild channel with reason left", async () => {
+    await ashWardens();
+    const res = await call(world, "POST", "/api/guilds/leave", { token: bob });
+    expect(res.status).toBe(200);
+    expect(world.chat.revokes).toEqual([
+      { channel: "guild:ash-wardens", accountId: "acc-bob", reason: "left" },
+    ]);
+  });
+
+  it("a failed revoke does not fail the kick", async () => {
+    await ashWardens();
+    world.chat.failRevoke = true;
+    const res = await call(world, "POST", "/api/guilds/kick", {
+      token: alice,
+      body: { accountId: "acc-bob" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.guild.members.map((m: { accountId: string }) => m.accountId)).toEqual([
+      "acc-alice",
+    ]);
+  });
+
+  it("a kick retried after a failed release still revokes (R10 variant 3)", async () => {
+    await ashWardens();
+    world.account("acc-bob").failReleaseOnce = true;
+    // GuildDO.kick succeeds, then the release throws: the route fails before revoking.
+    const first = await call(world, "POST", "/api/guilds/kick", {
+      token: alice,
+      body: { accountId: "acc-bob" },
+    }).catch(() => null);
+    expect(first?.status ?? 500).toBeGreaterThanOrEqual(500);
+    expect(world.chat.revokes).toEqual([]);
+    // The officer retries: GuildDO answers not_found, the release heals the slot,
+    // and the target's guild chat is revoked too.
+    const retry = await call(world, "POST", "/api/guilds/kick", {
+      token: alice,
+      body: { accountId: "acc-bob" },
+    });
+    expect(retry.status).toBe(404);
+    expect(world.chat.revokes).toEqual([
+      { channel: "guild:ash-wardens", accountId: "acc-bob", reason: "kicked" },
+    ]);
+  });
+
+  it("a refused kick revokes nothing", async () => {
+    await ashWardens();
+    const res = await call(world, "POST", "/api/guilds/kick", {
+      token: bob,
+      body: { accountId: "acc-alice" },
+    });
+    expect(res.status).toBe(403);
+    expect(world.chat.revokes).toEqual([]);
+  });
+});

@@ -32,6 +32,74 @@ export const PACK_GZIP_ABOVE = 256 * 1024;
 /** Largest client frame the verified host decodes (import frames are the big ones). */
 export const MAX_VERIFIED_CLIENT_FRAME = 900 * 1024;
 
+/**
+ * Largest inflated snapshot unpackSnapshot accepts. Twice the client's 4 MB
+ * MAX_CACHE_CHARS (modules/classic/src/client/sync/cache.ts).
+ *
+ * unpackSnapshot is for snapshots the SERVER sent (trusted). It is not a
+ * memory bound for untrusted input: workerd's DecompressionStream inflates a
+ * whole chunk eagerly before the reader can stop it (ADR 0007 R8). The server
+ * never inflates client data; an import must be enc "json" (see
+ * snapshotWithinLimits).
+ */
+export const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Most JSON nodes (objects, arrays and scalars) an imported snapshot may hold
+ * (ADR 0007 R8). A real classic save holds about 500 (3 KB of JSON), so this
+ * is about 100x headroom; it bounds the work and memory of restoring and
+ * validating an import whatever the client sends.
+ */
+export const MAX_IMPORT_SNAPSHOT_NODES = 50_000;
+/** Deepest nesting an imported snapshot may have (a real classic save: 7). */
+export const MAX_IMPORT_SNAPSHOT_DEPTH = 32;
+
+/**
+ * True when `value` has at most `maxNodes` JSON nodes and at most `maxDepth`
+ * levels of nesting. Iterative (no recursion on hostile input) and stops at
+ * the first node over either limit, so the cost is O(min(size, maxNodes)).
+ */
+export function jsonWithinLimits(
+  value: unknown,
+  maxNodes: number = MAX_IMPORT_SNAPSHOT_NODES,
+  maxDepth: number = MAX_IMPORT_SNAPSHOT_DEPTH,
+): boolean {
+  // Every node is counted when it is first seen, before it is queued, so the
+  // stack never holds more than maxNodes entries.
+  const values: unknown[] = [value];
+  const depths: number[] = [0];
+  let seen = 1;
+  while (values.length > 0) {
+    const v = values.pop();
+    const d = depths.pop()!;
+    if (d > maxDepth) return false;
+    if (v === null || typeof v !== "object") continue;
+    if (Array.isArray(v)) {
+      if (seen + v.length > maxNodes) return false;
+      seen += v.length;
+      for (let i = 0; i < v.length; i++) {
+        values.push(v[i]);
+        depths.push(d + 1);
+      }
+    } else {
+      for (const k in v) {
+        if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+        if (++seen > maxNodes) return false;
+        values.push((v as Record<string, unknown>)[k]);
+        depths.push(d + 1);
+      }
+    }
+  }
+  return seen <= maxNodes;
+}
+
+/**
+ * Longest gzip64 base64 unpackSnapshot accepts by default: the base64 of the
+ * largest gzip stream of MAX_SNAPSHOT_BYTES (10% margin for stored-block
+ * overhead). Client frames are capped tighter by parsePacked.
+ */
+export const MAX_SNAPSHOT_GZIP_BASE64 = Math.ceil((MAX_SNAPSHOT_BYTES * 1.1 + 64) / 3) * 4;
+
 /** Limits the server enforces, sent in vstate so the client can respect them. */
 export interface VerifyLimits {
   /** ClientDrivenPolicy.maxTicksPerSegment. */
@@ -226,12 +294,62 @@ export async function packSnapshot(
   return { enc: "gzip64", data: toBase64(gz) };
 }
 
-/** Unpacks a wire snapshot. Throws on malformed data (callers treat it as a bad message). */
-export async function unpackSnapshot(packed: PackedSnapshot): Promise<SimSnapshot> {
+/**
+ * Inflates gzip bytes with a hard output cap: reads the stream chunk by chunk,
+ * cancels and throws RangeError once the total passes maxBytes.
+ */
+async function inflateBounded(
+  bytes: Uint8Array<ArrayBuffer>,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const reader = new Blob([bytes])
+    .stream()
+    .pipeThrough(new DecompressionStream("gzip"))
+    .getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new RangeError("snapshot too large");
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+export interface UnpackOptions {
+  /** Largest inflated size accepted (default MAX_SNAPSHOT_BYTES). */
+  maxBytes?: number;
+  /** Longest gzip64 base64 accepted before decoding (default MAX_SNAPSHOT_GZIP_BASE64). */
+  maxInputChars?: number;
+}
+
+/**
+ * Unpacks a snapshot the server sent. Throws on malformed data and on oversize
+ * input or output (RangeError "snapshot too large"). Callers treat a throw as
+ * a bad message. Not for client input on the server (see MAX_SNAPSHOT_BYTES).
+ */
+export async function unpackSnapshot(
+  packed: PackedSnapshot,
+  opts: UnpackOptions = {},
+): Promise<SimSnapshot> {
   if (packed.enc === "json") return packed.data;
   if (packed.enc !== "gzip64" || typeof packed.data !== "string") {
     throw new TypeError("unknown snapshot encoding");
   }
-  const raw = await pipe(fromBase64(packed.data), new DecompressionStream("gzip"));
+  if (packed.data.length > (opts.maxInputChars ?? MAX_SNAPSHOT_GZIP_BASE64)) {
+    throw new RangeError("snapshot too large");
+  }
+  const raw = await inflateBounded(fromBase64(packed.data), opts.maxBytes ?? MAX_SNAPSHOT_BYTES);
   return JSON.parse(decoder.decode(raw)) as SimSnapshot;
 }

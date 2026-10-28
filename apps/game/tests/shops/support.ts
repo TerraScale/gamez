@@ -3,7 +3,7 @@
  * per plot, wired like the DOs but with a fake clock, the real account logic
  * (FakeGateway, T-escrow), a fake chunk and an in-memory outbox per book.
  */
-import type { EntityState, Party } from "@gamez/protocol";
+import type { EntityState, Party, VaultItemInput } from "@gamez/protocol";
 import { Outbox, type OutboxRecord } from "@gamez/sync";
 import type { ChunkFixtureApi, ShopApi } from "../../src/server/contracts.ts";
 import { PlotBook } from "../../src/server/shops/plots.ts";
@@ -26,13 +26,19 @@ export class FakeClock {
   }
 }
 
-/** FakeGateway with a hook awaited before every walletTx (to interleave sagas). */
+/** FakeGateway with hooks awaited before every walletTx / vaultPut (to interleave sagas). */
 export class HookedGateway extends FakeGateway {
   hook: ((accountId: string, txId: string) => Promise<void>) | null = null;
+  putHook: ((accountId: string, txId: string) => Promise<void>) | null = null;
 
   override async walletTx(accountId: string, tx: WalletTxC) {
     if (this.hook) await this.hook(accountId, tx.txId);
     return super.walletTx(accountId, tx);
+  }
+
+  override async vaultPut(accountId: string, txId: string, item: VaultItemInput) {
+    if (this.putHook) await this.putHook(accountId, txId);
+    return super.vaultPut(accountId, txId, item);
   }
 }
 
@@ -57,6 +63,7 @@ export class Harness {
   readonly plots: PlotBook;
   readonly #shops = new Map<string, ShopBook>();
   readonly #shopOutboxes = new Map<string, Outbox>();
+  readonly #shopStores = new Map<string, ReturnType<typeof fakeSqlStore>>();
 
   constructor() {
     const store = fakeSqlStore();
@@ -82,6 +89,7 @@ export class Harness {
       const outbox = new Outbox(store.sql, `shop:${WORLD}/${plotId}`);
       outbox.init();
       this.#shopOutboxes.set(plotId, outbox);
+      this.#shopStores.set(plotId, store);
       book = new ShopBook({
         world: WORLD,
         plotId,
@@ -94,6 +102,24 @@ export class Harness {
       book.init();
       this.#shops.set(plotId, book);
     }
+    return book;
+  }
+
+  /**
+   * A second ShopBook over the same storage as `shop(plotId)`: a driver that does
+   * not share the first book's in-memory lock (tests the storage-level guards).
+   */
+  shopTwin(plotId: string): ShopBook {
+    this.shop(plotId);
+    const book = new ShopBook({
+      world: WORLD,
+      plotId,
+      store: this.#shopStores.get(plotId)!,
+      outbox: this.#shopOutboxes.get(plotId)!,
+      gateway: this.gw,
+      clock: this.clock,
+      plots: { refreshFixture: (id) => this.plots.refreshFixture(id) },
+    });
     return book;
   }
 

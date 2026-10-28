@@ -94,7 +94,7 @@ describe("readLeaderboard against migrated tables", () => {
     const d1 = migrated();
     insertHero(d1, { id: "a", level: 10, xp: 500, _updated_at: 1 });
     insertHero(d1, { id: "b", level: 12, xp: 100, _updated_at: 2 });
-    insertHero(d1, { id: "c", level: 10, xp: 900, imported: 1, _updated_at: 3 });
+    insertHero(d1, { id: "c", level: 10, xp: 900, _updated_at: 3 });
     const res = await readLeaderboard(d1.asD1(), {
       board: "level",
       mode: "classic",
@@ -112,7 +112,7 @@ describe("readLeaderboard against migrated tables", () => {
       heroName: "Hero",
       classId: "classic.warrior",
       heroLevel: 10,
-      imported: true,
+      imported: false,
       updatedAt: 3,
       extra: { xp: 900 },
     });
@@ -190,6 +190,33 @@ describe("readLeaderboard against migrated tables", () => {
       limit: 50,
     });
     expect(res.rows.map((r) => r.accountId)).toEqual(["acc-here"]);
+  });
+
+  it("never ranks imported heroes or their rift runs on any board (ADR 0007 R1)", async () => {
+    const d1 = migrated();
+    insertHero(d1, { id: "forged", level: 99, xp: 9e9, deepest_depth: 99, imported: 1 });
+    insertHero(d1, { id: "honest", level: 5, xp: 10, deepest_depth: 3 });
+    insertRift(d1, { id: "f1", account_id: "acc-forged", score: 99_999, run: 1, imported: 1 });
+    insertRift(d1, { id: "h1", account_id: "acc-honest", score: 400, run: 1 });
+    // An account's imported best run must not hide its honest (lower) run.
+    insertRift(d1, { id: "m1", account_id: "acc-mixed", score: 50_000, run: 1, imported: 1 });
+    insertRift(d1, { id: "m2", account_id: "acc-mixed", score: 300, run: 2 });
+    const read = (board: "level" | "depth" | "rift", classId: string | null = null) =>
+      readLeaderboard(d1.asD1(), { board, mode: "classic", classId, limit: 50 });
+    expect((await read("level")).rows.map((r) => r.accountId)).toEqual(["acc-honest"]);
+    expect((await read("depth")).rows.map((r) => r.accountId)).toEqual(["acc-honest"]);
+    expect((await read("rift")).rows.map((r) => [r.accountId, r.value])).toEqual([
+      ["acc-honest", 400],
+      ["acc-mixed", 300],
+    ]);
+    // With a class filter too.
+    const byClass = await read("level", "classic.warrior");
+    expect(byClass.rows.map((r) => r.accountId)).toEqual(["acc-honest"]);
+    for (const board of ["level", "depth", "rift"] as const) {
+      for (const row of (await read(board)).rows) expect(row.imported).toBe(false);
+      const q = buildLeaderboardSql({ board, mode: "classic", classId: null, limit: 1 });
+      expect(q.sql).toContain("COALESCE(imported, 0) = 0");
+    }
   });
 
   it("answers available: false with no rows when the tables are missing", async () => {

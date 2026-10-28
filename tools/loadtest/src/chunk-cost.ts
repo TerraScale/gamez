@@ -15,6 +15,7 @@
 import { parseArgs } from "node:util";
 import type { EntityState, PoseUpdate } from "@gamez/protocol";
 import { continueWalk, sanitisePose } from "../../../apps/game/src/server/presence/pose.ts";
+import { latencyTag } from "./tag.ts";
 
 const FLUSH_MS = 50;
 const BOUNDS = { width: 72, height: 72 };
@@ -27,7 +28,7 @@ function pose(i: number, t: number): PoseUpdate {
     path: Array.from({ length: 6 }, (_, k) => ({ x: Math.min(71, x + k + 1), y })),
     speed: 4,
     appearance: "unit.hero.warrior",
-    tag: `lt:${1793200000000 + t}`,
+    tag: latencyTag(1793200000000 + t),
   };
 }
 

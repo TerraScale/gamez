@@ -42,6 +42,8 @@ export class FakeAccount {
   readonly store = fakeSqlStore();
   readonly social: AccountSocial;
   revoked = false;
+  /** The next releaseGuild call throws (a crash after GuildDO.kick). */
+  failReleaseOnce = false;
 
   constructor(now: () => number) {
     this.social = new AccountSocial(this.store, now);
@@ -101,6 +103,8 @@ export interface World {
   env: Env;
   clock: Clock;
   db: DatabaseSync;
+  /** Chat channels: revoke calls seen, and a switch that makes them throw. */
+  chat: { revokes: { channel: string; accountId: string; reason: string }[]; failRevoke: boolean };
   account(accountId: string): FakeAccount;
   guild(guildId: string): FakeGuild;
   /** Projects every guild outbox into the fake D1, as the sync queue would. */
@@ -132,9 +136,20 @@ export function makeWorld(opts: { readModel?: boolean } = {}): World {
     return g;
   };
 
+  const chat: World["chat"] = { revokes: [], failRevoke: false };
+
   const env = {
     AUTH_SECRET: SECRET,
     DB: d1,
+    CHAT: {
+      getByName: (channel: string) => ({
+        revoke: async (accountId: string, reason: string) => {
+          if (chat.failRevoke) throw new Error("chat channel unavailable");
+          chat.revokes.push({ channel, accountId, reason });
+          return 1;
+        },
+      }),
+    },
     ACCOUNT: {
       getByName: (accountId: string) => {
         const acc = account(accountId);
@@ -146,8 +161,13 @@ export function makeWorld(opts: { readModel?: boolean } = {}): World {
             acc.social.reserveGuild(opId, guildId),
           confirmGuild: async (opId: string, m: Parameters<AccountSocial["confirmGuild"]>[1]) =>
             acc.social.confirmGuild(opId, m),
-          releaseGuild: async (opId: string, guildId: string) =>
-            acc.social.releaseGuild(opId, guildId),
+          releaseGuild: async (opId: string, guildId: string) => {
+            if (acc.failReleaseOnce) {
+              acc.failReleaseOnce = false;
+              throw new Error("AccountDO unavailable");
+            }
+            return acc.social.releaseGuild(opId, guildId);
+          },
           blocks: async () => acc.social.blocks(),
         };
       },
@@ -170,6 +190,7 @@ export function makeWorld(opts: { readModel?: boolean } = {}): World {
     env,
     clock,
     db,
+    chat,
     account,
     guild,
     async syncD1() {

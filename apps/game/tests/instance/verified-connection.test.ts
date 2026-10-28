@@ -395,6 +395,23 @@ describe("VerifiedClient", () => {
     expect(game.sim!.hash()).toBe(local.hash());
   });
 
+  it("importSave sends plain JSON and refuses a save over the import limits (R8)", async () => {
+    const { net, game, client } = await connected();
+    const local = createSim(loaded, { seed: 3 });
+    local.step(30);
+    const big = local.snapshot();
+    (big.world.resources as Record<string, unknown>)["zz.junk"] = Array.from(
+      { length: 60_000 },
+      () => 0,
+    );
+    const before = net.last.sent.length;
+    client.importSave(big, 123);
+    await tick();
+    await net.flush();
+    expect(net.last.sent.length).toBe(before);
+    expect(game.errors).toContain("import_failed");
+  });
+
   it("estimates the server clock from pongs", async () => {
     const { net, client } = await connected();
     // Server and client share the fake clock: offset 0.

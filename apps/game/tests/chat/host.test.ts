@@ -135,7 +135,7 @@ function harness(
       return s;
     },
     send(s, text, nonce = `n${Math.random().toString(36).slice(2, 8)}`) {
-      host.handleMessage(s, JSON.stringify({ t: "send", text, nonce }));
+      void host.handleMessage(s, JSON.stringify({ t: "send", text, nonce }));
     },
     rebuild() {
       host = new ChatHost(deps());
@@ -323,7 +323,7 @@ describe("blocks", () => {
     await h.drain();
     bob.frames.length = 0;
 
-    h.host.handleMessage(
+    void h.host.handleMessage(
       bob,
       JSON.stringify({ t: "block", accountId: "acc-alice", blocked: true }),
     );
@@ -355,7 +355,7 @@ describe("blocks", () => {
     });
     const bob = await h.connect("acc-bob");
     const alice = await h.connect("acc-alice");
-    h.host.handleMessage(
+    void h.host.handleMessage(
       bob,
       JSON.stringify({ t: "block", accountId: "acc-alice", blocked: true }),
     );
@@ -369,11 +369,11 @@ describe("blocks", () => {
   it("calls AccountDO with the block change", async () => {
     const h = harness();
     const bob = await h.connect("acc-bob");
-    h.host.handleMessage(
+    void h.host.handleMessage(
       bob,
       JSON.stringify({ t: "block", accountId: "acc-alice", blocked: true }),
     );
-    h.host.handleMessage(
+    void h.host.handleMessage(
       bob,
       JSON.stringify({ t: "block", accountId: "acc-alice", blocked: false }),
     );
@@ -394,7 +394,7 @@ describe("blocks", () => {
   it("refuses to block yourself", async () => {
     const h = harness();
     const a = await h.connect("acc-a");
-    h.host.handleMessage(a, JSON.stringify({ t: "block", accountId: "acc-a", blocked: true }));
+    void h.host.handleMessage(a, JSON.stringify({ t: "block", accountId: "acc-a", blocked: true }));
     expect(a.last("error")).toMatchObject({ code: "bad_message" });
   });
 });
@@ -503,8 +503,8 @@ describe("reports", () => {
     const id = lastAckId(a)!;
     await h.drain();
 
-    h.host.handleMessage(b, JSON.stringify({ t: "report", id, reason: "spam" }));
-    h.host.handleMessage(b, JSON.stringify({ t: "report", id, reason: "abuse" }));
+    void h.host.handleMessage(b, JSON.stringify({ t: "report", id, reason: "spam" }));
+    void h.host.handleMessage(b, JSON.stringify({ t: "report", id, reason: "abuse" }));
     expect(b.frames.filter((f) => f.t === "error")).toHaveLength(0);
     const mine = h.outbox.records.filter((r) => r.pk === `global/${id}/acc-b`);
     expect(mine).toHaveLength(1);
@@ -527,13 +527,13 @@ describe("reports", () => {
     const a = await h.connect("acc-a");
     h.host.notice("hello all");
     const sys = h.host.recent(1)[0]!;
-    h.host.handleMessage(a, JSON.stringify({ t: "report", id: sys.id, reason: "spam" }));
+    void h.host.handleMessage(a, JSON.stringify({ t: "report", id: sys.id, reason: "spam" }));
     expect(a.last("error")).toMatchObject({ code: "bad_message" });
-    h.host.handleMessage(a, JSON.stringify({ t: "report", id: "nope", reason: "spam" }));
+    void h.host.handleMessage(a, JSON.stringify({ t: "report", id: "nope", reason: "spam" }));
     expect(a.last("error")).toMatchObject({ code: "bad_message" });
     h.send(a, "mine", "own");
     const own = lastAckId(a)!;
-    h.host.handleMessage(a, JSON.stringify({ t: "report", id: own, reason: "other" }));
+    void h.host.handleMessage(a, JSON.stringify({ t: "report", id: own, reason: "other" }));
     expect(a.last("error")).toMatchObject({
       code: "bad_message",
       message: "you cannot report yourself",
@@ -546,9 +546,9 @@ describe("protocol edges", () => {
   it("answers bad frames with bad_message and never throws", async () => {
     const h = harness();
     const a = await h.connect("acc-a");
-    h.host.handleMessage(a, "not json");
-    h.host.handleMessage(a, JSON.stringify({ t: "unknown" }));
-    h.host.handleMessage(a, new TextEncoder().encode('{"t":"send"}').buffer as ArrayBuffer);
+    void h.host.handleMessage(a, "not json");
+    void h.host.handleMessage(a, JSON.stringify({ t: "unknown" }));
+    void h.host.handleMessage(a, new TextEncoder().encode('{"t":"send"}').buffer as ArrayBuffer);
     expect(a.of("error").map((e) => e.code)).toEqual(["bad_message", "bad_message", "bad_message"]);
   });
 
@@ -556,7 +556,7 @@ describe("protocol edges", () => {
     const h = harness();
     const a = await h.connect("acc-a");
     for (let i = 0; i < 5; i++)
-      h.host.handleMessage(a, JSON.stringify({ t: "ping", clientTime: i }));
+      void h.host.handleMessage(a, JSON.stringify({ t: "ping", clientTime: i }));
     expect(a.of("pong")).toHaveLength(3);
     expect(a.last("pong")).toMatchObject({ clientTime: 2, serverTime: h.now() });
   });

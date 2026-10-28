@@ -5,6 +5,13 @@
  *
  * txIds: "bank:<instance>:<opId>:take" | ":refund" | ":credit" (<= 128 chars:
  * instance names are "<mode>:<accountId>", opIds <= 64 chars).
+ *
+ * ADR 0007 R2: the AccountDO binds every txId to its parameters and answers
+ * "conflict" when a txId comes back with other ones (an opId reused after the
+ * bank_op row was lost). A conflicting take fails the op with "conflict" and
+ * takes nothing, so it is never refunded (TakeOutcome ok:false carries no
+ * effect). A conflicting refund or credit is terminal: it is logged at error
+ * level and the op finishes (no endless re-drive), never retried as new value.
  */
 import type { GameEvent } from "@gamez/kernel";
 import type { BankResult, EconomyErrorCode, VaultItem, VaultItemInput } from "@gamez/protocol";
@@ -70,6 +77,12 @@ export function bankEventOf(
 
 export type TakeOutcome = { ok: true; effect: BankEffect } | { ok: false; result: BankResult };
 
+/** Error log of the saga's terminal anomalies (a conflicting refund or credit). */
+export type BankSagaLog = (message: string, data?: unknown) => void;
+const DEFAULT_LOG: BankSagaLog = (message, data) => console.error(message, data);
+
+const CONFLICT_MESSAGE = "this operation id was already used for something else";
+
 /**
  * Withdrawals take from the account first. `redrive`: a re-drive after a
  * crash: skip the checks and just replay the take (same txId), which tells
@@ -99,7 +112,9 @@ export async function takeFromAccount(
         result:
           r.code === "insufficient_funds"
             ? failure("insufficient_funds", "not enough coin on the account")
-            : failure("bad_request", "the withdrawal was refused"),
+            : r.code === "conflict"
+              ? failure("conflict", CONFLICT_MESSAGE)
+              : failure("bad_request", "the withdrawal was refused"),
       };
     }
     return { ok: true, effect: { coin: op.coin, gold: op.coin, item: null, balance: r.balance } };
@@ -117,7 +132,15 @@ export async function takeFromAccount(
     }
   }
   const r = await account.vaultTake(row.accountId, txId, op.uid);
-  if (!r.ok) return { ok: false, result: failure("not_found", "that item is not in the vault") };
+  if (!r.ok) {
+    return {
+      ok: false,
+      result:
+        r.code === "conflict"
+          ? failure("conflict", CONFLICT_MESSAGE)
+          : failure("not_found", "that item is not in the vault"),
+    };
+  }
   return { ok: true, effect: { coin: 0, gold: 0, item: r.item, balance: null } };
 }
 
@@ -126,16 +149,29 @@ function vaultInput(item: VaultItem | VaultItemInput): VaultItemInput {
   return rest;
 }
 
-/** Gives back what a withdrawal took. Idempotent (txId ":refund"); throws when unreachable. */
+/**
+ * Gives back what a withdrawal took. Idempotent (txId ":refund"); throws when
+ * unreachable or refused for now (the caller re-drives). Only an op whose take
+ * succeeded has an effect: a failed take (conflict included) refunds nothing.
+ * A "conflict" (the refund txId already holds another change) is terminal:
+ * logged at error level, then the caller finishes the op without a refund.
+ */
 export async function refundToAccount(
   account: BankAccount,
   instance: string,
   mode: string,
   row: BankOpRow,
+  log: BankSagaLog = DEFAULT_LOG,
 ): Promise<void> {
   const e = row.effect;
   if (!e) return;
   const txId = bankTxId(instance, row.opId, "refund");
+  const conflict = (what: unknown): void =>
+    log(`bank ${instance}: refund ${txId} conflicts with an earlier tx, NOT refunded`, {
+      accountId: row.accountId,
+      op: row.op,
+      refund: what,
+    });
   if (e.coin > 0 && row.op.kind === "withdrawCoin") {
     // Same flow and reason as the take, opposite sign: the sink nets out.
     const r = await account.walletTx(row.accountId, {
@@ -145,11 +181,13 @@ export async function refundToAccount(
       reason: `${REASON_WITHDRAW}:${mode}`,
       flow: "sink",
     });
+    if (!r.ok && r.code === "conflict") return conflict({ coin: e.coin });
     if (!r.ok) throw new Error(`refund refused: ${r.code}`);
     return;
   }
   if (e.item && row.op.kind === "withdrawItem") {
     const r = await account.vaultPut(row.accountId, txId, vaultInput(e.item));
+    if (!r.ok && r.code === "conflict") return conflict({ item: e.item });
     if (!r.ok) throw new Error(`refund refused: ${r.code}`);
   }
 }
@@ -157,19 +195,31 @@ export async function refundToAccount(
 /**
  * Credits a committed deposit to the account (txId ":credit"). The final
  * result, or null when the account refused for now (vault full: kept and
- * retried). Throws when unreachable.
+ * retried). Throws when unreachable. A "conflict" (the credit txId already
+ * holds another change) is a final failure, logged at error level: retrying
+ * could never succeed, and the deposit must not be credited under a new txId.
  */
 export async function creditAccount(
   account: BankAccount,
   instance: string,
   mode: string,
   row: BankOpRow,
+  log: BankSagaLog = DEFAULT_LOG,
 ): Promise<BankResult | null> {
   const e = row.effect;
   if (!e) return failure("internal", "the deposit lost its effect");
   const txId = bankTxId(instance, row.opId, "credit");
+  const conflict = (what: unknown): BankResult => {
+    log(`bank ${instance}: credit ${txId} conflicts with an earlier tx, NOT credited`, {
+      accountId: row.accountId,
+      op: row.op,
+      credit: what,
+    });
+    return failure("conflict", CONFLICT_MESSAGE);
+  };
   if (e.item) {
     const r = await account.vaultPut(row.accountId, txId, vaultInput(e.item));
+    if (!r.ok && r.code === "conflict") return conflict({ item: e.item });
     if (!r.ok) return null;
     const balance = await balanceOf(account, row.accountId);
     return { ok: true, item: r.item, balance };
@@ -181,6 +231,7 @@ export async function creditAccount(
     reason: `${REASON_DEPOSIT}:${mode}`,
     flow: "faucet",
   });
+  if (!r.ok && r.code === "conflict") return conflict({ coin: e.coin, gold: e.gold });
   if (!r.ok) return null;
   return { ok: true, coin: e.coin, gold: e.gold, balance: r.balance };
 }

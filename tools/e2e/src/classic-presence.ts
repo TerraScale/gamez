@@ -149,6 +149,30 @@ export const classicPresenceFeature: E2eFeature = {
       `B sees A's valid appearance (${seenA?.appearance ?? "none"})`,
     );
 
+    // ADR 0007 R11: a tag is not free text. Anything but "Lv <n> <class word>"
+    // is dropped, so B sees A's next pose without a tag.
+    botA.send({
+      t: "pose",
+      pos: { x: 38, y: 46 },
+      path: [],
+      speed: 4,
+      // A distinct appearance marks this pose's delta (continueWalk may keep
+      // the drawn position on the earlier walk).
+      appearance: "unit.hero.rogue",
+      tag: "Lv 3 visit evil.example",
+    });
+    const freeText = await botB
+      .waitFor(
+        "A's free-text-tag pose at B",
+        (m) => upsertOf(m, townA)?.appearance === "unit.hero.rogue",
+      )
+      .catch(() => null);
+    const seenFree = freeText ? upsertOf(freeText, townA) : undefined;
+    check(
+      seenFree !== undefined && seenFree.tag === undefined,
+      `a free-text pose tag is not relayed (${seenFree ? `tag ${JSON.stringify(seenFree.tag ?? null)}` : "no delta"})`,
+    );
+
     // Pose sanitising: an out-of-bounds pose is refused and changes nothing at B.
     botA.send({ t: "pose", pos: { x: 500, y: 1 }, path: [], speed: 4 });
     const refused = await botA
