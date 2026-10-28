@@ -43,6 +43,17 @@ export const AUTO_MUTE_MS = 15 * 60 * 1000;
 const PING_RATE: BucketSpec = { burst: 3, perSecond: 1 };
 /** Block messages per socket: burst 10, one per 2 s (R9). Refusals never reach AccountDO. */
 export const BLOCK_RATE: BucketSpec = { burst: 10, perSecond: 0.5 };
+/** Report messages per socket: burst 5, one per 5 s (R9b). */
+export const REPORT_RATE: BucketSpec = { burst: 5, perSecond: 0.2 };
+/**
+ * R9b: only the first this-many reporters of a message are recorded (a
+ * chat_seen_report row plus one D1 chat_report row each). Later reports of that
+ * message are accepted silently and write nothing: the message is already in
+ * the moderation queue, and admin counts read "at least" this many. This bounds
+ * the channel's report rows by RETAIN_MESSAGES x REPORTERS_PER_MESSAGE however
+ * many (free guest) accounts report.
+ */
+export const REPORTERS_PER_MESSAGE = 5;
 /**
  * R9: a join drops the cached block rows of accounts with no open socket at
  * most this often (a backstop for a close the runtime never reported; the
@@ -150,6 +161,7 @@ export class ChatHost {
   readonly #buckets = new Map<string, TokenBucket>();
   readonly #pings = new WeakMap<ChatSocket, TokenBucket>();
   readonly #blockBuckets = new WeakMap<ChatSocket, TokenBucket>();
+  readonly #reportBuckets = new WeakMap<ChatSocket, TokenBucket>();
   /** Sockets this host has closed (revoke is idempotent over them). */
   readonly #closed = new WeakSet<ChatSocket>();
   /** Guild id of this channel, or null for a non-guild channel. */
@@ -193,7 +205,12 @@ export class ChatHost {
    */
   socketClosed(socket: ChatSocket): void {
     this.#closed.add(socket);
-    this.#releaseBlocksIfGone(socket.info.accountId);
+    this.#releaseIfGone(socket.info.accountId);
+  }
+
+  /** Accounts with a send rate bucket in memory (tests and diagnostics, R9b). */
+  get rateBucketCount(): number {
+    return this.#buckets.size;
   }
 
   /**
@@ -237,6 +254,7 @@ export class ChatHost {
     if (now - this.#lastBlockSweep >= BLOCK_SWEEP_MS) {
       this.#lastBlockSweep = now;
       this.#sweepBlocks();
+      this.#sweepBuckets(now);
     }
     const blocked = this.#d.store.blockList(accountId);
     const blockedSet = new Set(blocked);
@@ -293,8 +311,8 @@ export class ChatHost {
       this.#members.set(accountId, { guildId: null, at: this.#d.now() });
     }
     let closed = 0;
-    for (const s of this.#d.sockets()) {
-      if (s.info.accountId !== accountId || this.#closed.has(s)) continue;
+    for (const s of this.#socketsOf(accountId)) {
+      if (this.#closed.has(s)) continue;
       this.#closeSocket(s, CLOSE_FORBIDDEN, reason);
       closed++;
     }
@@ -352,10 +370,8 @@ export class ChatHost {
         if (current !== guildId) close = { code: CLOSE_FORBIDDEN, reason: "not a member" };
       }
       if (!close) return;
-      for (const s of this.#d.sockets()) {
-        if (s.info.accountId === accountId && !this.#closed.has(s)) {
-          this.#closeSocket(s, close.code, close.reason);
-        }
+      for (const s of this.#socketsOf(accountId)) {
+        if (!this.#closed.has(s)) this.#closeSocket(s, close.code, close.reason);
       }
     });
   }
@@ -407,7 +423,7 @@ export class ChatHost {
     } catch (err) {
       this.#log(`chat ${this.#d.channel}: close failed`, err);
     }
-    this.#releaseBlocksIfGone(socket.info.accountId);
+    this.#releaseIfGone(socket.info.accountId);
   }
 
   #socketsOf(accountId: string): ChatSocket[] {
@@ -420,9 +436,17 @@ export class ChatHost {
     return this.#socketsOf(accountId).some((s) => !this.#closed.has(s));
   }
 
-  /** R9: drops the account's cached block rows once it has no open socket here. */
-  #releaseBlocksIfGone(accountId: string): void {
+  /**
+   * Once the account has no open socket here: drops its cached block rows (R9)
+   * and its send rate bucket when that is full again (R9b). A bucket that is
+   * still draining stays, so reconnecting never refills it early; the next
+   * sweep drops it.
+   */
+  #releaseIfGone(accountId: string): void {
     if (this.#hasLiveSocket(accountId)) return;
+    if (this.#buckets.get(accountId)?.full(this.#d.now()) ?? false) {
+      this.#buckets.delete(accountId);
+    }
     try {
       this.#d.store.dropBlocks(accountId);
     } catch (err) {
@@ -442,6 +466,16 @@ export class ChatHost {
         this.#log(`chat ${this.#d.channel}: dropped block rows of ${dropped} gone account(s)`);
     } catch (err) {
       this.#log(`chat ${this.#d.channel}: block row sweep failed`, err);
+    }
+  }
+
+  /**
+   * R9b: drops the send rate buckets of accounts with no open socket here once
+   * they are full again (equivalent to a fresh bucket, so nothing is lost).
+   */
+  #sweepBuckets(now: number): void {
+    for (const [accountId, bucket] of this.#buckets) {
+      if (bucket.full(now) && !this.#hasLiveSocket(accountId)) this.#buckets.delete(accountId);
     }
   }
 
@@ -477,7 +511,7 @@ export class ChatHost {
     };
     this.#d.store.transact(() => {
       this.#d.store.insert(msg, "");
-      this.#d.store.prune(RETAIN_MESSAGES);
+      this.#d.store.prune(RETAIN_MESSAGES, { now, strikesBefore: now - STRIKE_WINDOW_MS });
     });
     this.#broadcast({ t: "message", msg });
   }
@@ -540,7 +574,7 @@ export class ChatHost {
     };
     this.#d.store.transact(() => {
       this.#d.store.insert(msg, key);
-      this.#d.store.prune(RETAIN_MESSAGES);
+      this.#d.store.prune(RETAIN_MESSAGES, { now, strikesBefore: now - STRIKE_WINDOW_MS });
     });
     this.#send(socket, { t: "ack", nonce, id: msg.id });
     this.#broadcast({ t: "message", msg }, this.#d.store.blockersOf(accountId));
@@ -588,14 +622,19 @@ export class ChatHost {
 
   #onReport(socket: ChatSocket, id: string, reason: ReportReason): void {
     const { accountId } = socket.info;
+    const now = this.#d.now();
+    if (!this.#socketBucket(this.#reportBuckets, REPORT_RATE, socket, now).take(now)) {
+      return this.#reject(socket, "rate_limited", "slow down");
+    }
     const row = this.#d.store.getMessage(id);
     if (!row || row.system) return this.#reject(socket, "bad_message", "unknown message");
     if (row.from === accountId) {
       return this.#reject(socket, "bad_message", "you cannot report yourself");
     }
-    const now = this.#d.now();
     const created = this.#d.store.transact(() => {
       if (this.#d.store.seenReport(row.id, accountId)) return false;
+      // R9b: enough reporters already put this message in the queue.
+      if (this.#d.store.reportCount(row.id) >= REPORTERS_PER_MESSAGE) return false;
       this.#d.store.markReport(row.id, accountId, now);
       this.#appendReport(row.id, row.from, accountId, reason, row.text, row.verdict, now);
       return true;
@@ -630,7 +669,7 @@ export class ChatHost {
   #onBlock(socket: ChatSocket, target: string, blocked: boolean): void {
     const me = socket.info.accountId;
     const now = this.#d.now();
-    if (!this.#blockBucket(socket, now).take(now)) {
+    if (!this.#socketBucket(this.#blockBuckets, BLOCK_RATE, socket, now).take(now)) {
       return this.#reject(socket, "rate_limited", "slow down");
     }
     if (target === me) return this.#reject(socket, "bad_message", "you cannot block yourself");
@@ -661,11 +700,16 @@ export class ChatHost {
     this.#send(socket, { t: "pong", clientTime, serverTime: now });
   }
 
-  #blockBucket(socket: ChatSocket, now: number): TokenBucket {
-    let bucket = this.#blockBuckets.get(socket);
+  #socketBucket(
+    buckets: WeakMap<ChatSocket, TokenBucket>,
+    spec: BucketSpec,
+    socket: ChatSocket,
+    now: number,
+  ): TokenBucket {
+    let bucket = buckets.get(socket);
     if (!bucket) {
-      bucket = new TokenBucket(BLOCK_RATE, now);
-      this.#blockBuckets.set(socket, bucket);
+      bucket = new TokenBucket(spec, now);
+      buckets.set(socket, bucket);
     }
     return bucket;
   }
@@ -725,8 +769,8 @@ export class ChatHost {
 
   #sendToAccount(accountId: string, msg: ChatServerMessage): void {
     const frame = encodeChatServerMessage(msg);
-    for (const s of this.#d.sockets()) {
-      if (s.info.accountId !== accountId) continue;
+    // The DO answers this with an `acct:` tag lookup, not a scan of the channel.
+    for (const s of this.#socketsOf(accountId)) {
       if (this.#opening.has(s) || this.#closed.has(s)) continue;
       this.#sendFrame(s, frame);
     }

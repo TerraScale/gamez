@@ -10,6 +10,12 @@
  * have a socket open here (R9): ChatHost drops an account's rows when its last
  * socket closes, and open() restores them from AccountDO. So the table is
  * bounded by open sockets x BLOCK_LIMIT, never by every account that ever joined.
+ *
+ * R9b: `chat_seen_report` keeps at most REPORTERS_PER_MESSAGE rows per kept
+ * message (ChatHost stops recording reporters after that), and prune() drops the
+ * rows of pruned messages, expired strikes and expired mutes in the same
+ * transaction as the messages. So every table here is bounded by kept messages
+ * or by recent activity, never by every account that ever joined.
  */
 import type { ChatMessage } from "@gamez/protocol";
 import type { SqlStore } from "../contracts.ts";
@@ -140,12 +146,23 @@ export class ChatStore {
     this.sql.exec("UPDATE chat_message SET verdict = ? WHERE id = ?", verdict, id);
   }
 
-  /** Keeps the newest `keep` messages (system notices included). */
-  prune(keep: number): void {
+  /**
+   * Keeps the newest `keep` messages (system notices included) and drops what
+   * hangs off pruned or expired state (R9b): report marks of messages that are
+   * gone, strikes older than `strikesBefore` (they no longer count toward a
+   * mute) and mutes that ended at or before `now`. Run it inside the caller's
+   * transaction.
+   */
+  prune(keep: number, opts: { now: number; strikesBefore: number }): void {
     this.sql.exec(
       "DELETE FROM chat_message WHERE seq <= (SELECT MAX(seq) FROM chat_message) - ?",
       keep,
     );
+    this.sql.exec(
+      "DELETE FROM chat_seen_report WHERE message_id NOT IN (SELECT id FROM chat_message)",
+    );
+    this.sql.exec("DELETE FROM chat_strike WHERE at < ?", opts.strikesBefore);
+    this.sql.exec("DELETE FROM chat_mute WHERE until <= ?", opts.now);
   }
 
   /** Dedupe keys (lowercased raw text) of the account's player messages since `since`. */
@@ -294,6 +311,27 @@ export class ChatStore {
         )
         .toArray().length > 0
     );
+  }
+
+  /** Reporters recorded for one message (at most REPORTERS_PER_MESSAGE, R9b). */
+  reportCount(messageId: string): number {
+    return num(
+      this.sql
+        .exec<Row>("SELECT COUNT(*) AS n FROM chat_seen_report WHERE message_id = ?", messageId)
+        .toArray()[0]?.n ?? 0,
+    );
+  }
+
+  /** Rows per table, for tests and diagnostics (R9b storage bounds). */
+  rowCounts(): { messages: number; reports: number; strikes: number; mutes: number } {
+    const count = (table: string) =>
+      num(this.sql.exec<Row>(`SELECT COUNT(*) AS n FROM ${table}`).toArray()[0]?.n ?? 0);
+    return {
+      messages: count("chat_message"),
+      reports: count("chat_seen_report"),
+      strikes: count("chat_strike"),
+      mutes: count("chat_mute"),
+    };
   }
 
   markReport(messageId: string, reporterId: string, at: number): void {

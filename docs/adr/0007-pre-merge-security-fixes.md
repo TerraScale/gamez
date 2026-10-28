@@ -267,6 +267,42 @@ the accounts that have a socket open in the channel, never a store of every acco
 - Per-IP limits on guest minting and chat connects would cap the open-socket bound as well. They are
   left as a follow-up.
 
+## R9b. Chat reports, strikes, mutes and rate buckets grow without bound
+
+Finding (re-verification of R9): _the same bug class as R9, through reports_. `#onReport` had no
+rate limit, and every (message, reporter) pair wrote a `chat_seen_report` row plus an outbox append
+(one D1 `chat_report` row). Nothing deleted them, and pruning a message left its report rows behind.
+2,000 free guests reporting the 200 kept messages produced 400,000 rows (27 MB) and 400,000 outbox
+appends, which survived socket close, restart and sweep. `chat_strike` and `chat_mute` rows were
+never pruned either, `ChatHost.#buckets` (send rate per account) never evicted, and
+`#sendToAccount` scanned every socket in the channel for each frame.
+
+**Decision.**
+
+- `#onReport` gets a per-socket token bucket (`REPORT_RATE`: 5 burst, 1 per 5 s).
+- Only the first `REPORTERS_PER_MESSAGE` (5) reporters of a message are recorded (seen row and
+  outbox append). Later reports are accepted silently and write nothing: the message is already in
+  the moderation queue, and the admin views (`readModeration`, `/api/admin/chat/reports`) read the
+  count as "at least 5". Automatic moderation reports are separate and unaffected.
+- `ChatStore.prune` (called in the same transaction as every message insert) also deletes the
+  report rows of pruned messages, strikes older than `STRIKE_WINDOW_MS` (they no longer count
+  toward a mute) and mutes that have ended.
+- An account's send bucket is dropped when its last socket closes, if it is full again (a full
+  bucket is the same as a fresh one, so reconnecting never refills a draining bucket early). The
+  `BLOCK_SWEEP_MS` join sweep drops the rest.
+- `#sendToAccount`, `revoke` and the membership sweep use the `acct:<id>` tag lookup
+  (`socketsOf`) instead of scanning the channel.
+
+**Consequences.** `chat_seen_report` is bounded by `RETAIN_MESSAGES` x `REPORTERS_PER_MESSAGE`
+(1,000 rows), and D1 `chat_report` grows only with messages sent (at most 5 rows each), not with
+reporters. Strikes and mutes are bounded by the last 24 h of moderated sends and by active mutes.
+Regression tests: `tests/chat/report-limit.test.ts` (40 guests x 200 messages: 8,000 rows and
+8,000 appends before, 1,000 and 1,000 after).
+
+**Follow-up.** Per-IP rate limits on guest minting and on chat connects. They would cap how many
+sockets and accounts one client can hold, which bounds the remaining per-open-socket state (R9
+block rows, R9b rate buckets) and the strike rows one client can cause.
+
 ## R10. Kicked or departed guild members keep using guild chat
 
 Finding (1): _Kicked or departed guild members keep reading and writing guild chat_.

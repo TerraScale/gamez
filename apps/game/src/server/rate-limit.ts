@@ -50,6 +50,12 @@ export class TokenBucket {
     this.dropped++;
     return false;
   }
+
+  /** True when the bucket would hold `burst` tokens at `now` (a fresh bucket is equivalent). */
+  full(now: number): boolean {
+    const elapsed = Math.max(0, now - this.#last) / 1000;
+    return this.#tokens + elapsed * this.spec.perSecond >= this.spec.burst;
+  }
 }
 
 /** All buckets of one socket, plus the throttle for its "rate_limited" notices. */
