@@ -1,0 +1,15 @@
+{
+  "name": "@gamez/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@gamez/classic.town": "workspace:*",
+    "@gamez/protocol": "workspace:*",
+    "@gamez/world": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

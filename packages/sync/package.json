@@ -1,0 +1,17 @@
+{
+  "name": "@gamez/sync",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

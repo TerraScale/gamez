@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Installs Vite+ and the Node.js and pnpm versions from the root devEngines.
+      # Production deploys are not done here; see docs/deploy.md (Workers Builds).
+      - uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          node-version: "24"
+          cache: true
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Check (format, lint, types)
+        run: vp check
+
+      - name: Test
+        run: vp run -r test
+
+      - name: Build game
+        run: vp -C apps/game build
+
+      # Phase-0 end to end in local workerd: two bots, a walk, DO -> D1 replication
+      # and persistence across a dev-server restart. Uses the example dev secret.
+      - name: End to end (local dev server)
+        run: |
+          cp apps/game/.dev.vars.example apps/game/.dev.vars
+          vp run e2e

@@ -1,0 +1,22 @@
+{
+  "name": "@gamez/art.kenney",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build-art": "node scripts/build.ts",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@gamez/assets": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
