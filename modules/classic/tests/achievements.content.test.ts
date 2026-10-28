@@ -11,7 +11,12 @@ import { ACHIEVEMENTS } from "../src/content/achievements.ts";
 import { BALANCE } from "../src/content/balance.ts";
 import { MONSTERS } from "../src/content/monsters.ts";
 import { scaleMonster, xpToNext } from "../src/rules.ts";
-import { KIND, type AchievementMetric, type AchievementProto } from "../src/types.ts";
+import {
+  KIND,
+  type AchievementMetric,
+  type AchievementProto,
+  type QuestProto,
+} from "../src/types.ts";
 
 /**
  * Analytic gold a hero earns from normal kills alone on the way to level 60
@@ -104,6 +109,23 @@ describe("classic achievement content", () => {
     expect(PROTOS.filter((p) => p.hidden).length).toBeGreaterThanOrEqual(3);
     const titles = new Set(PROTOS.map((p) => p.reward.title).filter((t): t is string => !!t));
     expect(titles.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it("every questsCompleted target can be reached with the quests in the registry", () => {
+    const mode = defineMode({
+      id: "classic",
+      name: "Classic (content)",
+      description: "test",
+      world: null,
+      modules: ["classic.content"],
+      tick: { kind: "fixed", hz: 20 },
+    });
+    const sim = createSim(loadMode(mode, classicModules), { seed: 1 });
+    const questCount = sim.loaded.registry.all<QuestProto>(KIND.quest).length;
+    expect(questCount).toBeGreaterThan(0);
+    const quest = PROTOS.filter((p) => p.metric === "questsCompleted");
+    expect(quest.length).toBeGreaterThan(0);
+    for (const p of quest) expect(p.target, p.name).toBeLessThanOrEqual(questCount);
   });
 
   it("the real classic.content registry holds the same achievements", () => {

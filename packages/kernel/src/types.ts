@@ -271,6 +271,41 @@ export interface ClientDrivenPolicy {
    * whose content changed to its outbox (docs/design/wave-B.md §4).
    */
   reports?(world: World, registry: FrozenRegistry): InstanceReport[];
+  /** Wave C platform hooks (docs/design/wave-C.md §2): bank, arena builds, season progress. */
+  platform?: PlatformHooks;
+}
+
+/**
+ * Wave C: how the verified host connects a client-driven mode to the account
+ * economy, the arena and the battle pass. Everything stays plain JSON so the
+ * kernel knows nothing about the economy; @gamez/protocol (economy.ts) types
+ * the payloads (BankOp, VaultItemInput, ArenaBuild).
+ */
+export interface PlatformHooks {
+  /**
+   * Server-only action applying a bank operation (must also be listed in
+   * serverOnlyActions). The host dispatches it with actor "server" and payload
+   * { opId, op, item? } (item: the VaultItem taken from the account for
+   * withdrawItem, coin for withdrawCoin is in op). It throws ActionError when
+   * the op is impossible (not in town, no room, unknown ref) and on success
+   * emits exactly one event of type `effectEvent` (see below).
+   */
+  bankAction: string;
+  /**
+   * Event type the bank action emits on success:
+   * { type, opId, credit: { coin: number } | null, item: VaultItemInput | null,
+   *   gold: number } — what the host must hand to the account (deposits) and
+   * the gold moved, for the result.
+   */
+  bankEvent: string;
+  /** Pure: the hero reduced to an arena build (plain JSON ArenaBuild without accountId/displayName/sourceHash), or null. */
+  build?(world: World, registry: FrozenRegistry): Record<string, unknown> | null;
+  /**
+   * Pure: monotonic season progress of this hero. `key` identifies the hero
+   * (classic: "classic:<worldSeed>") so a new hero starts a new counter; the
+   * account adds max(0, total - lastTotal[key]) season xp. null = no hero.
+   */
+  seasonTotal?(world: World, registry: FrozenRegistry): { key: string; total: number } | null;
 }
 
 /** One read-model row produced by ClientDrivenPolicy.reports(). */

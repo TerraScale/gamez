@@ -27,6 +27,9 @@ export const MODULE = {
   crafting: "classic.crafting",
   rift: "classic.rift",
   achievements: "classic.achievements",
+  // ---- wave C (docs/design/wave-C.md §2)
+  /** Bank between the hero and the account (src/platform/bank.ts). */
+  platform: "classic.platform",
   /** QA-only cheat module (src/debug), never part of the default `modules`. */
   debug: "classic.debug",
 } as const;

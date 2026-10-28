@@ -6,6 +6,7 @@ import {
   presenceEntityId,
   presenceWorld,
   relayName,
+  relayShard,
   type PresenceWorldSpec,
 } from "../../shared/worlds.ts";
 
@@ -24,11 +25,14 @@ export function worldFromParam(param: string | null): PresenceWorldSpec | null {
   return param === null ? defaultWorld() : presenceWorld(param);
 }
 
-/** The RelayDO name and entity id a player gets in a world. */
+/** The RelayDO name (the account's shard, shared/worlds.ts relayShard) and entity id a player gets in a world. */
 export function placement(
   continent: string,
   accountId: string,
   world: PresenceWorldSpec,
 ): { relay: string; entityId: string } {
-  return { relay: relayName(continent, world), entityId: presenceEntityId(accountId, world) };
+  return {
+    relay: relayName(continent, world, relayShard(accountId, world)),
+    entityId: presenceEntityId(accountId, world),
+  };
 }

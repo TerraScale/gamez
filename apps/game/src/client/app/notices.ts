@@ -7,9 +7,16 @@ import type { GuestSession } from "../session.ts";
 
 export type NoticeTone = "info" | "ok" | "error";
 
+/** A button on a toast (e.g. "Open" for a trade invite). */
+export interface NoticeAction {
+  label: string;
+  run(): void;
+}
+
 export interface Notice {
   tone: NoticeTone;
   text: string;
+  action?: NoticeAction;
 }
 
 /** Result of consumeAuthFragment() (session.ts). */

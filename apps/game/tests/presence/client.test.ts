@@ -171,13 +171,44 @@ describe("PresenceClient", () => {
     expect(ann?.path).toEqual([{ x: 11, y: 10 }]);
   });
 
-  it("sends poses only while online", async () => {
+  it("holds a pose reported while connecting and sends it with the welcome", async () => {
     const c = connect();
     await socketCount(1);
     const ws = FakeSocket.instances[0]!;
     c.setPose({ pos: { x: 1, y: 1 }, path: [], speed: 4 });
+    c.setPose({ pos: { x: 5, y: 6 }, path: [], speed: 4, tag: "Lv 2 Mage" });
     expect(ws.sentOf("pose")).toEqual([]);
+    ws.open();
+    expect(ws.sentOf("pose")).toEqual([]);
+    // The join pose of a hero that never moves again: the latest one goes out on welcome.
+    ws.receive(welcome("me", []));
+    expect(ws.sentOf("pose")).toEqual([
+      { t: "pose", pos: { x: 5, y: 6 }, path: [], speed: 4, tag: "Lv 2 Mage" },
+    ]);
+  });
 
+  it("resends the last pose after a reconnect", async () => {
+    const c = connect();
+    await socketCount(1);
+    const first = FakeSocket.instances[0]!;
+    first.open();
+    first.receive(welcome("me", []));
+    c.setPose({ pos: { x: 4, y: 4 }, path: [], speed: 4, tag: "Lv 1 Warrior" });
+    expect(first.sentOf("pose")).toHaveLength(1);
+    first.drop(1006);
+    await socketCount(2);
+    const second = FakeSocket.instances[1]!;
+    second.open();
+    second.receive(welcome("me", []));
+    expect(second.sentOf("pose")).toEqual([
+      { t: "pose", pos: { x: 4, y: 4 }, path: [], speed: 4, tag: "Lv 1 Warrior" },
+    ]);
+  });
+
+  it("sends poses while online", async () => {
+    const c = connect();
+    await socketCount(1);
+    const ws = FakeSocket.instances[0]!;
     ws.open();
     ws.receive(welcome("me", []));
     c.setPose({

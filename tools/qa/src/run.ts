@@ -34,6 +34,8 @@ import {
   type PerfSummary,
 } from "./analysis.ts";
 import { WAVE_B_RUNNERS } from "./waveB/index.ts";
+import { WAVE_C_RUNNERS } from "./waveC/index.ts";
+import { QUESTS_RUNNERS } from "./quests.ts";
 
 interface Args {
   scenario: string;
@@ -87,8 +89,13 @@ const BASE_SCENARIOS = [
   "plaza",
 ] as const;
 
-/** Base scenarios plus wave B's (./waveB/index.ts). */
-const SCENARIOS: readonly string[] = [...BASE_SCENARIOS, ...Object.keys(WAVE_B_RUNNERS)];
+/** Base scenarios plus wave B's (./waveB/index.ts) and wave C's (./waveC/index.ts). */
+const SCENARIOS: readonly string[] = [
+  ...BASE_SCENARIOS,
+  ...Object.keys(WAVE_B_RUNNERS),
+  ...Object.keys(WAVE_C_RUNNERS),
+  ...Object.keys(QUESTS_RUNNERS),
+];
 
 function usage(msg?: string): never {
   if (msg) process.stderr.write(`${msg}\n\n`);
@@ -1345,6 +1352,8 @@ async function plaza(run: Run): Promise<void> {
 
 const RUNNERS: Record<string, (run: Run) => Promise<void>> = {
   ...WAVE_B_RUNNERS,
+  ...WAVE_C_RUNNERS,
+  ...QUESTS_RUNNERS,
   picker,
   "classic-start": classicStart,
   "classic-create": classicCreate,

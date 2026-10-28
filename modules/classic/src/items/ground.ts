@@ -172,6 +172,30 @@ export function execGrantGold(
 }
 
 /**
+ * Places a granted item: the stash when `toStash`, else the bag, and the stash
+ * again when `stashFallback` and the bag is full. False when there is no room.
+ */
+function placeGranted(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  item: ItemInstance,
+  toStash: boolean,
+  stashFallback: boolean,
+): boolean {
+  if (!toStash && hero !== 0) {
+    const bag = bagOf(world, hero);
+    const next = bag ? placeItem(ctx.registry, bag, item) : null;
+    if (next) {
+      world.update(hero, Inventory, { items: next.items });
+      return true;
+    }
+  }
+  if (toStash || stashFallback) return stashAdd(world, ctx.registry, item);
+  return false;
+}
+
+/**
  * Rolls `count` items (rarity at least minRarity, optionally one category)
  * into the stash (first tab with room) or the bag. Items that do not fit are
  * sold at 10% of their value.
@@ -205,33 +229,17 @@ export function execGrantItems(
       ...(o.setItem !== undefined ? { setItem: o.setItem } : {}),
     });
     if (!item) continue;
-    if (o.toStash) {
-      if (stashAdd(world, ctx.registry, item)) {
-        noteFound(world, item);
-        emit(ctx, {
-          type: "classic.loot.picked",
-          kind: "item",
-          name: item.name,
-          rarity: item.rarity,
-          gold: 0,
-        });
-        continue;
-      }
-    } else if (hero !== 0) {
-      const bag = bagOf(world, hero);
-      const next = bag ? placeItem(ctx.registry, bag, item) : null;
-      if (next) {
-        world.update(hero, Inventory, { items: next.items });
-        noteFound(world, item);
-        emit(ctx, {
-          type: "classic.loot.picked",
-          kind: "item",
-          name: item.name,
-          rarity: item.rarity,
-          gold: 0,
-        });
-        continue;
-      }
+    // Quest rewards fall back to the stash when the bag is full (docs/design/classic.md §16).
+    if (placeGranted(world, ctx, hero, item, o.toStash, o.reason === "quest")) {
+      noteFound(world, item);
+      emit(ctx, {
+        type: "classic.loot.picked",
+        kind: "item",
+        name: item.name,
+        rarity: item.rarity,
+        gold: 0,
+      });
+      continue;
     }
     // No room: sell the overflow at 10% of its value.
     const price = Math.max(1, pct(item.value, 10));

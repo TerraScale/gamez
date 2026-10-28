@@ -1,4 +1,10 @@
-import type { ClientMessage, EntityId, EntityState, ServerMessage } from "@gamez/protocol";
+import type {
+  ClientMessage,
+  EntityId,
+  EntityState,
+  PoseUpdate,
+  ServerMessage,
+} from "@gamez/protocol";
 import { DurableObject } from "cloudflare:workers";
 import { RELAY_HEADERS, type CharacterRecord, type Env, type RelayApi } from "../contracts.ts";
 import { codec } from "../../shared/codec.ts";
@@ -16,9 +22,12 @@ interface SocketInfo {
 }
 
 /**
- * Holds client WebSockets for one region shard and one presence world.
- * Name: "relay:<continent>:<n>" (plaza) or "relay:<continent>:<world>:<n>"
- * (shared/worlds.ts relayName). Uses the Hibernation API, so idle sockets cost
+ * Holds client WebSockets for one region, one presence world and one shard.
+ * Name: "relay:<continent>:0" (plaza) or "relay:<continent>:<world>:<shard>"
+ * (shared/worlds.ts relayName; shard = relayShard(accountId), so one account's
+ * sockets share a relay). World fixtures (shopkeepers) arrive like any other
+ * entity, in the chunk's subscribe() state and deltas; poses and moves only
+ * ever name the socket's own character, never a fixture. Uses the Hibernation API, so idle sockets cost
  * nothing; the in-memory entity cache is rebuilt from the chunk after a wake-up.
  */
 export class RelayDO extends DurableObject<Env> implements RelayApi {
@@ -33,6 +42,16 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
    * harmless because a sleeping relay has no traffic to limit.
    */
   readonly #limits = new WeakMap<WebSocket, SocketLimiter>();
+  /** The world, read from storage once (a storage read per message showed up in the wave C profile). */
+  #world: PresenceWorldSpec | null = null;
+  #chunkStub: DurableObjectStub<import("./chunk.ts").ChunkDO> | null = null;
+  /**
+   * Poses waiting for the next batch RPC, latest per character (an older pose
+   * of the same character is superseded). One batch is in flight at a time, so
+   * a quiet relay forwards each pose at once and a busy one coalesces.
+   */
+  readonly #poseBatch = new Map<string, { ws: WebSocket; info: SocketInfo; pose: PoseUpdate }>();
+  #posesInFlight = false;
 
   get name(): string {
     return this.ctx.id.name ?? this.ctx.storage.kv.get<string>("name") ?? "relay:XX:0";
@@ -40,11 +59,14 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
 
   /** The presence world this relay serves (stored at the first upgrade; plaza for older relays). */
   get world(): PresenceWorldSpec {
-    return presenceWorld(this.ctx.storage.kv.get<string>("world") ?? null) ?? defaultWorld();
+    this.#world ??=
+      presenceWorld(this.ctx.storage.kv.get<string>("world") ?? null) ?? defaultWorld();
+    return this.#world;
   }
 
   #chunk() {
-    return this.env.CHUNK.getByName(this.world.chunk);
+    this.#chunkStub ??= this.env.CHUNK.getByName(this.world.chunk);
+    return this.#chunkStub;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -59,6 +81,8 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     if (!world) return new Response("unknown world", { status: 404 });
     if (this.ctx.storage.kv.get("world") !== world.id) {
       this.ctx.storage.kv.put("world", world.id);
+      this.#world = null;
+      this.#chunkStub = null;
     }
     if (relay && !this.ctx.id.name && this.ctx.storage.kv.get("name") !== relay) {
       this.ctx.storage.kv.put("name", relay);
@@ -145,7 +169,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       case "pose":
         if (!this.#admit(ws, "pose")) return;
         if (this.world.movement !== "client-pose") return this.#wrongWorld(ws);
-        await this.#pose(ws, info, msg);
+        this.#queuePose(ws, info, msg);
         return;
       case "hello":
         // Identity comes from the verified token at upgrade time; nothing to do.
@@ -165,19 +189,48 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     }
   }
 
-  /** Forwards a client-reported pose; the chunk checks and sanitises it. */
-  async #pose(
-    ws: WebSocket,
-    info: SocketInfo,
-    msg: Extract<ClientMessage, { t: "pose" }>,
-  ): Promise<void> {
-    let res = await this.#chunk().pose(info.characterId, msg);
-    if (!res.ok && res.reason === "not-joined") {
-      await this.#rejoin(info);
-      res = await this.#chunk().pose(info.characterId, msg);
+  /** Queues a client-reported pose for the chunk (which checks and sanitises it). */
+  #queuePose(ws: WebSocket, info: SocketInfo, msg: Extract<ClientMessage, { t: "pose" }>): void {
+    this.#poseBatch.set(info.characterId, { ws, info, pose: msg });
+    if (!this.#posesInFlight) void this.#sendPoses();
+  }
+
+  /** Sends queued poses, one batch RPC at a time, until the queue is empty. */
+  async #sendPoses(): Promise<void> {
+    this.#posesInFlight = true;
+    try {
+      while (this.#poseBatch.size > 0) {
+        const batch = [...this.#poseBatch.values()];
+        this.#poseBatch.clear();
+        try {
+          await this.#forwardPoses(batch);
+        } catch (err) {
+          console.error("pose batch failed", err);
+          for (const b of batch) {
+            this.#send(b.ws, { t: "error", code: "pose-failed", message: "pose not delivered" });
+          }
+        }
+      }
+    } finally {
+      this.#posesInFlight = false;
     }
-    if (!res.ok) {
-      this.#send(ws, { t: "error", code: res.reason ?? "bad-pose", message: "pose rejected" });
+  }
+
+  async #forwardPoses(batch: { ws: WebSocket; info: SocketInfo; pose: PoseUpdate }[]) {
+    const entries = (list: typeof batch) =>
+      list.map((b) => ({ id: b.info.characterId, pose: b.pose }));
+    const results = await this.#chunk().poses(entries(batch));
+    const retry = batch.filter((_, i) => results[i]?.reason === "not-joined");
+    const outcome = new Map(batch.map((b, i) => [b, results[i]]));
+    if (retry.length > 0) {
+      // The chunk dropped us (e.g. after delivery failures): re-subscribe, rejoin, retry once.
+      for (const b of retry) await this.#rejoin(b.info);
+      const again = await this.#chunk().poses(entries(retry));
+      retry.forEach((b, i) => outcome.set(b, again[i]));
+    }
+    for (const [b, res] of outcome) {
+      if (res?.ok) continue;
+      this.#send(b.ws, { t: "error", code: res?.reason ?? "bad-pose", message: "pose rejected" });
     }
   }
 

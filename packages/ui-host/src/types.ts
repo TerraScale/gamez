@@ -5,7 +5,12 @@
 import type { AssetManifest } from "@gamez/assets";
 import type { DispatchResult, GameEvent, LoadedMode, SimSnapshot, World } from "@gamez/kernel";
 import type { ModeInfo } from "@gamez/protocol";
-import type { PlatformServices, PresenceConnection, VerifiedConnection } from "./platform.ts";
+import type {
+  PlatformScreen,
+  PlatformServices,
+  PresenceConnection,
+  VerifiedConnection,
+} from "./platform.ts";
 import type { WorldRenderer } from "./render.ts";
 
 export interface Session {
@@ -66,6 +71,11 @@ export interface ClientServices {
   joinPresence?(world: string): PresenceConnection;
   /** Wave B: auth, leaderboards, chat, guilds, account. Absent = offline host. */
   platform?: PlatformServices;
+  /**
+   * Wave C: opens a shell screen (market, trade, shop, arena, pass, store…)
+   * as a sheet over the running mode. Absent = offline host (hide the buttons).
+   */
+  openScreen?(screen: PlatformScreen): void;
   /** Returns to the mode picker. */
   exit(): void;
 }

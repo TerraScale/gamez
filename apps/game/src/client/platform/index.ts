@@ -16,6 +16,15 @@ import { type ChatSocketCtor, createChatApi } from "./chat.ts";
 import { createGuildApi } from "./guilds.ts";
 import { createHttp, type FetchFn, defaultOrigin } from "./http.ts";
 import { createLeaderboardApi } from "./leaderboards.ts";
+// wave C (docs/design/wave-C.md §10.1): one file per API, owners in each header.
+import { createArenaApi } from "./arena.ts";
+import { createConfigApi } from "./config.ts";
+import { createMarketApi } from "./market.ts";
+import { createPassApi } from "./pass.ts";
+import { createShopsApi } from "./shops.ts";
+import { createStoreApi } from "./store.ts";
+import { createTradeApi } from "./trade.ts";
+import { createVaultApi } from "./vault.ts";
 
 export interface PlatformOptions {
   /** Defaults to the global fetch. */
@@ -50,5 +59,13 @@ export function createPlatform(
     }),
     guilds: createGuildApi(http),
     account: createAccountApi(http),
+    vault: createVaultApi(http),
+    trade: createTradeApi(http),
+    market: createMarketApi(http),
+    shops: createShopsApi(http),
+    arena: createArenaApi(http),
+    pass: createPassApi(http),
+    store: createStoreApi(http),
+    config: createConfigApi(http),
   };
 }

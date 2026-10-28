@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { EntityState } from "@gamez/protocol";
 import {
   MAX_POSE_PATH,
+  continueWalk,
+  sameStanding,
   sanitiseAppearance,
   sanitisePose,
   sanitiseTag,
@@ -121,5 +124,64 @@ describe("sanitisePose: clamps and cosmetics", () => {
   it("keeps a 40-char tag as it is", () => {
     const tag = "T".repeat(40);
     expect(sanitiseTag(tag)).toBe(tag);
+  });
+});
+
+describe("sameStanding: keepalive poses", () => {
+  const NOW = 1_000_000;
+  const standing: EntityState = {
+    id: "classic-town:a",
+    kind: "player",
+    name: "A",
+    appearance: "unit.hero.warrior",
+    pos: { x: 56, y: 36 },
+    path: [],
+    pathStartedAt: NOW - 60_000,
+    speed: 4,
+    tag: "Lv 1 Warrior",
+  };
+  const next = (raw: Record<string, unknown>, old = standing): EntityState => {
+    const check = sanitisePose(raw, BOUNDS);
+    if (!check.ok) throw new Error(check.reason);
+    const state: EntityState = { ...old, ...continueWalk(old, check.pose, NOW) };
+    state.appearance = check.pose.appearance;
+    delete state.tag;
+    if (check.pose.tag !== undefined) state.tag = check.pose.tag;
+    return state;
+  };
+  const still = { pos: { x: 56, y: 36 }, path: [], speed: 4, appearance: "unit.hero.warrior" };
+
+  it("is true for the same tile, look and tag", () => {
+    expect(sameStanding(standing, next({ ...still, tag: "Lv 1 Warrior" }), NOW)).toBe(true);
+  });
+
+  it("is false for the first pose after a join (no tag yet)", () => {
+    const joined: EntityState = { ...standing };
+    delete joined.tag;
+    expect(sameStanding(joined, next({ ...still, tag: "Lv 1 Warrior" }, joined), NOW)).toBe(false);
+  });
+
+  it("is false when the tile, tag, look or path changes", () => {
+    expect(
+      sameStanding(standing, next({ ...still, pos: { x: 57, y: 36 }, tag: "Lv 1 Warrior" }), NOW),
+    ).toBe(false);
+    expect(sameStanding(standing, next({ ...still, tag: "Lv 2 Warrior" }), NOW)).toBe(false);
+    expect(
+      sameStanding(standing, next({ ...still, appearance: "unit.hero", tag: "Lv 1 Warrior" }), NOW),
+    ).toBe(false);
+    expect(
+      sameStanding(
+        standing,
+        next({ ...still, path: [{ x: 57, y: 36 }], tag: "Lv 1 Warrior" }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it("is false while the old walk is still under way", () => {
+    const walking: EntityState = { ...standing, path: [{ x: 57, y: 36 }], pathStartedAt: NOW };
+    expect(sameStanding(walking, next({ ...still, tag: "Lv 1 Warrior" }, walking), NOW)).toBe(
+      false,
+    );
   });
 });

@@ -10,7 +10,10 @@
 import type { ClientDrivenPolicy, World } from "@gamez/kernel";
 import { ACTION } from "../actions.ts";
 import { RES, type ControlState, type GameState } from "../resources.ts";
+import { BANK_ACTION, BANK_EVENT } from "./bank.ts";
+import { classicArenaBuild } from "./build.ts";
 import { classicReports } from "./reports.ts";
+import { classicSeasonTotal } from "./season.ts";
 
 /** Min absence before offline progress is granted (same as the local client). */
 export const OFFLINE_MIN_MS = 60_000;
@@ -36,7 +39,7 @@ export const classicClientDriven: ClientDrivenPolicy = {
   maxInputsPerSegment: MAX_INPUTS_PER_SEGMENT,
   speedOf: classicSpeedOf,
   maxSpeed: 8,
-  serverOnlyActions: [ACTION.offlineProgress],
+  serverOnlyActions: [ACTION.offlineProgress, ACTION.bank],
   offline: {
     action: ACTION.offlineProgress,
     minMs: OFFLINE_MIN_MS,
@@ -44,4 +47,12 @@ export const classicClientDriven: ClientDrivenPolicy = {
     eligible: classicOfflineEligible,
   },
   reports: classicReports,
+  // Wave C (docs/design/wave-C.md §2, §6, §7).
+  platform: {
+    bankAction: BANK_ACTION,
+    bankEvent: BANK_EVENT,
+    build: (world, registry) =>
+      classicArenaBuild(world, registry) as Record<string, unknown> | null,
+    seasonTotal: classicSeasonTotal,
+  },
 };

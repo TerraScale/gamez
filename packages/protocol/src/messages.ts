@@ -14,7 +14,11 @@ export interface TilePos {
   y: number;
 }
 
-export type EntityKind = "player" | "ghost";
+/**
+ * "shopkeeper" (wave C): a world fixture of a pose world (ChunkFixtureApi), the
+ * ghost of a shop owner standing on a leased plot; id "shops:<plotId>" (shared/plots.ts shopFixtureId).
+ */
+export type EntityKind = "player" | "ghost" | "shopkeeper";
 
 export interface EntityState {
   id: EntityId;

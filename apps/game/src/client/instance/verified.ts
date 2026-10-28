@@ -11,6 +11,7 @@ import type { SimSnapshot } from "@gamez/kernel";
 import {
   packSnapshot,
   unpackSnapshot,
+  type BankOp,
   type VerifiedClientMessage,
   type VerifiedServerMessage,
 } from "@gamez/protocol";
@@ -100,6 +101,21 @@ export function parseVerifiedServerMessage(frame: unknown): VerifiedServerMessag
       return typeof m.code === "string" && typeof m.message === "string"
         ? (m as VerifiedServerMessage)
         : null;
+    case "bank": {
+      const r = m.result;
+      const a = m.applied;
+      const resultOk =
+        isRecord(r) &&
+        (r.ok === true
+          ? num(r.balance)
+          : r.ok === false && typeof r.code === "string" && typeof r.message === "string");
+      const appliedOk =
+        a === null ||
+        (isRecord(a) && num(a.tick) && typeof a.name === "string" && typeof a.hash === "string");
+      return typeof m.opId === "string" && resultOk && appliedOk
+        ? (m as VerifiedServerMessage)
+        : null;
+    }
     default:
       return null;
   }
@@ -156,6 +172,11 @@ export class VerifiedClient implements VerifiedConnection {
       inputs: seg.inputs,
       hash: seg.hash,
     });
+  }
+
+  sendBank(msg: { opId: string; op: BankOp; at: { tick: number; hash: string } }): boolean {
+    if (this.#status !== "online") return false;
+    return this.#send({ t: "bank", opId: msg.opId, op: msg.op, at: msg.at });
   }
 
   importSave(snapshot: SimSnapshot, savedAt: number): void {
@@ -314,6 +335,10 @@ export class VerifiedClient implements VerifiedConnection {
         return;
       case "error":
         h.error?.(msg.code, msg.message);
+        return;
+      case "bank":
+        if (!this.#joined) return;
+        h.bank?.({ opId: msg.opId, result: msg.result, applied: msg.applied });
         return;
     }
   }

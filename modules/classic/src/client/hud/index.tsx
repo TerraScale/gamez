@@ -19,7 +19,7 @@ import {
   HUD_MODULE_ID,
   LEFT_TOP,
   LEFT_WIDTH,
-  PANEL_IDS,
+  ALL_PANEL_IDS,
   TARGET_TOP,
   leftColumnBottom,
   panelSlot,
@@ -31,6 +31,7 @@ import {
 import { useHudLayout } from "./common.tsx";
 import { AreaBanner } from "./widgets/AreaBanner.tsx";
 import { AccountPanel } from "./panels/AccountPanel.tsx";
+import { BankPanel } from "./panels/BankPanel.tsx";
 import { ChatPanel } from "./panels/ChatPanel.tsx";
 import { GuildPanel } from "./panels/GuildPanel.tsx";
 import { LeaderboardPanel } from "./panels/LeaderboardPanel.tsx";
@@ -54,6 +55,7 @@ import { Tips } from "./widgets/Tips.tsx";
 import { Tooltip } from "./widgets/Tooltip.tsx";
 import { ErrorFlash } from "./widgets/ErrorFlash.tsx";
 import { PanelHost } from "./panels/PanelHost.tsx";
+import { PresenceBubble } from "./widgets/PresenceBubble.tsx";
 import { CharacterPanel } from "./panels/CharacterPanel.tsx";
 import { InventoryPanel } from "./panels/InventoryPanel.tsx";
 import { SkillsPanel } from "./panels/SkillsPanel.tsx";
@@ -131,6 +133,8 @@ export const PANEL_COMPONENTS: Record<PanelId, SlotComponent> = {
   guild: GuildPanel,
   leaderboard: LeaderboardPanel,
   account: AccountPanel,
+  // wave C
+  bank: BankPanel,
 };
 
 /** Registers the default HUD widgets and panels into `slots` (see §13 slot table). Call once per registry. */
@@ -143,7 +147,7 @@ export function registerDefaultHud(slots: SlotRegistry): void {
       order: w.order,
     });
   }
-  for (const id of PANEL_IDS) {
+  for (const id of ALL_PANEL_IDS) {
     slots.register(panelSlot(id), {
       id: `classic.panel.${id}`,
       moduleId: HUD_MODULE_ID,
@@ -290,6 +294,7 @@ export function ClassicHud({ api, slots }: ClassicHudProps) {
             regionRef={bottomRef}
           />
           <PanelHost api={api} />
+          <PresenceBubble api={api} insets={insets} layout={layout} />
           <Region name={SLOT.overlay} api={api} layout={layout} insets={insets} />
         </div>
       </HudInsetsContext.Provider>

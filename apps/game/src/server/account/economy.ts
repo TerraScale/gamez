@@ -10,6 +10,13 @@
  * Every mutation runs in one transactionSync: a throw (or a rejected input)
  * leaves no partial write behind. Insufficient funds are returned, not thrown,
  * and write nothing, so the same txId can be retried later.
+ *
+ * Wave C (T-escrow, wave-C.md §3.1): the stash table is the account vault.
+ * Its primary key is the uid (two vault items may share itemId + origin);
+ * a wave B table keyed by (item_id, origin) is rebuilt once in init(), and
+ * missing wave C columns are added with guarded ALTER TABLE ADD COLUMN.
+ * Every applied (non-replayed) wallet change calls `onWalletApplied` inside
+ * the same transaction (account/vault.ts writes the telemetry outbox rows).
  */
 import type {
   CosmeticSlot,
@@ -19,7 +26,14 @@ import type {
   UniversalItem,
   WalletView,
 } from "@gamez/protocol";
-import type { EntitlementGrant, SqlStore, WalletTx, WalletTxResult } from "../contracts.ts";
+import type {
+  EconomyFlow,
+  EntitlementGrant,
+  SqlStore,
+  WalletTx,
+  WalletTxC,
+  WalletTxResult,
+} from "../contracts.ts";
 
 /** Invalid input or a violated economy rule. `code` is stable; `message` is for humans. */
 export class EconomyError extends Error {
@@ -53,6 +67,46 @@ const TX_WALLET = "wallet";
 const TX_STASH_ADD = "stash.add";
 const TX_STASH_REMOVE = "stash.remove";
 
+/** Columns the wave C vault adds to the stash table (all nullable: legacy rows read as defaults). */
+const VAULT_COLUMNS: readonly [string, string][] = [
+  ["universal", "INTEGER"],
+  ["tradable", "INTEGER"],
+  ["summary", "TEXT"],
+  ["data", "TEXT"],
+  ["seq", "INTEGER NOT NULL DEFAULT 0"],
+];
+
+const STASH_SCHEMA = `CREATE TABLE IF NOT EXISTS stash (
+      uid TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      count INTEGER NOT NULL,
+      universal INTEGER,
+      tradable INTEGER,
+      summary TEXT,
+      data TEXT,
+      seq INTEGER NOT NULL DEFAULT 0
+    )`;
+
+/** What an applied wallet change reports to the telemetry hook. */
+export interface AppliedWalletTx {
+  txId: string;
+  currency: Currency;
+  amount: number;
+  reason: string;
+  flow: EconomyFlow;
+  /** Balance of `currency` after the change. */
+  balance: number;
+  at: number;
+}
+
+/** Flow of a wave B applyWalletTx caller that names none: "dev*" reasons are faucets. */
+export function defaultFlow(reason: string): EconomyFlow {
+  return reason.startsWith("dev") ? "faucet" : "transfer";
+}
+
+const FLOWS: readonly EconomyFlow[] = ["faucet", "sink", "transfer"];
+
 function isTxId(v: unknown): v is string {
   return typeof v === "string" && v.length > 0 && v.length <= MAX_TX_ID;
 }
@@ -66,6 +120,9 @@ function isCount(v: unknown, max: number): v is number {
 }
 
 export class AccountEconomy {
+  /** Runs inside the transaction of every applied (non-replayed) wallet change. */
+  onWalletApplied: ((tx: AppliedWalletTx) => void) | null = null;
+
   constructor(
     readonly store: SqlStore,
     readonly now: () => number = Date.now,
@@ -87,23 +144,63 @@ export class AccountEconomy {
       at INTEGER NOT NULL,
       PRIMARY KEY (kind, tx_id)
     )`);
-    sql.exec(`CREATE TABLE IF NOT EXISTS stash (
-      item_id TEXT NOT NULL,
-      origin TEXT NOT NULL,
-      uid TEXT NOT NULL UNIQUE,
-      count INTEGER NOT NULL,
-      PRIMARY KEY (item_id, origin)
-    )`);
+    this.#initStash();
     sql.exec(`CREATE TABLE IF NOT EXISTS entitlements (
       tx_id TEXT PRIMARY KEY,
       sku TEXT NOT NULL,
       source TEXT NOT NULL,
-      granted_at INTEGER NOT NULL
+      granted_at INTEGER NOT NULL,
+      revoked_at INTEGER
     )`);
+    // Wave C: a refund (account/purchases.ts) sets revoked_at; revoked grants are
+    // not owned. Tables created before wave C get the column once (sqlite_master,
+    // because PRAGMA is restricted in DOs).
+    const entitlementsSql =
+      sql
+        .exec<{ sql: string }>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'entitlements'",
+        )
+        .toArray()[0]?.sql ?? "";
+    if (!/\brevoked_at\b/.test(entitlementsSql))
+      sql.exec("ALTER TABLE entitlements ADD COLUMN revoked_at INTEGER");
     sql.exec(`CREATE TABLE IF NOT EXISTS equipped (
       slot TEXT PRIMARY KEY,
       cosmetic_id TEXT NOT NULL
     )`);
+  }
+
+  /**
+   * Creates the stash (vault) table, or upgrades a wave B one: a table keyed by
+   * (item_id, origin) is rebuilt keyed by uid (rows kept, wave C columns NULL);
+   * then any missing wave C column is added. Idempotent.
+   */
+  #initStash(): void {
+    const sql = this.store.sql;
+    const tableSql = (): string =>
+      sql
+        .exec<{ sql: string }>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'stash'",
+        )
+        .toArray()[0]?.sql ?? "";
+    const existing = tableSql();
+    if (existing === "") {
+      sql.exec(STASH_SCHEMA);
+    } else if (/PRIMARY KEY\s*\(\s*item_id/i.test(existing)) {
+      this.store.transactionSync(() => {
+        sql.exec("ALTER TABLE stash RENAME TO stash_wave_b");
+        sql.exec(STASH_SCHEMA);
+        sql.exec(
+          "INSERT INTO stash (uid, item_id, origin, count) SELECT uid, item_id, origin, count FROM stash_wave_b",
+        );
+        sql.exec("DROP TABLE stash_wave_b");
+      });
+    } else {
+      for (const [name, type] of VAULT_COLUMNS) {
+        if (!new RegExp(`\\b${name}\\b`).test(tableSql()))
+          sql.exec(`ALTER TABLE stash ADD COLUMN ${name} ${type}`);
+      }
+    }
+    sql.exec("CREATE INDEX IF NOT EXISTS stash_item ON stash (item_id, origin)");
   }
 
   // ---- wallet -------------------------------------------------------------
@@ -112,7 +209,12 @@ export class AccountEconomy {
     return { balances: { coin: this.balanceOf("coin"), gem: this.balanceOf("gem") } };
   }
 
-  applyWalletTx(tx: WalletTx): WalletTxResult {
+  /**
+   * Applies a wallet change once per txId. `tx.flow` (wave C) tags the
+   * telemetry row; absent = defaultFlow(reason).
+   */
+  applyWalletTx(tx: WalletTx | WalletTxC): WalletTxResult {
+    const flow = "flow" in tx && tx.flow !== undefined ? tx.flow : defaultFlow(String(tx.reason));
     const currentOf = (): number => (isCurrency(tx.currency) ? this.balanceOf(tx.currency) : 0);
     if (
       !isTxId(tx.txId) ||
@@ -121,7 +223,8 @@ export class AccountEconomy {
       !Number.isSafeInteger(tx.amount) ||
       tx.amount === 0 ||
       typeof tx.reason !== "string" ||
-      tx.reason.length > MAX_REASON
+      tx.reason.length > MAX_REASON ||
+      !FLOWS.includes(flow)
     ) {
       return { ok: false, code: "bad_tx", balance: currentOf() };
     }
@@ -137,6 +240,7 @@ export class AccountEconomy {
       if (next < 0) return { ok: false, code: "insufficient_funds", balance: current };
       if (!Number.isSafeInteger(next)) return { ok: false, code: "bad_tx", balance: current };
       this.#setBalance(currency, next);
+      const at = this.now();
       this.store.sql.exec(
         "INSERT INTO tx (kind, tx_id, result, currency, amount, reason, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         TX_WALLET,
@@ -145,8 +249,17 @@ export class AccountEconomy {
         currency,
         tx.amount,
         tx.reason,
-        this.now(),
+        at,
       );
+      this.onWalletApplied?.({
+        txId: tx.txId,
+        currency,
+        amount: tx.amount,
+        reason: tx.reason,
+        flow,
+        balance: next,
+        at,
+      });
       return { ok: true, balance: next, replayed: false };
     });
   }
@@ -155,7 +268,9 @@ export class AccountEconomy {
 
   stash(): UniversalItem[] {
     return this.store.sql
-      .exec<StashRow>("SELECT uid, item_id, origin, count FROM stash ORDER BY item_id, origin")
+      .exec<StashRow>(
+        "SELECT uid, item_id, origin, count FROM stash ORDER BY item_id, origin, seq, uid",
+      )
       .toArray()
       .map((r) => ({ uid: r.uid, itemId: r.item_id, count: r.count, origin: r.origin }));
   }
@@ -181,7 +296,7 @@ export class AccountEconomy {
       if (prior) return JSON.parse(prior.result) as UniversalItem[];
       const existing = this.store.sql
         .exec<StashRow>(
-          "SELECT uid, item_id, origin, count FROM stash WHERE item_id = ? AND origin = ?",
+          "SELECT uid, item_id, origin, count FROM stash WHERE item_id = ? AND origin = ? AND data IS NULL ORDER BY seq, uid LIMIT 1",
           item.itemId,
           item.origin,
         )
@@ -190,15 +305,10 @@ export class AccountEconomy {
         const total = existing.count + item.count;
         if (!Number.isSafeInteger(total) || total > MAX_STACK_COUNT)
           throw new EconomyError("stack_full", "stack would exceed the maximum count");
-        this.store.sql.exec(
-          "UPDATE stash SET count = ? WHERE item_id = ? AND origin = ?",
-          total,
-          item.itemId,
-          item.origin,
-        );
+        this.store.sql.exec("UPDATE stash SET count = ? WHERE uid = ?", total, existing.uid);
       } else {
         this.store.sql.exec(
-          "INSERT INTO stash (item_id, origin, uid, count) VALUES (?, ?, ?, ?)",
+          "INSERT INTO stash (item_id, origin, uid, count, seq) VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM stash))",
           item.itemId,
           item.origin,
           `stk:${txId}`,
@@ -247,7 +357,8 @@ export class AccountEconomy {
     for (const row of this.store.sql
       .exec<EquippedRow>("SELECT slot, cosmetic_id FROM equipped ORDER BY slot")
       .toArray()) {
-      if (isSlot(row.slot)) equipped[row.slot] = row.cosmetic_id;
+      // A refunded (revoked) cosmetic is no longer owned, so it is not shown equipped.
+      if (isSlot(row.slot) && owned.includes(row.cosmetic_id)) equipped[row.slot] = row.cosmetic_id;
     }
     return { owned, equipped };
   }
@@ -309,7 +420,7 @@ export class AccountEconomy {
   entitlements(): EntitlementView[] {
     return this.store.sql
       .exec<EntitlementRow>(
-        "SELECT tx_id, sku, source, granted_at FROM entitlements ORDER BY granted_at, tx_id",
+        "SELECT tx_id, sku, source, granted_at FROM entitlements WHERE revoked_at IS NULL ORDER BY granted_at, tx_id",
       )
       .toArray()
       .map(toEntitlementView);
@@ -364,7 +475,7 @@ export class AccountEconomy {
   #ownedCosmetics(): string[] {
     return this.store.sql
       .exec<{ sku: string }>(
-        "SELECT DISTINCT sku FROM entitlements WHERE substr(sku, 1, 9) = 'cosmetic.' ORDER BY sku",
+        "SELECT DISTINCT sku FROM entitlements WHERE substr(sku, 1, 9) = 'cosmetic.' AND revoked_at IS NULL ORDER BY sku",
       )
       .toArray()
       .map((r) => r.sku);

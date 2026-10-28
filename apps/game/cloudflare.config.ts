@@ -22,6 +22,13 @@ export default defineConfig({
       IdentityDO: exports.durableObject({ storage: "sqlite" }),
       ChatChannelDO: exports.durableObject({ storage: "sqlite" }),
       GuildDO: exports.durableObject({ storage: "sqlite" }),
+      // wave C (docs/design/wave-C.md)
+      EscrowDO: exports.durableObject({ storage: "sqlite" }),
+      MarketDO: exports.durableObject({ storage: "sqlite" }),
+      PlotAuctionDO: exports.durableObject({ storage: "sqlite" }),
+      ShopDO: exports.durableObject({ storage: "sqlite" }),
+      ArenaDO: exports.durableObject({ storage: "sqlite" }),
+      ConfigDO: exports.durableObject({ storage: "sqlite" }),
     },
     triggers: [
       triggers.queue({
@@ -42,6 +49,12 @@ export default defineConfig({
       IDENTITY: bindings.durableObject({ worker: WORKER, exportName: "IdentityDO" }),
       CHAT: bindings.durableObject({ worker: WORKER, exportName: "ChatChannelDO" }),
       GUILD: bindings.durableObject({ worker: WORKER, exportName: "GuildDO" }),
+      ESCROW: bindings.durableObject({ worker: WORKER, exportName: "EscrowDO" }),
+      MARKET: bindings.durableObject({ worker: WORKER, exportName: "MarketDO" }),
+      PLOTS: bindings.durableObject({ worker: WORKER, exportName: "PlotAuctionDO" }),
+      SHOP: bindings.durableObject({ worker: WORKER, exportName: "ShopDO" }),
+      ARENA: bindings.durableObject({ worker: WORKER, exportName: "ArenaDO" }),
+      CONFIG: bindings.durableObject({ worker: WORKER, exportName: "ConfigDO" }),
       DB: bindings.d1({ name: "gamez-read" }),
       SYNC_QUEUE: bindings.queue({ name: "gamez-sync" }),
       AUTH_SECRET: bindings.secret(),

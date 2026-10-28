@@ -22,10 +22,11 @@ import {
 } from "../components.ts";
 import { angleDiff, angleOf, angleVec, isqrt, pct, scaleTo } from "../fixed.ts";
 import { skillModsOf } from "../bonus.ts";
-import { effectiveManaCost, effectiveRank } from "../rules.ts";
+import { effectiveManaCost, effectiveRank, resistOf } from "../rules.ts";
 import { gridOf } from "../spatial.ts";
 import {
   KIND,
+  type Element,
   type MonsterBehaviour,
   type MonsterProto,
   type MonsterRarity,
@@ -388,6 +389,45 @@ export function awayTile(
   return null;
 }
 
+/**
+ * Element a skill's damage lands as: its own `damage` element when it has
+ * one, else the hero's weapon element (weapon-percent skills and attacks).
+ * Null for skills that deal no damage.
+ */
+function skillElement(c: AutoCtx, p: SkillProto): Element | null {
+  const d = p.damage;
+  if (d && (d.min > 0 || d.max > 0)) return d.element;
+  if (p.weaponPct > 0) return c.world.get(c.hero, CombatStats)?.attackElement ?? "phys";
+  return null;
+}
+
+/**
+ * Priority points a resist costs a damage skill: one per 20 % (a fire bolt
+ * into a 75 % fire-resistant boss drops 3 points), so a hero with an
+ * unresisted skill of about the same priority uses that one instead.
+ */
+export function resistPenalty(c: AutoCtx, p: SkillProto, target: Entity): number {
+  const el = skillElement(c, p);
+  if (el === null || el === "phys") return 0;
+  const cs = c.world.get(target, CombatStats);
+  if (!cs) return 0;
+  return Math.max(0, Math.floor(resistOf(cs, el) / 20));
+}
+
+/**
+ * True while an area skill may be spent on a single target: it is tagged for
+ * single targets or ranged use, the target is a boss (a boss fight wants
+ * every point of damage), or the hero keeps at least half its mana after the
+ * cast. Melee area skills (cleave, whirl) otherwise drain a small mana pool
+ * that Rallying Cry and Mend need (warrior, 8 seeds x 36 000 ticks of Auto:
+ * 34 -> 18 deaths with the mana kept). Champions and uniques do not count:
+ * spending on them doubled the warrior's deaths again.
+ */
+function singleUseOk(o: SkillOption, t: Foe, mp: number, maxMp: number): boolean {
+  if (!hasTag(o, "aoe") || hasTag(o, "single", "ranged") || t.rarity === "boss") return true;
+  return (mp - o.cost) * 2 >= maxMp;
+}
+
 /** Decides what to do against `target` this tick (null = nothing usable). */
 export function chooseAction(
   c: AutoCtx,
@@ -403,7 +443,14 @@ export function chooseAction(
   const life = lifePct(c);
   const best = (list: SkillOption[]): SkillOption | null => {
     let b: SkillOption | null = null;
-    for (const o of list) if (!b || o.proto.ai.priority > b.proto.ai.priority) b = o;
+    let bp = 0;
+    for (const o of list) {
+      const p = o.proto.ai.priority - resistPenalty(c, o.proto, target.e);
+      if (!b || p > bp) {
+        b = o;
+        bp = p;
+      }
+    }
     return b;
   };
 
@@ -456,7 +503,8 @@ export function chooseAction(
         afford(o) &&
         !hasTag(o, "heal", "buff", "summon", "mobility") &&
         !(hasTag(o, "dot") && dotRunning(c, target.e, o.proto)) &&
-        (hasTag(o, "single", "ranged", "melee") || !hasTag(o, "aoe")),
+        (hasTag(o, "single", "ranged", "melee") || !hasTag(o, "aoe")) &&
+        singleUseOk(o, target, mp, mana?.max ?? 0),
     ),
   );
   const basic = opts.find((o) => o.basic) ?? fallbackBasic(c);

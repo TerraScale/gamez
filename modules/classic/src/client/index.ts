@@ -23,6 +23,7 @@ import {
   type ArpgWorldRenderer,
   type ClientModeView,
   type ClientServices,
+  type PlatformScreen,
   type WorldRenderer,
 } from "@gamez/ui-host";
 import { debugModules, mode, modules } from "../index.ts";
@@ -380,7 +381,10 @@ export const classicView: ClientModeView = {
         onEvents: probe ? (events) => probe.push(events, game?.currentSim().tick ?? 0) : undefined,
         platform: services.platform ?? null,
         session: { accountId: services.session.accountId, name: services.session.name },
-        ...(activeSync ? { server: activeSync, sync: activeSync.view } : {}),
+        ...(activeSync ? { server: activeSync, sync: activeSync.view, bank: activeSync.bank } : {}),
+        ...(services.openScreen
+          ? { openScreen: (screen: PlatformScreen) => services.openScreen?.(screen) }
+          : {}),
         ...(townPresence
           ? { extraFrame: (s: Sim, nowMs: number) => townPresence.update(s, nowMs) }
           : {}),

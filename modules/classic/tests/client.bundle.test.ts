@@ -28,6 +28,7 @@ describe("@gamez/mode-classic package entry points", () => {
       "classic.crafting",
       "classic.items",
       "classic.monsters",
+      "classic.platform",
       "classic.progression",
       "classic.rift",
       "classic.talents",

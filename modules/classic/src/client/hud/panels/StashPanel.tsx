@@ -151,6 +151,21 @@ export function StashPanel({ api }: SlotProps) {
           </Btn>
         ))}
       </div>
+      {/* Wave C: the bank (K) is the way to move gold and items between hero and account. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+        <Btn
+          label="Open the bank"
+          title="Bank (K)"
+          minWidth={96}
+          fontSize={12}
+          onClick={() => {
+            api.closePanel("stash");
+            api.openPanel("bank");
+          }}
+        >
+          Bank
+        </Btn>
+      </div>
       <Section title={tab ? `In ${tab.name}` : "In the stash"}>
         {inTab.length === 0 ? <p style={labelStyle}>This tab is empty.</p> : null}
         {inTab.map((item) => (

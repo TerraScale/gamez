@@ -5,7 +5,7 @@
  */
 import type { AssetManifest } from "@gamez/assets";
 import type { ModeInfo } from "@gamez/protocol";
-import type { ClientServices, PlatformServices, Session } from "@gamez/ui-host";
+import type { ClientServices, PlatformScreen, PlatformServices, Session } from "@gamez/ui-host";
 import { MODES } from "../../shared/catalog.ts";
 import { instanceConnector } from "../instance/index.ts";
 import { verifiedConnector } from "../instance/verified.ts";
@@ -57,8 +57,16 @@ export interface BootData {
   platform?: PlatformServices;
 }
 
-/** Services for one mode run. `exit` returns the app to the mode picker. */
-export function createServices(boot: BootData, exit: () => void): ClientServices {
+/**
+ * Services for one mode run. `exit` returns the app to the mode picker;
+ * `openScreen` stacks a shell sheet over the running mode (wave C §10.4) and
+ * is only offered when the platform exists.
+ */
+export function createServices(
+  boot: BootData,
+  exit: () => void,
+  openScreen?: (screen: PlatformScreen) => void,
+): ClientServices {
   const session = () => boot.session;
   const services: ClientServices = {
     session: boot.session,
@@ -77,5 +85,6 @@ export function createServices(boot: BootData, exit: () => void): ClientServices
   if (presence) services.joinPresence = presence;
   const platform = boot.platform ?? createPlatform(session);
   if (platform) services.platform = platform;
+  if (openScreen && platform) services.openScreen = openScreen;
   return services;
 }

@@ -310,7 +310,78 @@ button:focus-visible {
   background: var(--panel-hover);
 }
 
-/* Sheets: account, leaderboards and guild screens over the picker. */
+/* Picker economy bar: one row of 44 px buttons (two columns on phones), the bell last. */
+.economy-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.economy-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.economy-button:hover {
+  background: var(--panel-hover);
+}
+
+.economy-label {
+  white-space: nowrap;
+}
+
+.economy-bell svg {
+  flex: none;
+}
+
+/* Unread count on the bell: a small accent pill in the top-right corner. */
+.bell-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1b1500;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.shell-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* Admin dashboard (#admin): full screen above the picker and the sheets. */
+.admin-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  overflow-y: auto;
+  background: var(--bg);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Sheets: account, leaderboards, guild and the economy screens over the picker or a running mode. */
 .sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -325,6 +396,11 @@ button:focus-visible {
   .sheet-backdrop {
     align-items: center;
   }
+}
+
+/* A sheet covered by one above it stays mounted but not shown. */
+.sheet-backdrop[hidden] {
+  display: none;
 }
 
 .sheet {
@@ -381,6 +457,9 @@ button:focus-visible {
  * the sheets' inputs all sit at the bottom, and a toast there covered them on phones.
  */
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   position: fixed;
   left: 16px;
   right: 16px;
@@ -406,4 +485,20 @@ button:focus-visible {
   border-color: #7a3440;
   background: #3a1d22;
   color: #ffd7dc;
+}
+
+/* The toast's action (e.g. "Open"): the only tappable part of the toast. */
+.toast-action {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -6px -8px 0;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-hover);
+  color: var(--text);
+  font-weight: 650;
+  cursor: pointer;
+  pointer-events: auto;
 }

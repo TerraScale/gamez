@@ -419,10 +419,18 @@ describe("createPlatform", () => {
     if (!platform) return;
     expect(Object.keys(platform).sort()).toEqual([
       "account",
+      "arena",
       "auth",
       "chat",
+      "config",
       "guilds",
       "leaderboards",
+      "market",
+      "pass",
+      "shops",
+      "store",
+      "trade",
+      "vault",
     ]);
     await platform.auth.me();
     expect(f.sent[0]?.headers.authorization).toBe("Bearer sess");

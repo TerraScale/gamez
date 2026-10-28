@@ -13,6 +13,7 @@
   "dependencies": {
     "@gamez/assets": "workspace:*",
     "@gamez/kernel": "workspace:*",
+    "@gamez/protocol": "workspace:*",
     "@gamez/ui-host": "workspace:*",
     "@gamez/world": "workspace:*",
     "react": "catalog:",

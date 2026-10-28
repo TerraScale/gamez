@@ -158,9 +158,136 @@ Put values in `apps/game/.dev.vars` (git-ignored; copy the keys from `.dev.vars.
 
 `cloudflare.config.ts` declares `AUTH_SECRET: bindings.secret()`. Per the `@cloudflare/config`
 docs, declaring secrets "replaces .dev.vars inference": optional keys that are **not** declared
-might not reach `env` in local dev (**unverified**). If a `.dev.vars` entry such as
+do not reach `env` in local dev (**verified**, see "Local development: which keys reach `env`"
+under Payments). If a `.dev.vars` entry such as
 `GOOGLE_CLIENT_ID` seems ignored, declare it as `bindings.secret()` in `cloudflare.config.ts`
 (a declared secret that is missing only produces a local warning).
+
+## Payments (wave C)
+
+Money in, through one `PaymentProvider` interface (`apps/game/src/server/payments/`). Each provider
+is **enabled only when its keys are set**; a provider without keys is listed as `enabled: false`
+and the store never offers it. Webhooks are verified before anything is read from them; a bad
+signature answers 401 and changes nothing. Fulfilment is idempotent by order id, so a replayed
+webhook is a no-op. Routes: `POST /api/pay/webhook/<provider>` (see the URLs below).
+
+| Name                         | Kind   | Required   | Enables                                                                                       |
+| ---------------------------- | ------ | ---------- | --------------------------------------------------------------------------------------------- |
+| `STRIPE_SECRET_KEY`          | secret | for Stripe | Stripe Checkout Sessions and refunds (`sk_test_…` or `sk_live_…`)                             |
+| `STRIPE_WEBHOOK_SECRET`      | secret | for Stripe | Verifies `Stripe-Signature` (`whsec_…`, one per webhook endpoint). Stripe is off without it   |
+| `ASAAS_API_KEY`              | secret | for Asaas  | Asaas API key, sent as `access_token`                                                         |
+| `ASAAS_WEBHOOK_TOKEN`        | secret | for Asaas  | The token you type into the Asaas webhook; compared with `asaas-access-token` (constant time) |
+| `ASAAS_ENV`                  | var    | no         | `production` selects the live API. Anything else (or unset) uses the sandbox                  |
+| `MERCADOPAGO_ACCESS_TOKEN`   | secret | for MP     | Checkout Pro preferences, payment lookup and refunds (`TEST-…` or `APP_USR-…`)                |
+| `MERCADOPAGO_WEBHOOK_SECRET` | secret | for MP     | Verifies `x-signature` (the "secret signature" of the MP webhook configuration)               |
+| `PAYMENTS_STUB`              | var    | no         | `"1"`: sandbox stub on any host. `"0"`: never. Unset: the stub on dev hosts only              |
+| `PUBLIC_ORIGIN`              | var    | no         | Origin used for return URLs and webhook URLs (default: the request origin)                    |
+
+`AUTH_SECRET` also signs the stub's webhooks (see "Local stub" below).
+
+### Webhook URLs to configure
+
+Replace `<origin>` with the public origin of the deployment (`PUBLIC_ORIGIN`):
+
+| Provider     | Configure in the provider's dashboard                                                     | Events we act on                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Stripe       | Developers → Webhooks → endpoint `<origin>/api/pay/webhook/stripe`                        | `checkout.session.completed`, `checkout.session.async_payment_succeeded` (paid), `charge.refunded` (refunded) |
+| Asaas        | Integrations → Webhooks → `<origin>/api/pay/webhook/asaas`, token = `ASAAS_WEBHOOK_TOKEN` | `PAYMENT_RECEIVED`, `PAYMENT_CONFIRMED` (paid), `PAYMENT_REFUNDED` (refunded)                                 |
+| Mercado Pago | Your application → Webhooks → `<origin>/api/pay/webhook/mercadopago`, topic "payments"    | `payment` (we read the status from `GET /v1/payments/<id>`)                                                   |
+
+Checkout sends the browser back to `<origin>/#store=paid&order=<id>` or `<origin>/#store=cancel`.
+The success page is not proof of payment: the webhook is.
+
+### Stripe
+
+1. Dashboard → Developers → API keys: copy the secret key into `STRIPE_SECRET_KEY`. Use the test
+   key (`sk_test_…`) first; test cards are listed in Stripe's docs.
+2. Developers → Webhooks → add the endpoint above, events as listed. Copy its signing secret
+   (`whsec_…`) into `STRIPE_WEBHOOK_SECRET`.
+3. Local testing against Stripe needs the Stripe CLI (`stripe listen --forward-to
+   localhost:5173/api/pay/webhook/stripe`), which prints its own `whsec_…` for local delivery.
+   **Unverified** in this repo: nothing here has been run against Stripe's sandbox.
+4. Stripe refunds use the checkout session id to find the payment intent. A `charge.refunded`
+   webhook without our metadata is resolved through that payment intent's metadata (`orderId`,
+   `accountId`), which checkout sets via `payment_intent_data[metadata]`.
+
+### Asaas
+
+1. Sandbox first: create the sandbox account at `sandbox.asaas.com`, copy the API key into
+   `ASAAS_API_KEY`, and leave `ASAAS_ENV` unset (sandbox API: `api-sandbox.asaas.com/v3`).
+2. Integrations → Webhooks: URL above, a random token of your own for `ASAAS_WEBHOOK_TOKEN`
+   (Asaas sends it back in `asaas-access-token`). Choose the payment events.
+3. Production: set `ASAAS_ENV=production` and a production key. Brazil only (BRL).
+4. Payers choose PIX, boleto or card on the invoice page (`billingType: UNDEFINED`).
+   **Unverified** end to end: the customer is created without CPF, so boleto may need the payer
+   to fill it in on the invoice page.
+
+### Mercado Pago
+
+1. Developers → your application → Credentials: copy the **test** access token
+   (`TEST-…`) into `MERCADOPAGO_ACCESS_TOKEN`, then the production token later.
+2. Webhooks → configure the URL above for the `payments` topic. Copy the "secret signature" into
+   `MERCADOPAGO_WEBHOOK_SECRET`. We check `x-signature` (`ts` + `v1`, HMAC-SHA256 of
+   `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`), reject timestamps older than 5 minutes,
+   then read the payment from the API (the body is never trusted).
+3. Currencies: BRL, and USD where the account allows it. Other LatAm countries are routed here
+   (AR, MX, CO, CL, PE, UY) and must match the account's currency. **Unverified** outside Brazil.
+
+### Local stub (sandbox)
+
+Enabled on localhost, `127.0.0.1`, `[::1]` and `*.ts.net` hosts with no configuration (or with
+`PAYMENTS_STUB=1`). `GET /api/store` lists it as `stub`. Checkout opens
+`/api/pay/stub/checkout?order=…&account=…`, a page with **Pay (sandbox)** and **Cancel**. Paying
+posts to `/api/pay/stub/complete`, which signs the webhook body with HMAC-SHA256 keyed by
+`AUTH_SECRET` (`x-stub-signature`) and runs the same verification as a real provider. Nothing
+leaves the Worker. The stub is never on a public host unless `PAYMENTS_STUB=1` is set, which
+must not happen on a public deployment.
+
+To try it: sign in (any guest works to look, an account is needed to buy), open the store, choose
+a pack, Pay (sandbox). The e2e feature `payments` does the same flow end to end.
+
+### Setting these on the deployed Worker
+
+Secrets go through `cf` like the others (see "Setting secrets with `cf`" above). The keys are
+read from `env` at request time, so a new secret takes effect without a redeploy **unverified**
+on Workers Builds (same open question as `AUTH_SECRET`).
+
+### Local development: which keys reach `env`
+
+**Verified (live probe, 2026-10-28): undeclared `.dev.vars` keys do not reach `env` in `vp dev`.**
+`cloudflare.config.ts` declares only `AUTH_SECRET` as a `bindings.secret()`, and only declared
+secrets are mapped from `.dev.vars` (`resolveLocalBindings` in `@cloudflare/vite-plugin`
+2.0.0-beta.v.5).
+
+How it was checked, without touching the shared `.dev.vars` of the :5173 server: a separate
+`vp dev --mode qaprobe --port 5418` reads `apps/game/.dev.vars.qaprobe` instead (the plugin picks
+`.dev.vars.<mode>` first, and the :5173 server only watches `.dev.vars` and
+`.dev.vars.development`). That file held `AUTH_SECRET=<probe value>`, `PAYMENTS_STUB=0` and
+placeholder `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`. Results:
+
+- the guest token from `POST /api/guest` was signed with the probe's `AUTH_SECRET` (declared key:
+  read);
+- `GET /api/store` still listed the stub as enabled on localhost (undeclared `PAYMENTS_STUB=0`:
+  not read) and Stripe as disabled (undeclared Stripe keys: not read).
+
+The probe file was deleted afterwards. The same holds for `OAUTH_STUB`, `ADMIN_ACCOUNT_IDS`,
+`MODERATION` and the OAuth client keys. To use any of them locally, declare it in
+`apps/game/cloudflare.config.ts` (`bindings.secret()`; a declared secret that is missing only logs
+a "Missing required secrets" warning), or set it as a `bindings.text(...)` var. The stub needs no
+key beyond `AUTH_SECRET`, which is declared.
+
+### Known gaps (wave C)
+
+- Refunds set `revoked_at` on the order's rows in the AccountDO `entitlements` table. The column
+  is added by `account/purchases.ts` (guarded `ALTER TABLE`, only when missing); the table itself
+  belongs to `account/economy.ts`. `economy.ts` (`cosmetics()`, `entitlements()`) and
+  `account/pass.ts` (premium) do not filter `revoked_at IS NULL` yet, so a refunded cosmetic or pass
+  stays usable until they do. Gems are debited on refund (down to 0 at most).
+- Stripe `charge.refunded`: a partial refund (`refunded: false`) is ignored; a full refund reads our
+  ids from the payment intent (`GET /v1/payment_intents/<id>`) because charges do not carry the
+  intent's metadata. **Unverified** against Stripe itself.
+- The webhook carries no amount, so a paid event is not checked against the price charged. Adding
+  the amount to `VerifiedWebhook` would close that.
 
 ## Never
 

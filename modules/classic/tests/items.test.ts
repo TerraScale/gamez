@@ -1118,7 +1118,7 @@ describe("determinism", () => {
   });
 
   it("pins the hash of the fixed script", () => {
-    expect(script(7).sim.hash()).toBe("a273dcadac37889a");
+    expect(script(7).sim.hash()).toBe("3d55b52c3823ab83");
   });
 });
 

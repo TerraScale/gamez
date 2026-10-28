@@ -30,6 +30,8 @@ const PANEL_KEYS: Readonly<Record<string, PanelId>> = {
   l: "quests",
   n: "talents",
   y: "achievements",
+  // Wave C: the bank (K = keep; B, G and the other social letters stay free for wave B's planned keys).
+  k: "bank",
 };
 const DRINK_KEYS: Readonly<Record<string, number>> = { q: 0, w: 1, e: 2, r: 3 };
 
@@ -100,6 +102,31 @@ export function bindKeyboard(
   };
   win.addEventListener("keydown", listener as EventListener);
   return () => win.removeEventListener("keydown", listener as EventListener);
+}
+
+/**
+ * A left tap that no sim entity took (no unit, loot or interactable under it).
+ * Returns true when it consumed the tap, so the pointer does not walk the hero
+ * there. Town presence uses this for remote avatars and shopkeeper ghosts, which
+ * are renderer entities, not sim entities.
+ */
+export type TapInterceptor = (p: PointerInfo) => boolean;
+
+const tapInterceptors: TapInterceptor[] = [];
+
+/** Registers a tap interceptor (per page). Returns the function that removes it. */
+export function addTapInterceptor(fn: TapInterceptor): () => void {
+  tapInterceptors.push(fn);
+  return () => {
+    const i = tapInterceptors.indexOf(fn);
+    if (i >= 0) tapInterceptors.splice(i, 1);
+  };
+}
+
+/** Runs the interceptors in registration order until one consumes the tap. */
+export function interceptTap(p: PointerInfo): boolean {
+  for (const fn of tapInterceptors) if (fn(p)) return true;
+  return false;
 }
 
 /** What the pointer asked for. Tile coordinates are integers; `x`/`y` of casts are sub units. */
@@ -246,6 +273,7 @@ export class PointerInput {
       });
       return;
     }
+    if (!hit && interceptTap(p)) return;
     if (!hit) {
       this.emit({ kind: "move", x: Math.floor(p.x), y: Math.floor(p.y) });
       return;

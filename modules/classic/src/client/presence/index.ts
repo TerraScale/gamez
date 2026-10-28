@@ -4,11 +4,18 @@
  * - While the hero is in town (AreaState.depth === 0) a PresenceConnection to
  *   world "classic-town" is open. It closes LEAVE_GRACE_MS after the hero
  *   leaves town (or on destroy); avatars disappear as soon as the hero leaves.
- * - The hero's pose is reported at most POSE_INTERVAL_MS apart and only when it
- *   changed (pose.ts).
+ * - The hero's pose is reported at most POSE_INTERVAL_MS apart, when it changed
+ *   (pose.ts) or as a keepalive every POSE_KEEPALIVE_MS while unchanged.
  * - Every other avatar is drawn with renderer.upsertEntity under ids "p:<id>".
  *   Moving avatars are interpolated with walkAt(state, serverNow()) every frame;
  *   stationary ones are upserted only when the view changes.
+ * - Wave C: "shopkeeper" fixtures (ChunkFixtureApi, shops:<plotId>) are drawn as
+ *   translucent static ghosts. A tap on one opens its shop (openScreen "shop").
+ *   A tap on another hero opens the "Trade with <name>" bubble (bubble.ts).
+ *   Taps reach TownPresence through input.ts's tap interceptors, only when no
+ *   sim entity is under the tap.
+ * - Wave B carry-over: a remote player is not drawn until its first pose has
+ *   arrived (the server sets its tag only from a pose report).
  * - Reads the sim only; never mutates it. update() never throws.
  */
 import type { FrozenRegistry, Sim } from "@gamez/kernel";
@@ -17,17 +24,36 @@ import type {
   ArpgWorldRenderer,
   ClientServices,
   Facing,
+  PlatformScreen,
   PresenceConnection,
   PresenceView,
+  PointerInfo,
 } from "@gamez/ui-host";
 import { walkAt } from "@gamez/world";
 import { facingOf } from "../../fixed.ts";
 import { currentDepth, heroOf } from "../../resources.ts";
+import { addTapInterceptor } from "../input.ts";
+import { accountIdOfPresence, clearTradeBubble, showTradeBubble } from "./bubble.ts";
 import { copyPose, makePose, readPose, samePose, toPoseUpdate, type PoseState } from "./pose.ts";
 
 export const PRESENCE_WORLD = "classic-town";
+/** Id prefix of shopkeeper fixtures (ChunkFixtureApi group "shops"; wave-C.md §5.4). */
+export const SHOP_FIXTURE_PREFIX = "shops:";
+/** Opacity of a shopkeeper ghost. */
+export const GHOST_ALPHA = 0.6;
+/** Cool multiply tint of a shopkeeper ghost (0xRRGGBB). */
+export const GHOST_TINT = 0xbfe6ff;
+/** A tap within this many tiles of an avatar's centre hits it (as the sim pick does). */
+export const TAP_RADIUS = 0.8;
 /** Minimum spacing between two pose reports (4 per second). */
 export const POSE_INTERVAL_MS = 250;
+/**
+ * An unchanged pose is re-reported this often. The chunk answers it without a
+ * broadcast (nothing changed), but a hero that was dropped server-side (relay
+ * given up on, chunk restarted) learns "not-joined" and is rejoined, so a hero
+ * standing still never stays invisible for longer than this.
+ */
+export const POSE_KEEPALIVE_MS = 10_000;
 /** How long the connection stays open after the hero leaves town. */
 export const LEAVE_GRACE_MS = 3000;
 /** Wait before reconnecting after the server dropped the presence socket. */
@@ -37,15 +63,33 @@ export const AVATAR_PREFIX = "p:";
 export const TILE_CENTRE = 0.5;
 
 export interface TownPresenceDeps {
-  services: Pick<ClientServices, "joinPresence">;
+  services: Pick<ClientServices, "joinPresence" | "openScreen">;
   renderer: ArpgWorldRenderer;
   registry: FrozenRegistry;
 }
 
 type Other = PresenceView["others"][number];
 
+/** Plot id of a shopkeeper fixture id ("shops:p1" -> "p1"). */
+export function plotIdOf(fixtureId: string): string {
+  return fixtureId.startsWith(SHOP_FIXTURE_PREFIX)
+    ? fixtureId.slice(SHOP_FIXTURE_PREFIX.length)
+    : fixtureId;
+}
+
+/**
+ * True once an entity may be drawn. Shopkeepers are fixtures (always). A remote
+ * player is hidden until its first pose: the server sets `tag` only from a pose
+ * report, and the join state has no tag yet (wave B carry-over).
+ */
+export function poseReady(o: Other): boolean {
+  return o.kind === "shopkeeper" || o.tag !== undefined;
+}
+
 interface Avatar {
   other: Other;
+  /** Kind of the entity when it was first drawn (shopkeepers are static ghosts). */
+  kind: Other["kind"];
   /** Generation of the last view that contained this avatar. */
   gen: number;
   /** True while the last draw showed the avatar walking. */
@@ -82,8 +126,49 @@ export class TownPresence {
   private error: string | null = null;
   private debugGetter: (() => TownPresence) | null = null;
   private debugTried = false;
+  private unhookTaps: (() => void) | null = null;
 
   constructor(readonly deps: TownPresenceDeps) {}
+
+  /**
+   * A left tap no sim entity took. Shopkeeper: opens its shop. Other hero: opens
+   * the trade bubble. Anything else clears an open bubble and walks (returns false).
+   * Only while connected; the page's own taps otherwise behave as before.
+   */
+  private readonly onTap = (p: PointerInfo): boolean => {
+    if (!this.conn) return false;
+    let best: Avatar | null = null;
+    let bestD = TAP_RADIUS * TAP_RADIUS;
+    for (const a of this.shown.values()) {
+      const dx = a.entity.x - p.x;
+      const dy = a.entity.y - p.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestD) {
+        best = a;
+        bestD = d;
+      }
+    }
+    const open = this.deps.services.openScreen;
+    if (best === null || !open) {
+      clearTradeBubble();
+      return false;
+    }
+    if (best.kind === "shopkeeper") {
+      clearTradeBubble();
+      const screen: PlatformScreen = {
+        id: "shop",
+        world: PRESENCE_WORLD,
+        plotId: plotIdOf(best.other.id),
+      };
+      open(screen);
+      return true;
+    }
+    showTradeBubble({
+      accountId: accountIdOfPresence(best.other.id, PRESENCE_WORLD),
+      displayName: best.other.name,
+    });
+    return true;
+  };
 
   /** Per frame: open/close by area, report pose, draw others. Never throws. */
   update(sim: Sim, nowMs: number): void {
@@ -221,6 +306,8 @@ export class TownPresence {
     if (!join || nowMs < this.retryAt) return;
     try {
       const conn = join(PRESENCE_WORLD);
+      this.unhookTaps?.();
+      this.unhookTaps = addTapInterceptor(this.onTap);
       const unsub = conn.subscribe((v) => {
         this.view = v;
         this.viewDirty = true;
@@ -239,6 +326,8 @@ export class TownPresence {
   private close(): void {
     const conn = this.conn;
     const unsub = this.unsub;
+    this.unhookTaps?.();
+    this.unhookTaps = null;
     this.conn = null;
     this.unsub = null;
     this.view = null;
@@ -258,7 +347,12 @@ export class TownPresence {
     const conn = this.conn;
     if (!conn) return;
     if (!readPose(world, hero, this.deps.registry, this.cur)) return;
-    if (this.sentValid && samePose(this.cur, this.sent)) return;
+    if (
+      this.sentValid &&
+      samePose(this.cur, this.sent) &&
+      nowMs - this.lastSendMs < POSE_KEEPALIVE_MS
+    )
+      return;
     if (nowMs - this.lastSendMs < POSE_INTERVAL_MS) return;
     conn.setPose(toPoseUpdate(this.cur));
     copyPose(this.cur, this.sent);
@@ -275,11 +369,15 @@ export class TownPresence {
     const now = conn.serverNow();
     for (const o of view.others) {
       if (o.id === view.selfId) continue;
+      // Not drawn until its first pose (a joined hero still shows its saved tile).
+      if (!poseReady(o)) continue;
       const key = o.id;
       let a = this.shown.get(key);
       if (!a) {
+        const ghost = o.kind === "shopkeeper";
         a = {
           other: o,
+          kind: o.kind,
           gen: this.gen,
           moving: false,
           facing: restFacing(o),
@@ -295,6 +393,7 @@ export class TownPresence {
             moving: false,
             isSelf: false,
             showLabel: true,
+            ...(ghost ? { alpha: GHOST_ALPHA, tint: GHOST_TINT } : {}),
           },
         };
         a.entity.facing = a.facing;
@@ -345,6 +444,7 @@ export class TownPresence {
   }
 
   private clearAvatars(): void {
+    clearTradeBubble();
     if (this.shown.size === 0) return;
     for (const a of this.shown.values()) this.deps.renderer.removeEntity(a.entity.id);
     this.shown.clear();

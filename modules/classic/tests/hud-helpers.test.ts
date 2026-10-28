@@ -29,6 +29,8 @@ import { bottomOrder, PANEL_IDS, panelSlot, SLOT } from "../src/client/hud/layou
 import { DEFAULT_WIDGETS, PANEL_COMPONENTS, registerDefaultHud } from "../src/client/hud/index.tsx";
 import { SKILL_GLYPHS, skillGlyphKey, skillGlyphTag } from "../src/client/hud/icons.tsx";
 import { CLASSES } from "../src/content/classes.ts";
+import { QUESTS } from "../src/content/quests.ts";
+import { requiredOf } from "../src/progression/quests.ts";
 import { SKILLS } from "../src/content/skills.ts";
 import { contrastRatio, GOLD_COLOR, MONSTER_COLOR, RARITY_COLOR } from "../src/client/contract.ts";
 import { minimapPixels } from "../src/client/hud/widgets/Minimap.tsx";
@@ -386,5 +388,23 @@ describe("slot table", () => {
 
   it("has twenty panel ids (wave A adds six, wave B four), each unique", () => {
     expect(new Set(PANEL_IDS).size).toBe(20);
+  });
+});
+
+describe("quest targets (hud quests)", () => {
+  it("requiredOf: kill and depth quests use their count, boss and clear quests need one", () => {
+    expect(requiredOf(QUESTS["classic.quest.rats_in_the_cellar"]!)).toBe(20);
+    expect(requiredOf(QUESTS["classic.quest.deeper_still"]!)).toBe(6);
+    expect(requiredOf(QUESTS["classic.quest.wardens_rest"]!)).toBe(1);
+    // clearLevel: `count` is the depth (3), the target is one cleared level.
+    expect(QUESTS["classic.quest.clear_the_crypt"]!.count).toBe(3);
+    expect(requiredOf(QUESTS["classic.quest.clear_the_crypt"]!)).toBe(1);
+  });
+
+  it("every quest target is a positive integer the HUD can show as n / n", () => {
+    for (const [id, q] of Object.entries(QUESTS)) {
+      const need = requiredOf(q);
+      expect(Number.isInteger(need) && need >= 1, id).toBe(true);
+    }
   });
 });

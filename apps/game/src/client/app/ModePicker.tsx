@@ -2,7 +2,9 @@ import type { ModeInfo, AccountView } from "@gamez/protocol";
 import type { PlatformServices, Session } from "@gamez/ui-host";
 import { AccountChip } from "./AccountChip.tsx";
 import { ChatDock } from "./ChatDock.tsx";
+import { EconomyBar } from "./EconomyBar.tsx";
 import { SocialBar } from "./SocialBar.tsx";
+import type { EntryId, ShellItem } from "./screens.ts";
 
 export interface ModePickerProps {
   session: Session;
@@ -17,6 +19,12 @@ export interface ModePickerProps {
   onOpenAccount: () => void;
   onOpenLeaderboards: () => void;
   onOpenGuild: () => void;
+  /** Wave C economy bar: the visible entries, the unread count and where a click goes. Absent = no bar. */
+  economy?: {
+    entries: readonly EntryId[];
+    unread: number;
+    onOpen: (item: ShellItem) => void;
+  };
 }
 
 /** Full-width mode list with large touch targets; usable down to 375 px. */
@@ -30,6 +38,7 @@ export function ModePicker({
   onOpenAccount,
   onOpenLeaderboards,
   onOpenGuild,
+  economy,
 }: ModePickerProps) {
   const online = platform !== undefined;
   return (
@@ -47,6 +56,9 @@ export function ModePicker({
           onLeaderboards={onOpenLeaderboards}
           onGuild={onOpenGuild}
         />
+      ) : null}
+      {economy ? (
+        <EconomyBar entries={economy.entries} unread={economy.unread} onOpen={economy.onOpen} />
       ) : null}
       <h2 className="picker-title">Choose a mode</h2>
       <ul className="mode-list">

@@ -22,7 +22,7 @@ import { findPath, isWalkable, pathDuration } from "@gamez/world";
 import { BotClient, loginGuest, type Received } from "./client.ts";
 import { crawlClientGraph } from "./client-graph.ts";
 import { FEATURES, type E2eContext } from "./features.ts";
-import { startDevServer, type DevServer } from "./dev-server.ts";
+import { resetE2eState, startDevServer, type DevServer } from "./dev-server.ts";
 import { play, resume, SCRIPTS, type PlayedInstance } from "./instance.ts";
 import { LocalD1 } from "./local-d1.ts";
 import { MIGRATIONS_DIR } from "./paths.ts";
@@ -137,7 +137,8 @@ async function walkAndReplicate(
 async function run(): Promise<void> {
   let server: DevServer | null = null;
   try {
-    // 1. dev server + local D1 migrations
+    // 1. dev server (fresh private state) + local D1 migrations
+    resetE2eState(PORT);
     server = await startDevServer(PORT, LOG);
     timings["dev server startup"] = server.startupMs;
     const db = await LocalD1.open(server.url);

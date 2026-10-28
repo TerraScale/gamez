@@ -18,12 +18,13 @@ import {
   defineModule,
   type ActionDef,
   type SimContext,
+  type SystemDef,
   type World,
 } from "@gamez/kernel";
-import { pushCommand, pushSpawn } from "../bus.ts";
+import { busOf, pushCommand, pushSpawn } from "../bus.ts";
 import { ERR } from "../actions.ts";
 import { AreaTag, Body, Dead, Level, Life, Monster, Pos, Talents } from "../components.ts";
-import { tileCenter } from "../fixed.ts";
+import { tileCenter, type TilePos } from "../fixed.ts";
 import {
   currentDepth,
   gameOf,
@@ -48,8 +49,8 @@ import {
   type SetProto,
   type SetItemProto,
 } from "../types.ts";
-import { findFreeNear, tileKey } from "../world/common.ts";
-import { getMap } from "../world/maps.ts";
+import { tileKey } from "../world/common.ts";
+import { getMap, type ClassicMap } from "../world/maps.ts";
 
 /** Action name of the QA grant (not in ACTION: it does not exist in the playable mode). */
 export const DEBUG_GRANT = "classic.debug.grant";
@@ -70,10 +71,16 @@ export interface GrantPayload {
   riftProgress?: number;
   /**
    * Spawns this boss or rift guardian (MonsterProto id with a `boss` block or
-   * `guardian: true`) awake, 3-5 tiles from the hero, in the dungeon or a rift.
+   * `guardian: true`) awake, about 3 tiles from the hero on a tile the hero
+   * can walk to (never behind a wall), in the dungeon or a rift.
    */
   spawnBoss?: string;
-  /** Sets every living boss of the hero's area to this percent of its max life (1..99): phase changes on demand. */
+  /**
+   * Sets every living boss of the hero's area to this percent of its max life
+   * (1..99): phase changes on demand. A boss spawned by `spawnBoss` (in the
+   * same grant or one not yet stepped) is queued, so it takes the wound when
+   * it spawns on the next step.
+   */
   woundBosses?: number;
 }
 
@@ -221,6 +228,58 @@ function fillRift(world: World, pct: number): void {
   run.progress = Math.max(run.progress, Math.min(run.goal, Math.ceil((run.goal * pct) / 100)));
 }
 
+/** Spawn tiles are this many tiles (Chebyshev) from the hero at least. */
+export const SPAWN_MIN_TILES = 3;
+/** ...and at most this many steps of walking (4-neighbour) away. */
+export const SPAWN_MAX_STEPS = 12;
+
+/**
+ * The spawn tile of a debug boss: the first free walkable tile, in
+ * breadth-first walking order from the hero's tile (4 neighbours, fixed
+ * order), that is at least SPAWN_MIN_TILES away. Reached by walking, so the
+ * boss is never placed behind a wall the hero cannot get around (QA: a boss
+ * across a wall kept the Auto hero in a fight/dodge loop it could not win).
+ * Null when no such tile is within SPAWN_MAX_STEPS.
+ */
+export function reachableSpawnTile(
+  map: ClassicMap,
+  from: TilePos,
+  occupied: ReadonlySet<number>,
+): TilePos | null {
+  const w = map.width;
+  const h = map.height;
+  if (from.x < 0 || from.y < 0 || from.x >= w || from.y >= h) return null;
+  const seen = new Map<number, number>();
+  const start = tileKey(w, from.x, from.y);
+  seen.set(start, 0);
+  const queue = [start];
+  const dirs: readonly (readonly [number, number])[] = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0],
+  ];
+  for (let head = 0; head < queue.length; head++) {
+    const k = queue[head]!;
+    const steps = seen.get(k)!;
+    const x = k % w;
+    const y = (k - x) / w;
+    const far = Math.max(Math.abs(x - from.x), Math.abs(y - from.y)) >= SPAWN_MIN_TILES;
+    if (far && !occupied.has(k)) return { x, y };
+    if (steps >= SPAWN_MAX_STEPS) continue;
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nk = tileKey(w, nx, ny);
+      if (seen.has(nk) || map.walkable[nk] !== 1) continue;
+      seen.set(nk, steps + 1);
+      queue.push(nk);
+    }
+  }
+  return null;
+}
+
 /** Spawns a boss or guardian awake near the hero (not in town). */
 function spawnBossNear(world: World, ctx: SimContext, hero: number, id: string): void {
   const proto = ctx.registry.get<MonsterProto>(KIND.monster, id);
@@ -239,8 +298,8 @@ function spawnBossNear(world: World, ctx: SimContext, hero: number, id: string):
     occupied.add(tileKey(map.width, p.x >> 8, p.y >> 8));
   }
   const hp = world.read(hero, Pos);
-  const at = findFreeNear(map, { x: hp.x >> 8, y: hp.y >> 8 }, 3, occupied);
-  if (!at) throw new ActionError(ERR.badTarget, "no free tile near the hero");
+  const at = reachableSpawnTile(map, { x: hp.x >> 8, y: hp.y >> 8 }, occupied);
+  if (!at) throw new ActionError(ERR.badTarget, "no free tile the hero can reach");
   pushSpawn(world, {
     monster: id,
     x: tileCenter(at.x),
@@ -258,9 +317,16 @@ function spawnBossNear(world: World, ctx: SimContext, hero: number, id: string):
   });
 }
 
-/** Lowers every living boss of the hero's area to `pct` % of its max life (never heals). */
-function woundBosses(world: World, pct: number): void {
-  const depth = currentDepth(world);
+/** Resource: a wound for bosses still queued in Bus.spawns (applied right after they spawn). */
+export const PENDING_WOUND = "classic.debug.pendingWound";
+
+export interface PendingWound {
+  depth: number;
+  pct: number;
+}
+
+/** Lowers every living boss at `depth` to `pct` % of its max life (never heals). Returns how many. */
+function woundAt(world: World, depth: number, pct: number): number {
   let found = 0;
   for (const e of world.query(Monster, Life, AreaTag)) {
     if (world.read(e, AreaTag).depth !== depth || world.has(e, Dead)) continue;
@@ -270,8 +336,38 @@ function woundBosses(world: World, pct: number): void {
     if (hp < life.hp) world.update(e, Life, { hp });
     found++;
   }
-  if (found === 0) throw new ActionError(ERR.badTarget, "no living boss in this area");
+  return found;
 }
+
+/**
+ * Lowers every living boss of the hero's area to `pct` % of its max life
+ * (never heals). Bosses still queued in Bus.spawns for the area (spawnBoss
+ * runs through the spawn queue) take the wound when they spawn: the grant
+ * used to fail with "no living boss" and roll the spawn back with it.
+ */
+function woundBosses(world: World, pct: number): void {
+  const depth = currentDepth(world);
+  const found = woundAt(world, depth, pct);
+  const queued = busOf(world).spawns.some((r) => r.rarity === "boss" && r.depth === depth);
+  if (queued) world.setResource<PendingWound>(PENDING_WOUND, { depth, pct });
+  if (found === 0 && !queued) throw new ActionError(ERR.badTarget, "no living boss in this area");
+}
+
+/**
+ * classic.debug.pendingWound (pre -1049, right after classic.monsters.spawn):
+ * applies a PendingWound to the bosses that just spawned, then clears it.
+ */
+export const pendingWoundSystem: SystemDef = {
+  id: "classic.debug.pendingWound",
+  stage: "pre",
+  order: -1049,
+  run(world) {
+    const w = world.getResource<PendingWound>(PENDING_WOUND);
+    if (w === undefined) return;
+    woundAt(world, w.depth, w.pct);
+    world.deleteResource(PENDING_WOUND);
+  },
+};
 
 /** Applies a validated grant to the sim (queued grants run on the next step). */
 export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void {
@@ -347,9 +443,9 @@ const grant: ActionDef<GrantPayload> = {
 
 export const classicDebug = defineModule({
   id: MODULE.debug,
-  version: "0.2.0",
+  version: "0.3.0",
   deps: [MODULE.content, MODULE.core],
   optionalDeps: [MODULE.items, MODULE.progression, MODULE.world, MODULE.rift, MODULE.talents],
-  systems: [],
+  systems: [pendingWoundSystem],
   actions: [grant],
 });

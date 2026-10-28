@@ -26,8 +26,8 @@ const POSE_FLAG_APPEARANCE = 0x01;
 const POSE_FLAG_TAG = 0x02;
 const SERVER_TAG = { welcome: 1, delta: 2, pong: 3, error: 4 } as const;
 
-const KIND_CODE: Record<EntityKind, number> = { player: 0, ghost: 1 };
-const KINDS: readonly EntityKind[] = ["player", "ghost"];
+const KIND_CODE: Record<EntityKind, number> = { player: 0, ghost: 1, shopkeeper: 2 };
+const KINDS: readonly EntityKind[] = ["player", "ghost", "shopkeeper"];
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });

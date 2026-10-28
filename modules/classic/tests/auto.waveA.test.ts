@@ -899,7 +899,7 @@ describe("auto wave A determinism", () => {
   });
 
   it("pins the hash after the fixed script", () => {
-    expect(scriptedA().hash()).toBe("dbc4f301080fda7e");
+    expect(scriptedA().hash()).toBe("edab2b388c38ffa3");
   });
 });
 

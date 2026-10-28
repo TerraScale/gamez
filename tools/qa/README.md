@@ -63,8 +63,8 @@ Use `--viewport phone` for the phone layout of the same run.
 ### classic-boss (cheats)
 
 A deterministic route to a boss fight: 25 levels, the town stairs to depth 1 in manual
-mode, then `spawnBoss: "classic.monster.boss_warden"` puts Morrow awake 3-5 tiles from
-the hero at the depth's level, so the fight lasts long enough to watch (a rift-level boss
+mode, then `spawnBoss: "classic.monster.boss_warden"` puts Morrow awake on the first walkable tile at least 3 tiles
+from the hero and at most 12 steps away (never behind a wall), at the depth's level, so the fight lasts long enough to watch (a rift-level boss
 kills a cheat hero in seconds). The run polls `sim.lastEvents` for `classic.telegraph` and takes a
 `telegraph-<shape>` shot as soon as a new shape (circle, cone, line) starts to fill.
 `woundBosses: 60` then `woundBosses: 30` drive both phases (`boss-phase-1`, `boss-phase-2`).
@@ -173,6 +173,115 @@ Every run prints one JSON report to stdout:
 The exit code is 0 when `ok`, 1 otherwise, and 2 for bad usage. A useful
 pattern: `node tools/qa/src/run.ts gallery > /tmp/g.json; node -e 'console.log(require("/tmp/g.json").data.summary)'`.
 
+## Quests (`quests` scenario and the quest sim suite)
+
+Quest coverage has two halves: a sim suite (fast, no browser, runs on every
+change) and a browser scenario (the whole loop as a player sees it).
+
+### The sim suite
+
+```sh
+node_modules/.bin/vp test run modules/classic/tests/quests.all.test.ts
+```
+
+Data-driven over `registry.all(KIND.quest)`, so a new quest is covered without
+editing the file. On the real catalog and every classic module, it drives real
+actions (`classic.acceptQuest`, `classic.completeQuest`, `classic.interact` to
+Captain Hale, placed in reach) and sets up level, depth and bosses through the
+real transitions and resources. Kills are pushed as death records, the way combat
+reports them. It checks, per quest: offered by level and chain (HUD and
+actions agree), refused far from Hale (`too_far`, hash unchanged), accepted near
+Hale once, progress counted for the right things (wrong monster and a normal-rarity
+namesake ignored for a boss kill, `reachDepth` follows the deepest depth,
+`clearLevel` stays open while a monster lives), finished, turned in for exactly
+the reward gold and XP and an item of the reward rarity, second turn-in and
+re-accept refused, the chain unlocks the next quest. Also: the whole chain to
+ten completed quests, a retroactive boss kill (accepted after its depth is in
+`bossesKilled`), the stash fallback for a full bag, Idle and Auto per class
+(warrior, rogue, sorcerer), and determinism (same script, same hash).
+
+The suite is the target behaviour of the quest fix and is never skipped or
+weakened to pass. Tests that guard a quest fix (name, then the code it covers):
+
+- `retroactive: ...` (the four boss quests, and Tunnel Mother turned in): a
+  killBoss quest accepted after its boss depth is already in `bossesKilled` is
+  done within one tick of the accept (`progression/quests.ts` advanceLevelQuests),
+- `clearLevel completes on an uncredited last death`: any monster death that
+  empties the live depth 3 completes Clear the Crypt,
+- `reward item falls back to the stash when the bag is full`,
+- `Auto completes Clear the Crypt` (per class): level 18, 6 rare items,
+  `deepest` 4 and waypoints 1 and 3 (what a hero who reached depth 4 has);
+  turned in within 13 000 ticks (about 30 % over the slowest class, warrior),
+- `Auto accepts a chained quest in the same visit` (per class): Tunnel Mother is
+  accepted before Auto leaves town after turning in The Warden's Rest,
+- `the whole chain`: ten quests completed and `Trusted by the Town` unlocked
+  (achievements are checked every 20 ticks, so the test steps one interval).
+
+On the current tree all 85 tests pass in about 75 s. The per-class tests take
+8 to 14 s each.
+
+### `quests` (browser)
+
+```sh
+node tools/qa/src/run.ts quests <class> [phone]   # warrior | rogue | sorcerer; `phone` = 390x844 touch layout
+```
+
+A fresh classic hero (`?debug=1&cheats=1&class=…&autostart=1`, manual control) in town. No
+`seed`: a seeded run neither reads nor writes the local save, and the reloads need it.
+
+1. Captain Hale offers `Rats in the Cellar` (the `!` state; the marker label
+   count at the spawn is a warn check).
+2. The quest log (L) at the spawn, away from Hale: the run records what it shows
+   (a `Go to Captain Hale` button is the expected HUD fix; the actual state is
+   recorded as a warn check, not assumed).
+3. Hale's dialog (`controls.interact("quest")`; on phone a tap on his sprite via
+   `controls.npcScreenPos`), the `!` marker drawn with Hale on screen, the real
+   Accept button, the `Quest accepted` toast,
+   the tracker (`0 / 20`), the log (L) progress text.
+4. Idle x8 until 20/20. Manual again as soon as it is ready, so Idle does not
+   turn it in by itself. Checks: the `Quest complete` toast or log line, the
+   tracker `Ready` row.
+5. Reload with the quest done: the state and the tracker must survive.
+6. Turn in from the dialog: the `?` marker drawn with Hale on screen, then the
+   `Reward` toast (`+60 gold, +120 XP`), gold and
+   XP up. Reload: the completed list survives.
+7. Deeper Still: accepted from the dialog (level 4 by cheat if the run is short;
+   when Idle x8 already reached level 4 and accepted it on its own, the manual
+   accept is skipped and `data.deeperAcceptedBy` is `idle`), `deepest` 6 by
+   cheat, done, turned in. Into the Ninth stays locked below level 16 and becomes
+   available at it (by cheat).
+   Final reload.
+
+Screenshots (in the run's output directory, `/tmp/gamez-qa/quests-<class>[-phone]`
+by default, numbered in order): `01-hale-marker`, `02-log-far-from-hale`,
+`03-dialog-open`, `04-accepted-tracker`, `05-log-progress`, `06-quest-ready`,
+`07-turned-in`, `08-deeper-done`, `09-into-the-ninth`. Failures get `error.png`.
+
+Every dialog button press also records what `document.elementFromPoint` hits at
+the button's centre (`hit`: `button`, or the covering element) and checks that
+the press changed the quest row (`<label> (<quest>) responds to the tap|click`).
+A press that does nothing is a failed check; a DOM click then carries the run
+on, so one dead button does not hide the rest of the loop.
+
+Known limits:
+
+- Auto runs only at x1. Use Idle x8 for unattended QA (the scenario does).
+- Long runs (Idle x8 takes about 40 s to a few minutes for the first 20 kills)
+  can be interrupted by Vite full reloads while other work edits files. Every wait,
+  controls call, log read and screenshot re-opens the saved cheats hero after a
+  reload (no autostart, which would replace it; up to 4 tries while the dev
+  server answers 500 for a module mid-edit), puts Idle x8 or Auto back, issues the
+  walk to Hale again, and carries on; `data.reloads` counts them. A screenshot
+  that times out becomes a `screenshot <name>` warn check.
+- Turning in from the dungeon needs a town portal scroll. Without one the run
+  switches to Auto until the hero is in town (`data.toTown` says which path).
+- The renderer exposes a count of visible marker labels
+  (`render.labelsVisible.marker`), not the glyph. The `!` and `?` checks are
+  therefore made with the hero next to Hale (his sprite on screen, via
+  `controls.npcScreenPos`) and the quest state known: `!` at the accept, `?`
+  right before the turn-in. The count at the spawn is a warn check, because
+  Hale can be off screen there (always on phone).
+
 ## The driver (`src/cdp.ts`)
 
 ```ts
@@ -229,7 +338,8 @@ URL parameters (classic, independent of `?debug`):
   (fills the open run; 100 calls the guardian; `not_in_rift` without a run),
   `spawnBoss: "<boss or guardian id>"` (awake beside the hero; `in_town` in town) and
   `woundBosses: 1..99` (every living boss of the area to that % of its life, so phases
-  start on demand; `bad_target` with no boss). Unknown or out-of-range fields are
+  start on demand; `bad_target` with no boss; it may be sent in the same grant as
+  `spawnBoss`, and then applies right after the boss spawns). Unknown or out-of-range fields are
   rejected (`bad_payload`) and change nothing.
 - `?fresh=1` skips the save carry-over. A save of another content version whose
   modules all still exist is restored under the new hash, stepped 20 ticks as a

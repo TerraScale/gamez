@@ -18,6 +18,7 @@ import { classicDebug } from "./debug/index.ts";
 import { classicRift } from "./rift/index.ts";
 import { classicTalents } from "./talents/index.ts";
 import { classicClientDriven } from "./platform/policy.ts";
+import { classicPlatform } from "./platform/bank.ts";
 
 export const modules: ModuleSpec[] = [
   classicContent,
@@ -33,6 +34,8 @@ export const modules: ModuleSpec[] = [
   classicCrafting,
   classicRift,
   classicAchievements,
+  // wave C (docs/design/wave-C.md §2)
+  classicPlatform,
 ];
 
 /**
@@ -70,3 +73,7 @@ export * from "./bonus.ts";
 export * from "./loot.ts";
 export * from "./platform/policy.ts";
 export * from "./platform/reports.ts";
+export * from "./platform/bank.ts";
+export * from "./platform/vault-codec.ts";
+export * from "./platform/build.ts";
+export * from "./platform/season.ts";

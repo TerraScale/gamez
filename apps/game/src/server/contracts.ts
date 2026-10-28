@@ -10,6 +10,27 @@
 import type {
   AccountKind,
   AccountView,
+  ArenaBuild,
+  ArenaMatch,
+  ArenaStatus,
+  ArenaTicket,
+  ConfigResponse,
+  EconomyErrorCode,
+  FeatureFlag,
+  MarketListing,
+  NoticeInput,
+  NoticesResponse,
+  OrderView,
+  Party,
+  PassTrack,
+  PassView,
+  PaymentProviderId,
+  PlotView,
+  ProductPrice,
+  ShopView,
+  TradeView,
+  VaultItem,
+  VaultItemInput,
   AuthProvider,
   ChatMessage,
   CosmeticSlot,
@@ -39,6 +60,13 @@ export interface Env {
   IDENTITY: DurableObjectNamespace<import("./do/identity.ts").IdentityDO>;
   CHAT: DurableObjectNamespace<import("./do/chat.ts").ChatChannelDO>;
   GUILD: DurableObjectNamespace<import("./do/guild.ts").GuildDO>;
+  // ---- wave C (docs/design/wave-C.md)
+  ESCROW: DurableObjectNamespace<import("./do/escrow.ts").EscrowDO>;
+  MARKET: DurableObjectNamespace<import("./do/market.ts").MarketDO>;
+  PLOTS: DurableObjectNamespace<import("./do/plots.ts").PlotAuctionDO>;
+  SHOP: DurableObjectNamespace<import("./do/shop.ts").ShopDO>;
+  ARENA: DurableObjectNamespace<import("./do/arena.ts").ArenaDO>;
+  CONFIG: DurableObjectNamespace<import("./do/config.ts").ConfigDO>;
   DB: D1Database;
   SYNC_QUEUE: Queue<ReplicationBatch>;
   AUTH_SECRET: string;
@@ -59,6 +87,20 @@ export interface Env {
   AI?: WorkersAiLike;
   /** "llama-guard" (default when AI is bound) | "stub" | "off". */
   MODERATION?: string;
+  // ---- wave C payments (docs/secrets.md; absent = provider disabled, stub on dev hosts)
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  ASAAS_API_KEY?: string;
+  /** Token Asaas sends in the "asaas-access-token" header of webhooks. */
+  ASAAS_WEBHOOK_TOKEN?: string;
+  /** "sandbox" (default) | "production". */
+  ASAAS_ENV?: string;
+  MERCADOPAGO_ACCESS_TOKEN?: string;
+  MERCADOPAGO_WEBHOOK_SECRET?: string;
+  /** "1": the stub payment provider even off dev hosts (never in production). "0": never. */
+  PAYMENTS_STUB?: string;
+  /** Public origin for provider redirects/webhooks (default: the request origin). */
+  PUBLIC_ORIGIN?: string;
 }
 
 /** The part of the Workers AI binding the moderator uses. */
@@ -446,4 +488,344 @@ export interface ChatReportPayload {
   at: number;
   /** Llama Guard / stub verdict when known. */
   verdict: "safe" | "unsafe" | "unknown";
+}
+
+// ===========================================================================
+// Wave C contracts (docs/design/wave-C.md). Read that file first.
+// ===========================================================================
+
+/** Result of every wave C DO mutation: never throws for a rule violation. */
+export type EconResult<T> =
+  | { ok: true; value: T; replayed?: boolean }
+  | { ok: false; code: EconomyErrorCode; message: string };
+
+/** Economy flow class of a wallet change, for telemetry (economy_ledger). */
+export type EconomyFlow = "faucet" | "sink" | "transfer";
+
+/**
+ * Wave C: WalletTx gains `flow` (telemetry). Absent = "transfer". The reason
+ * is "<group>:<detail>" (group = flowGroup(), e.g. "market.tax:classic:weapon/3").
+ */
+export interface WalletTxC extends WalletTx {
+  flow?: EconomyFlow;
+}
+
+export type VaultPutResult =
+  | { ok: true; item: VaultItem; replayed: boolean }
+  | { ok: false; code: "vault_full" | "bad_item" };
+
+export type VaultTakeResult =
+  | { ok: true; item: VaultItem; replayed: boolean }
+  | { ok: false; code: "not_found" };
+
+/** Wave C order record kept by AccountDO (account/purchases.ts). */
+export interface OrderRecord extends OrderView {
+  accountId: string;
+  providerRef: string | null;
+}
+
+/**
+ * Wave C AccountDO RPCs (do/account.ts delegates):
+ *   account/vault.ts + account/notices.ts (T-escrow), account/pass.ts (T-pass),
+ *   account/purchases.ts (T-pay).
+ */
+export interface AccountApiC {
+  // vault — the wave B stash table with wave C columns (VaultItem)
+  vault(): Promise<VaultItem[]>;
+  vaultGet(uid: string): Promise<VaultItem | null>;
+  /** Idempotent by txId: a replay returns the first result (same uid). */
+  vaultPut(txId: string, item: VaultItemInput): Promise<VaultPutResult>;
+  /** Removes the whole stack `uid`; idempotent by txId (replay returns the removed item). */
+  vaultTake(txId: string, uid: string): Promise<VaultTakeResult>;
+  /** applyWalletTx with a telemetry flow (writes the economy_ledger + account_wallet outbox rows). */
+  walletTx(tx: WalletTxC): Promise<WalletTxResult>;
+  // notices
+  /** Idempotent by notice.id (a second push is ignored). Keeps the newest NOTICES_MAX. */
+  notify(notice: NoticeInput): Promise<void>;
+  notices(sinceId: string | null): Promise<NoticesResponse>;
+  markNoticesRead(upToId: string): Promise<number>;
+  /** Trades this account takes part in (EscrowDO keeps the truth; this is the index). */
+  linkTrade(tradeId: string, open: boolean): Promise<void>;
+  openTrades(): Promise<string[]>;
+  // battle pass (T-pass)
+  /** Monotonic progress of a source (e.g. "classic:<worldSeed>"): adds max(0, total - last) xp. */
+  seasonProgress(source: string, total: number): Promise<PassView>;
+  /** One-off xp (arena win…), idempotent by txId. */
+  addSeasonXp(txId: string, xp: number, reason: string): Promise<PassView>;
+  pass(): Promise<PassView>;
+  claimPassReward(tier: number, track: PassTrack): Promise<EconResult<PassView>>;
+  // purchases (T-pay)
+  createOrder(input: {
+    orderId: string;
+    sku: string;
+    provider: PaymentProviderId;
+    price: ProductPrice;
+  }): Promise<OrderRecord>;
+  /** Payment confirmed (verified webhook): grants the product once per orderId. */
+  fulfillOrder(input: {
+    orderId: string;
+    providerRef: string | null;
+    eventId: string;
+  }): Promise<EconResult<OrderRecord>>;
+  /** Refund/chargeback: revokes what can be revoked (gems debited down to 0, entitlements marked revoked). */
+  refundOrder(input: { orderId: string; eventId: string }): Promise<EconResult<OrderRecord>>;
+  orders(): Promise<OrderRecord[]>;
+}
+
+/**
+ * Idempotent account operations for wave C DOs (economy/gateway.ts wraps
+ * env.ACCOUNT). Every call is safe to retry with the same txId.
+ * txIds: "<domain>:<object>:<step>", e.g. "mk:classic:weapon/3:fee",
+ * "trade:<tradeId>:a:coin", "plot:<world>/<plot>:bid:<n>", <= 128 chars.
+ */
+export interface AccountGateway {
+  wallet(accountId: string): Promise<WalletView>;
+  walletTx(accountId: string, tx: WalletTxC): Promise<WalletTxResult>;
+  vaultGet(accountId: string, uid: string): Promise<VaultItem | null>;
+  vaultTake(accountId: string, txId: string, uid: string): Promise<VaultTakeResult>;
+  vaultPut(accountId: string, txId: string, item: VaultItemInput): Promise<VaultPutResult>;
+  notify(accountId: string, notice: NoticeInput): Promise<void>;
+  addSeasonXp(accountId: string, txId: string, xp: number, reason: string): Promise<void>;
+}
+
+// ---- InstanceDO platform RPC (T-bridge) ------------------------------------
+
+export interface InstancePlatformApi {
+  /**
+   * The verified hero reduced to an arena build (policy.platform.build plus
+   * accountId/displayName/sourceHash), or null (no hero, mode without builds,
+   * nothing verified yet). Loads the instance from storage when cold.
+   */
+  exportBuild(displayName: string): Promise<ArenaBuild | null>;
+}
+
+// ---- EscrowDO (T-escrow): direct trade --------------------------------------
+
+/**
+ * Name: the tradeId ("t" + 24 hex). Saga (wave-C.md §3.3): open -> offers ->
+ * both accept the same [aVersion, bVersion] -> committing (custody: debit
+ * coin+fee and take items from both, each step idempotent by txId) ->
+ * deliver to the other side -> done; any custody failure refunds what was
+ * taken -> failed. Every state change is persisted before calling out; the
+ * alarm re-drives a "committing" trade after a crash. Expires after TRADE_TTL_MS.
+ */
+export interface EscrowApi {
+  open(input: { tradeId: string; a: Party; b: Party }): Promise<EconResult<TradeView>>;
+  view(accountId: string): Promise<TradeView | null>;
+  offer(input: { accountId: string; coin: number; uids: string[] }): Promise<EconResult<TradeView>>;
+  accept(input: { accountId: string; versions: [number, number] }): Promise<EconResult<TradeView>>;
+  cancel(accountId: string): Promise<EconResult<TradeView>>;
+}
+
+// ---- MarketDO (T-market): auction house shard -------------------------------
+
+/**
+ * Name: the shard "<scope>:<category>" (marketShard()). Listings in custody:
+ * the item leaves the seller's vault when listed. Outbox -> market_listing +
+ * economy_sale (D1 search and price index). Alarm: expiries and saga retries.
+ */
+export interface MarketApi {
+  list(input: {
+    opId: string;
+    seller: Party;
+    uid: string;
+    buyout: number | null;
+    startBid: number | null;
+    durationH: number;
+  }): Promise<EconResult<MarketListing>>;
+  bid(input: {
+    opId: string;
+    bidder: Party;
+    listingId: string;
+    amount: number;
+  }): Promise<EconResult<MarketListing>>;
+  buy(input: { opId: string; buyer: Party; listingId: string }): Promise<EconResult<MarketListing>>;
+  cancel(input: {
+    opId: string;
+    accountId: string;
+    listingId: string;
+  }): Promise<EconResult<MarketListing>>;
+  get(listingId: string): Promise<MarketListing | null>;
+}
+
+// ---- PlotAuctionDO + ShopDO (T-shops) ---------------------------------------
+
+/**
+ * PlotAuctionDO, name: the presence world id ("classic-town"). Owns the plot
+ * lease cycle (auction -> leased -> grace -> repossessed -> auction), rent
+ * collection (sink) and the shopkeeper fixtures it pushes to the world's
+ * ChunkDO (ChunkFixtureApi.setFixtures("shops", …)).
+ */
+export interface PlotAuctionApi {
+  plots(): Promise<PlotView[]>;
+  bid(input: {
+    opId: string;
+    bidder: Party;
+    plotId: string;
+    amount: number;
+  }): Promise<EconResult<PlotView>>;
+  /** Called by ShopDO when its owner changes look/name (refreshes the fixture). */
+  refreshFixture(plotId: string): Promise<void>;
+  /** Dev hosts only (route checks isDevHost): moves this DO's clock forward and runs due work. */
+  devAdvance(ms: number): Promise<PlotView[]>;
+}
+
+/** ShopDO, name: "<world>/<plotId>". Stock in custody, earnings held until claimed. */
+export interface ShopApi {
+  view(viewerId: string | null): Promise<ShopView | null>;
+  /** PlotAuctionDO: a lease starts (idempotent by leaseId). */
+  openLease(input: {
+    leaseId: string;
+    world: string;
+    plotId: string;
+    owner: Party;
+    endsAt: number;
+  }): Promise<void>;
+  /** PlotAuctionDO: lease ended or repossessed — return stock to the owner's vault, credit earnings, close. */
+  closeLease(input: { leaseId: string; reason: "ended" | "repossessed" }): Promise<void>;
+  configure(input: {
+    accountId: string;
+    name?: string;
+    appearance?: string;
+    open?: boolean;
+  }): Promise<EconResult<ShopView>>;
+  stock(input: {
+    opId: string;
+    accountId: string;
+    uid: string;
+    price: number;
+  }): Promise<EconResult<ShopView>>;
+  unstock(input: {
+    opId: string;
+    accountId: string;
+    entryId: string;
+  }): Promise<EconResult<ShopView>>;
+  buy(input: { opId: string; buyer: Party; entryId: string }): Promise<EconResult<ShopView>>;
+  claim(input: { opId: string; accountId: string }): Promise<EconResult<ShopView>>;
+  /** For the fixture: owner, name, appearance, open; null when no lease. */
+  fixture(): Promise<{ owner: Party; name: string; appearance: string; open: boolean } | null>;
+}
+
+// ---- ChunkDO fixtures (T-scale) ---------------------------------------------
+
+/**
+ * Wave C: persistent world fixtures of a pose world (shopkeeper ghosts).
+ * Replaces every fixture of `group` with `fixtures` (persisted in the chunk's
+ * SQLite, part of subscribe() state, broadcast as upserts/removes). Fixture
+ * ids must start with "<group>:" ("shops:p1"); kind "shopkeeper".
+ */
+export interface ChunkFixtureApi {
+  setFixtures(group: string, fixtures: EntityState[]): Promise<void>;
+}
+
+// ---- ArenaDO (T-arena) ------------------------------------------------------
+
+/**
+ * Name: "<mode>:<seasonId>" (e.g. "classic:2026-s1"). Ghost pool (latest
+ * build per account), ratings, matchmaking queue (tickets), match log,
+ * rewards (coin faucet + season xp through AccountGateway), outbox ->
+ * arena_rating (D1 ladder). The only place where players fight players.
+ */
+export interface ArenaApi {
+  /** Stores/refreshes the caller's ghost build. */
+  register(build: ArenaBuild): Promise<ArenaStatus>;
+  status(accountId: string): Promise<ArenaStatus>;
+  /** Registers `build` and queues a fight (idempotent by opId: same ticket). */
+  enqueue(input: { opId: string; build: ArenaBuild }): Promise<EconResult<ArenaTicket>>;
+  poll(input: { accountId: string; ticket: string }): Promise<ArenaTicket | null>;
+  match(id: string): Promise<ArenaMatch | null>;
+}
+
+// ---- ConfigDO (T-admin) -----------------------------------------------------
+
+/** Name: "global". Feature flags (kill switches) and content versions. */
+export interface ConfigApi {
+  config(): Promise<ConfigResponse>;
+  setFlags(patch: Partial<Record<FeatureFlag, boolean>>, by: string): Promise<ConfigResponse>;
+}
+
+// ---- Payments (T-pay): server/payments/provider.ts --------------------------
+
+/** What a verified webhook means (provider-specific parsing done). */
+export interface VerifiedWebhook {
+  /** Provider event id (idempotency of the webhook itself). */
+  eventId: string;
+  kind: "paid" | "refunded" | "ignored";
+  /** Our order id and account, from the metadata/external reference we set at checkout. */
+  orderId: string | null;
+  accountId: string | null;
+  providerRef: string | null;
+}
+
+// ---- D1 outbox payloads (projections.ts) ------------------------------------
+
+/** "account_wallet" (AccountDO, every balance change). pk = accountId. */
+export interface AccountWalletPayload {
+  accountId: string;
+  coin: number;
+  gem: number;
+  updatedAt: number;
+}
+
+/** "economy_ledger" (AccountDO, every applied non-replayed wallet tx). pk = `${accountId}/${txId}`. */
+export interface EconomyLedgerPayload {
+  accountId: string;
+  txId: string;
+  currency: "coin" | "gem";
+  amount: number;
+  flow: EconomyFlow;
+  /** flowGroup(reason), e.g. "market.tax". */
+  reasonGroup: string;
+  reason: string;
+  at: number;
+}
+
+/** "market_listing" (MarketDO). pk = listing id. Delete = purged (status rows stay as non-active). */
+export interface MarketListingPayload {
+  listing: MarketListing;
+}
+
+/** "economy_sale" (MarketDO, ShopDO, EscrowDO for coin+item trades omitted). pk = saleId. */
+export interface EconomySalePayload {
+  saleId: string;
+  venue: "market" | "shop";
+  scope: string;
+  category: string;
+  itemId: string;
+  name: string;
+  rarity: string;
+  level: number;
+  price: number;
+  tax: number;
+  sellerId: string;
+  buyerId: string;
+  at: number;
+}
+
+/** "shop_index" (PlotAuctionDO). pk = `${world}/${plotId}`. */
+export interface ShopIndexPayload {
+  plot: PlotView;
+  /** Stock size, open flag (from the ShopDO when leased). */
+  stockCount: number;
+  open: boolean;
+}
+
+/** "arena_rating" (ArenaDO). pk = `${seasonId}/${accountId}`. */
+export interface ArenaRatingPayload {
+  seasonId: string;
+  mode: string;
+  accountId: string;
+  displayName: string;
+  classId: string;
+  level: number;
+  rating: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  updatedAt: number;
+}
+
+/** "purchase" (AccountDO purchases). pk = orderId. */
+export interface PurchasePayload {
+  order: OrderRecord;
 }

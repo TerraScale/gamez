@@ -27,6 +27,7 @@ import {
   Loot,
   Monster,
   Npc,
+  Pos,
   Projectile,
   Talents,
 } from "../components.ts";
@@ -46,6 +47,8 @@ import { KIND, type NpcProto } from "../types.ts";
 import type { ClassicClientApi, PanelId, Settings } from "./contract.ts";
 import { heroOfWorld } from "./hudModel.ts";
 import type { ClassicGame } from "./game.ts";
+import { SUB } from "../fixed.ts";
+import { qaTileToClient } from "./scene.ts";
 
 export interface DebugParams {
   /** `?debug=1`: install window.__gamez. */
@@ -238,6 +241,12 @@ export interface ClassicDebugControls {
   act(name: string, payload: unknown): DispatchResult;
   /** Walks to and opens an NPC (by role) or station of the current area. */
   interact(target: InteractTarget): DispatchResult;
+  /**
+   * QA lookup: CSS px of the ground point (tile centre) of the first NPC with
+   * this proto id (e.g. "classic.npc.captain_hale") in the current area, through
+   * the renderer's tileToClient. Null when there is none or no renderer lookup.
+   */
+  npcScreenPos(proto: string): { x: number; y: number } | null;
   openPanel(p: PanelId): void;
   closePanel(p: PanelId): void;
   togglePanel(p: PanelId): void;
@@ -483,6 +492,17 @@ export function installClassicDebug(opts: InstallOptions): () => void {
         };
       }
       return api.act(ACTION.interact, { target: e });
+    },
+    npcScreenPos(proto) {
+      const world = game.currentSim().world;
+      const depth = depthOf(world);
+      for (const e of world.query(Npc, Pos, AreaTag)) {
+        if (world.read(e, AreaTag).depth !== depth) continue;
+        if (world.read(e, Npc).proto !== proto) continue;
+        const p = world.read(e, Pos);
+        return qaTileToClient(p.x / SUB, p.y / SUB);
+      }
+      return null;
     },
     openPanel: (p) => api.openPanel(p),
     closePanel: (p) => api.closePanel(p),

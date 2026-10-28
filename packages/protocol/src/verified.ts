@@ -15,6 +15,7 @@
  * (they were in flight when the resync went out).
  */
 import type { GameEvent, SegmentInput, SimSnapshot } from "@gamez/kernel";
+import type { BankOp, BankResult } from "./economy.ts";
 
 /** Actor both sides pass to sim.dispatch for client inputs (the sim never reads it). */
 export const VERIFIED_ACTOR = "local";
@@ -60,7 +61,13 @@ export type ResyncCode =
   | "gap"
   | "content_changed"
   /** The server could not persist the segment (storage error); restore and continue. */
-  | "internal";
+  | "internal"
+  /**
+   * Wave C: a bank operation was applied at a verified tick the client had
+   * already moved past (it did not pause, or segments were in flight); restore
+   * this snapshot (it includes the bank change).
+   */
+  | "bank";
 
 export type VerifiedClientMessage =
   /**
@@ -97,7 +104,18 @@ export type VerifiedClientMessage =
     }
   /** Local save migration (wave-B.md §2.7). Only accepted while the instance has no progress. */
   | { t: "import"; snapshot: PackedSnapshot; savedAt: number }
-  | { t: "ping"; clientTime: number };
+  | { t: "ping"; clientTime: number }
+  /**
+   * Wave C bank operation (docs/design/wave-C.md §2): hero <-> account vault.
+   * The client cuts and submits a segment ending at `at`, PAUSES its sim
+   * (no step, no dispatch) and sends this. The server handles it after every
+   * earlier frame (one promise queue), so `at` normally equals its verified
+   * tick/hash: then it dispatches the mode's bank action there and answers
+   * "bank" with `applied` (the client dispatches the same action itself and
+   * checks the hash). Otherwise it still applies at its verified tick and
+   * sends resync "bank" first. Idempotent by opId (a retry returns the first result).
+   */
+  | { t: "bank"; opId: string; op: BankOp; at: { tick: number; hash: string } };
 
 export interface OfflineGrant {
   /** Server-measured absence used (capped). */
@@ -151,7 +169,24 @@ export type VerifiedServerMessage =
       snapshot: PackedSnapshot;
     }
   | { t: "pong"; clientTime: number; serverTime: number }
-  | { t: "error"; code: string; message: string };
+  | { t: "error"; code: string; message: string }
+  /** Wave C: answer to a client "bank" message (always sent, after any resync it caused). */
+  | {
+      t: "bank";
+      opId: string;
+      result: BankResult;
+      /**
+       * Set when the op changed the sim exactly at the client's `at`: the
+       * client dispatches (name, payload) with actor BANK_ACTOR on its paused
+       * sim, which must then hash to `hash` (else it waits for / asks a resync
+       * by rejoining). null: nothing to apply locally (failed op, or a resync
+       * already carried the change).
+       */
+      applied: { tick: number; name: string; payload: unknown; hash: string } | null;
+    };
+
+/** Actor both sides pass to sim.dispatch for server-applied bank actions. */
+export const BANK_ACTOR = "server";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

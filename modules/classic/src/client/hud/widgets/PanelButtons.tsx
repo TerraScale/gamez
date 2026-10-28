@@ -10,6 +10,7 @@ import type { ClassicClientApi, PanelId } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
 import { bottomOrderFor, modesControlVisible } from "../layout.ts";
+import { BANK_TITLE, SHELL_BUTTONS, type ShellSpec } from "../shell.ts";
 import { MoreMenu, type MoreItem } from "./MoreMenu.tsx";
 
 interface PanelSpec {
@@ -44,6 +45,14 @@ export const SOCIAL_BUTTONS: readonly PanelSpec[] = [
   { id: "account", label: "Account", title: "Account", text: "Account" },
 ];
 
+/** Wave C: the bank panel (K). Its content needs api.bank; without it the panel says so. */
+export const BANK_BUTTON: PanelSpec = {
+  id: "bank",
+  label: "Bank",
+  title: BANK_TITLE,
+  text: BANK_TITLE,
+};
+
 /** Phone "More" menu only (the desktop bar has no room for it). */
 const MORE_ONLY: readonly PanelSpec[] = [{ id: "log", label: "Log", title: "Log", text: "Log" }];
 
@@ -52,12 +61,12 @@ const MORE_ONLY: readonly PanelSpec[] = [{ id: "log", label: "Log", title: "Log"
  * then the Modes control when it is shown. Each panel row toggles its panel.
  */
 export function buildMoreItems(
-  api: Pick<ClassicClientApi, "togglePanel" | "exit">,
+  api: Pick<ClassicClientApi, "togglePanel" | "exit" | "openScreen">,
   open: readonly PanelId[],
   showModes: boolean,
 ): MoreItem[] {
   const items: MoreItem[] = [];
-  for (const b of [...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, ...MORE_ONLY]) {
+  for (const b of [...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, BANK_BUTTON, ...MORE_ONLY]) {
     items.push({
       id: b.id,
       text: b.text,
@@ -66,6 +75,8 @@ export function buildMoreItems(
       onSelect: () => api.togglePanel(b.id),
     });
   }
+  // Wave C shell screens: only when the shell can open them (hidden offline).
+  for (const s of shellItemsOf(api)) items.push(s);
   if (showModes) {
     items.push({
       id: "modes",
@@ -77,6 +88,18 @@ export function buildMoreItems(
   return items;
 }
 
+/** Shell screen rows of the More menu (none when api.openScreen is absent). */
+export function shellItemsOf(api: Pick<ClassicClientApi, "openScreen">): MoreItem[] {
+  const open = api.openScreen;
+  if (!open) return [];
+  return SHELL_BUTTONS.map((s: ShellSpec) => ({
+    id: `shell:${s.id}`,
+    text: s.title,
+    title: s.title,
+    onSelect: () => open(s.screen),
+  }));
+}
+
 export function PanelButtons({ api }: SlotProps) {
   const open = useSelect(api.ui, (u) => u.panels);
   const layout = useHudLayout(api);
@@ -86,8 +109,10 @@ export function PanelButtons({ api }: SlotProps) {
   const showModes = modesControlVisible(layout, open.length > 0);
   const primary = compact
     ? PRIMARY_BUTTONS
-    : [...PRIMARY_BUTTONS, ...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS];
+    : [...PRIMARY_BUTTONS, ...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, BANK_BUTTON];
   const moreItems: MoreItem[] = compact ? buildMoreItems(api, open, showModes) : [];
+  // Desktop: the shell screens as their own buttons, only when the shell can open them.
+  const shell = compact || !api.openScreen ? [] : SHELL_BUTTONS;
   return (
     <div
       role="toolbar"
@@ -115,6 +140,20 @@ export function PanelButtons({ api }: SlotProps) {
           onClick={() => api.togglePanel(b.id)}
         >
           {b.label}
+        </Btn>
+      ))}
+      {shell.map((s) => (
+        <Btn
+          key={s.id}
+          label={s.title}
+          title={s.title}
+          minWidth={44}
+          height={44}
+          fontSize={12}
+          style={{ padding: "0 8px" }}
+          onClick={() => api.openScreen?.(s.screen)}
+        >
+          {s.label}
         </Btn>
       ))}
       {!compact && showModes ? (

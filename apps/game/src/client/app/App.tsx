@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AssetManifest } from "@gamez/assets";
 import type { ModeInfo } from "@gamez/protocol";
 import {
-  AccountPanel,
   accountChangeText,
-  GuildView,
-  LeaderboardView,
+  type AccountChange,
   type ClientModeView,
   type PlatformServices,
   type Session,
@@ -22,15 +20,29 @@ import { createPlatform } from "../platform/index.ts";
 import { loadManifest, createServices, modeInfos } from "./services.ts";
 import { ModeHost } from "./ModeHost.tsx";
 import { ModePicker } from "./ModePicker.tsx";
-import { Sheet } from "./Sheet.tsx";
+import { ShellSheets } from "./ShellSheets.tsx";
 import { Toast } from "./Toast.tsx";
-import { SOCIAL_CLASSES } from "./classes.ts";
 import { applyAuthFragment, type Notice } from "./notices.ts";
+import { clearShellFragment, firstPaidReturn, parseShellFragment } from "./fragments.ts";
+import {
+  flagOn,
+  noticeTarget,
+  pushItem,
+  screenFlag,
+  visibleEntries,
+  type ShellItem,
+} from "./screens.ts";
 import { useAccount } from "./useAccount.ts";
+import { useFeatureFlags, useNotices } from "./useShellData.ts";
 import "./app.css";
 
 /** Notice display time (ms). */
 const NOTICE_MS = 5000;
+
+/** The live-ops dashboard (#admin): loaded only when asked for. */
+const AdminScreen = lazy(() =>
+  import("../admin/index.tsx").then((m) => ({ default: m.AdminScreen })),
+);
 
 type Boot =
   | { status: "loading" }
@@ -41,8 +53,6 @@ type Boot =
       manifest: AssetManifest;
       platform: PlatformServices | undefined;
     };
-
-type SheetId = "account" | "leaderboards" | "guild";
 
 const LOADING: Boot = { status: "loading" };
 const MODE_LIST = modeInfos();
@@ -70,8 +80,10 @@ export function App() {
   const [boot, setBoot] = useState<Boot>(LOADING);
   const [attempt, setAttempt] = useState(0);
   const [running, setRunning] = useState<ClientModeView | null>(null);
-  const [sheet, setSheet] = useState<SheetId | null>(null);
+  /** Shell sheets, bottom first. They stack over the picker and over a running mode. */
+  const [stack, setStack] = useState<ShellItem[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
   /** Latest session for the platform SDK, which reads it per request. */
   const sessionRef = useRef<Session | null>(null);
 
@@ -79,10 +91,48 @@ export function App() {
   const platform = ready?.platform;
   const token = ready?.session.token ?? "";
   const { account, refresh } = useAccount(platform, token);
+  const flags = useFeatureFlags(platform?.config, token);
+  // Read by openShell, which must stay stable: services (and the running mode) depend on it.
+  const flagsRef = useRef(flags);
+  useEffect(() => {
+    flagsRef.current = flags;
+  }, [flags]);
 
   const exit = useCallback(() => setRunning(null), []);
-  const closeSheet = useCallback(() => setSheet(null), []);
   const notify = useCallback((n: Notice) => setNotice(n), []);
+  const closeFrom = useCallback((index: number) => setStack((s) => s.slice(0, index)), []);
+
+  /** Opens a sheet unless its feature is switched off (wave C §9.2 kill switches). */
+  const openShell = useCallback((item: ShellItem) => {
+    if (!flagOn(flagsRef.current, screenFlag(item))) {
+      setNotice({ tone: "info", text: "That is not available right now." });
+      return;
+    }
+    setStack((s) => pushItem(s, item));
+  }, []);
+
+  const inbox = useNotices(platform?.vault, ready !== null, (n) => {
+    notify({
+      tone: "info",
+      text: n.text,
+      action: {
+        label: "Open",
+        run: () => {
+          setNotice(null);
+          openShell(noticeTarget(n) ?? { id: "notices" });
+        },
+      },
+    });
+  });
+
+  // The bell is stale after the inbox sheet closes: read it again.
+  const hasNotices = stack.some((s) => s.id === "notices");
+  const hadNotices = useRef(false);
+  const refreshInbox = inbox.refresh;
+  useEffect(() => {
+    if (hadNotices.current && !hasNotices) refreshInbox();
+    hadNotices.current = hasNotices;
+  }, [hasNotices, refreshInbox]);
 
   // A session change (login, register, logout, OAuth return) replaces the boot session.
   // Services derive from boot, so a running mode is remounted with the new session.
@@ -119,6 +169,37 @@ export function App() {
     };
   }, [attempt]);
 
+  // Payment returns (#store=paid|cancel) and #admin, on boot and on later hash changes (wave C §10.4).
+  const isReady = ready !== null;
+  useEffect(() => {
+    if (!isReady) return;
+    const apply = () => {
+      const fragment = parseShellFragment(window.location.hash);
+      if (fragment === null) return;
+      clearShellFragment();
+      if (fragment.kind === "admin") {
+        setAdminOpen(true);
+        return;
+      }
+      if (fragment.outcome === "paid") {
+        setNotice({
+          tone: "ok",
+          text: firstPaidReturn(fragment.order) ? "Purchase complete." : "Order already confirmed.",
+        });
+        // The webhook fulfils the order; re-read the account so the new balance shows.
+        platform?.account.wallet().then(
+          () => refresh(),
+          () => refresh(),
+        );
+      } else {
+        setNotice({ tone: "info", text: "Checkout cancelled." });
+      }
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [isReady, platform, refresh]);
+
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), NOTICE_MS);
@@ -127,8 +208,8 @@ export function App() {
 
   // Services are rebuilt whenever the boot data changes (session change included).
   const services = useMemo(
-    () => (running && ready ? createServices(ready, exit) : null),
-    [running, ready, exit],
+    () => (running && ready ? createServices(ready, exit, openShell) : null),
+    [running, ready, exit, openShell],
   );
 
   const retry = () => {
@@ -150,65 +231,60 @@ export function App() {
 
   if (QA_ROUTE === "gallery") return <QaGallery boot={boot} />;
 
-  if (running && services) {
-    return <ModeHost view={running} services={services} onExit={exit} />;
-  }
-
   const pick = (mode: ModeInfo) => {
     const view = findModeView(mode.id);
     if (view) setRunning(view);
   };
 
+  const onAccountChanged = (change: AccountChange) => {
+    refresh();
+    notify({ tone: "ok", text: accountChangeText(change) });
+  };
+
   return (
     <>
-      <ModePicker
-        key={boot.session.token}
-        session={boot.session}
-        modes={MODE_LIST}
-        isAvailable={(id) => findModeView(id) !== undefined}
-        onPick={pick}
+      {running && services ? (
+        <ModeHost view={running} services={services} onExit={exit} />
+      ) : (
+        <ModePicker
+          key={boot.session.token}
+          session={boot.session}
+          modes={MODE_LIST}
+          isAvailable={(id) => findModeView(id) !== undefined}
+          onPick={pick}
+          platform={platform}
+          account={account}
+          onOpenAccount={() => openShell({ id: "account" })}
+          onOpenLeaderboards={() => openShell({ id: "leaderboards" })}
+          onOpenGuild={() => openShell({ id: "guild" })}
+          economy={{
+            entries: visibleEntries(platform, flags),
+            unread: inbox.unread,
+            onOpen: openShell,
+          }}
+        />
+      )}
+      <ShellSheets
+        items={stack}
         platform={platform}
+        session={boot.session}
         account={account}
-        onOpenAccount={() => setSheet("account")}
-        onOpenLeaderboards={() => setSheet("leaderboards")}
-        onOpenGuild={() => setSheet("guild")}
+        onCloseFrom={closeFrom}
+        onOpen={openShell}
+        onAccountChanged={onAccountChanged}
+        onRefreshAccount={refresh}
+        onCheckout={(url) => window.location.assign(url)}
       />
-      {platform && sheet === "account" ? (
-        <Sheet title="Account" onClose={closeSheet}>
-          <AccountPanel
-            auth={platform.auth}
-            account={account}
-            compact
-            onChanged={(change) => {
-              refresh();
-              notify({ tone: "ok", text: accountChangeText(change) });
-              // Signed out: close the sheet so the header chip is reachable again (phone).
-              if (change === "signed-out") closeSheet();
-            }}
-          />
-        </Sheet>
-      ) : null}
-      {platform && sheet === "leaderboards" ? (
-        <Sheet title="Leaderboards" onClose={closeSheet}>
-          <LeaderboardView
-            api={platform.leaderboards}
-            mode="classic"
-            classes={SOCIAL_CLASSES}
-            selfId={account?.accountId ?? null}
-            compact
-          />
-        </Sheet>
-      ) : null}
-      {platform && sheet === "guild" ? (
-        <Sheet title="Guild" onClose={closeSheet}>
-          <GuildView
-            guilds={platform.guilds}
-            account={account}
-            chat={platform.chat}
-            compact
-            onChanged={refresh}
-          />
-        </Sheet>
+      {adminOpen ? (
+        <div className="admin-layer">
+          <Suspense fallback={<p className="screen-message">Loading…</p>}>
+            <AdminScreen
+              session={boot.session}
+              platform={platform}
+              onClose={() => setAdminOpen(false)}
+            />
+          </Suspense>
+        </div>
       ) : null}
       <Toast notice={notice} />
     </>

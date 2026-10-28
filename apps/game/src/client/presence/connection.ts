@@ -25,6 +25,14 @@ export class PresenceClient implements PresenceConnection {
   #status: NetStatus = "connecting";
   #view: PresenceView = { status: "connecting", selfId: null, others: [] };
   #closed = false;
+  /**
+   * The latest own pose, sent again after every welcome. The server joins an
+   * avatar without a tag and other clients hide it until its first pose, so a
+   * pose reported while connecting (or before a reconnect) must not be lost: a
+   * hero standing still never reports a changed pose (QA wave C: a stationary
+   * hero that rejoined town stayed invisible to others).
+   */
+  #lastPose: PoseUpdate | null = null;
 
   /** Connects at once. `url` is asked for on every (re)connect, so a new session token is picked up. */
   constructor(world: string, url: () => Promise<string>) {
@@ -50,9 +58,15 @@ export class PresenceClient implements PresenceConnection {
     };
   }
 
-  /** Reports the own avatar. Dropped unless the socket is online; the caller rate-limits. */
+  /**
+   * Reports the own avatar; the caller rate-limits. Sent at once while online;
+   * otherwise kept and sent with the next welcome (as is the last pose after a
+   * reconnect or resync).
+   */
   setPose(pose: PoseUpdate): void {
-    if (this.#closed || this.#status !== "online") return;
+    if (this.#closed) return;
+    this.#lastPose = pose;
+    if (this.#status !== "online") return;
     this.#conn.send({ t: "pose", ...pose });
   }
 
@@ -80,6 +94,8 @@ export class PresenceClient implements PresenceConnection {
         this.#state.reset(msg);
         this.#state.drainRemoved();
         this.#publish();
+        // The relay has joined us by now: (re)announce where we stand.
+        if (this.#lastPose && !this.#closed) this.#conn.send({ t: "pose", ...this.#lastPose });
         return;
       case "delta": {
         const verdict = this.#state.applyDelta(msg);

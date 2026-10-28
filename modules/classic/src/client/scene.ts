@@ -67,6 +67,19 @@ export interface SceneRenderer {
   snapCamera(x: number, y: number): void;
   setLighting(opts: { darkness: number; radius: number }): void;
   follow(x: number, y: number): void;
+  /** Optional (the pixi renderer has it): tile point to CSS px, for the QA lookups in debug.ts. */
+  tileToClient?(x: number, y: number): { x: number; y: number } | null;
+}
+
+/**
+ * QA only: the renderer of the most recent SceneSync (debug.ts projects NPCs
+ * to screen pixels through it). Never read by the sim or the HUD.
+ */
+let qaRenderer: SceneRenderer | null = null;
+
+/** Screen point (CSS px) of a tile point on the current renderer, or null (no renderer / no lookup). */
+export function qaTileToClient(x: number, y: number): { x: number; y: number } | null {
+  return qaRenderer?.tileToClient?.(x, y) ?? null;
 }
 
 export type PickKind = "unit" | "loot" | "npc" | "interactable";
@@ -456,7 +469,9 @@ export class SceneSync {
     glowColor: 0xffffff,
   };
 
-  constructor(private readonly target: SceneRenderer) {}
+  constructor(private readonly target: SceneRenderer) {
+    qaRenderer = target;
+  }
 
   /** Forgets everything drawn (new sim or renderer reset). */
   reset(): void {

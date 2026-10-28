@@ -15,9 +15,20 @@ import { accountFeature } from "./account.ts";
 import { authFeature } from "./auth.ts";
 import { chatFeature } from "./chat.ts";
 import { classicPresenceFeature } from "./classic-presence.ts";
+import { classicQuestsFeature } from "./classic-quests.ts";
 import { classicVerifyFeature } from "./classic-verify.ts";
 import { guildsFeature } from "./guilds.ts";
 import { leaderboardsFeature } from "./leaderboards.ts";
+// wave C (docs/design/wave-C.md §11): one file per owner under ./waveC/.
+import { adminFeature } from "./waveC/admin.ts";
+import { arenaFeature } from "./waveC/arena.ts";
+import { bankFeature } from "./waveC/bank.ts";
+import { loadtestFeature } from "./waveC/loadtest.ts";
+import { marketFeature } from "./waveC/market.ts";
+import { passFeature } from "./waveC/pass.ts";
+import { paymentsFeature } from "./waveC/payments.ts";
+import { shopsFeature } from "./waveC/shops.ts";
+import { tradeFeature } from "./waveC/trade.ts";
 
 export interface E2eContext {
   /** Dev server base URL (changes port never, but re-read after restart). */
@@ -40,9 +51,20 @@ export interface E2eFeature {
 export const FEATURES: readonly E2eFeature[] = [
   authFeature,
   classicVerifyFeature,
+  classicQuestsFeature,
   leaderboardsFeature,
   chatFeature,
   guildsFeature,
   accountFeature,
   classicPresenceFeature,
+  // wave C: admin first (flags must be on), bank before trade/market/shops (they use vault items).
+  adminFeature,
+  bankFeature,
+  tradeFeature,
+  marketFeature,
+  shopsFeature,
+  arenaFeature,
+  paymentsFeature,
+  passFeature,
+  loadtestFeature,
 ];

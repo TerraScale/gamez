@@ -19,16 +19,25 @@ import {
   type StashState,
   type VendorState,
 } from "../resources.ts";
-import { monsterLevel, potionUnlocked, rarityRank, stashTabCount } from "../rules.ts";
 import {
+  isBossDepth,
+  levelForXp,
+  monsterLevel,
+  potionUnlocked,
+  rarityRank,
+  stashTabCount,
+} from "../rules.ts";
+import {
+  BALANCE_ID,
   KIND,
+  type BalanceProto,
   type ItemBaseProto,
   type ItemInstance,
   type NpcProto,
   type QuestProto,
 } from "../types.ts";
 import { craftStep, gambleStep, repairStep } from "./craft.ts";
-import { travel } from "./dungeon.ts";
+import { bossReady, clearObjective, travel } from "./dungeon.ts";
 import { isKeeper, upgradeFor } from "./gear.ts";
 import { riftTownStep } from "./riftLoop.ts";
 import { approach, at, type StepResult } from "./visit.ts";
@@ -383,24 +392,48 @@ function smithStep(c: AutoCtx): StepResult {
   return at(c, npc, () => pushCommand(c.world, { op: "buy", npc, index, potion: null, count: 1 }));
 }
 
-function questStep(c: AutoCtx): StepResult {
+type QuestOp = { op: "acceptQuest"; quest: string } | { op: "completeQuest"; quest: string };
+
+/**
+ * The quest giver's ops of one visit: every finished quest is turned in
+ * first, then every quest the hero may take is accepted. Chains resolve in
+ * the same visit: a quest turned in by this batch counts as completed for
+ * the `after` check, and the level check uses the level the batch's XP
+ * rewards reach (completeQuest adds its XP at once, and the commands run in
+ * queue order, so the accepts see it).
+ */
+export function questOps(c: AutoCtx, giver: string): QuestOp[] {
   const qs = c.world.getResource<QuestState>(RES.quests);
-  if (!qs) return "skip";
-  const level = c.world.get(c.hero, Level)?.level ?? 1;
+  if (!qs) return [];
   const quests = c.reg.all<QuestProto>(KIND.quest);
-  for (const npc of npcsByRole(c, "quest")) {
-    const giver = c.world.read(npc, Npc).proto;
-    const ops: ({ op: "acceptQuest"; quest: string } | { op: "completeQuest"; quest: string })[] =
-      [];
-    for (const [id, q] of quests) {
-      if (q.giver !== giver || qs.completed.includes(id)) continue;
-      const active = qs.active.find((a) => a.id === id);
-      if (active) {
-        if (active.done) ops.push({ op: "completeQuest", quest: id });
-      } else if (q.reqLevel <= level && (q.after === "" || qs.completed.includes(q.after))) {
-        ops.push({ op: "acceptQuest", quest: id });
-      }
+  const completes: QuestOp[] = [];
+  const completed = new Set(qs.completed);
+  let rewardXp = 0;
+  for (const [id, q] of quests) {
+    if (q.giver !== giver || qs.completed.includes(id)) continue;
+    if (qs.active.find((a) => a.id === id)?.done) {
+      completes.push({ op: "completeQuest", quest: id });
+      completed.add(id);
+      rewardXp += q.reward.xp;
     }
+  }
+  const lvl = c.world.get(c.hero, Level);
+  let level = lvl?.level ?? 1;
+  const bal = c.reg.get<BalanceProto>(KIND.balance, BALANCE_ID);
+  if (lvl && bal && rewardXp > 0) level = Math.max(level, levelForXp(bal, lvl.xp + rewardXp));
+  const accepts: QuestOp[] = [];
+  for (const [id, q] of quests) {
+    if (q.giver !== giver || completed.has(id) || qs.active.some((a) => a.id === id)) continue;
+    if (q.reqLevel <= level && (q.after === "" || completed.has(q.after)))
+      accepts.push({ op: "acceptQuest", quest: id });
+  }
+  return [...completes, ...accepts];
+}
+
+function questStep(c: AutoCtx): StepResult {
+  if (!c.world.getResource<QuestState>(RES.quests)) return "skip";
+  for (const npc of npcsByRole(c, "quest")) {
+    const ops = questOps(c, c.world.read(npc, Npc).proto);
     if (ops.length > 0)
       return at(c, npc, () => {
         for (const op of ops) pushCommand(c.world, op);
@@ -428,17 +461,67 @@ function goTravel(
 }
 
 /**
- * Back to the dungeon: a Rift run once the main dungeon is done (riftLoop.ts),
- * else the open portal, else the deepest suitable waypoint, else the town
- * stairs.
+ * Back to the dungeon toward a clearLevel objective at `depth`
+ * (dungeon.ts clearObjective): the open portal when it leads there (the
+ * half-cleared level is kept), else the waypoint of that depth, else the
+ * deepest waypoint above it (or the town stairs) and the stairs down from
+ * there (dungeonStep walks on down to the objective).
+ */
+function objectiveReturn(
+  c: AutoCtx,
+  depth: number,
+  dungeon: DungeonState,
+  loop: boolean,
+): StepResult {
+  const avoid = c.st.deathDepth;
+  if (dungeon.portal?.depth === depth && !loop && !(avoid > 0 && depth >= avoid)) {
+    const portal = nearestInteractable(c, "portal");
+    if (portal !== 0) return goTravel(c, portal, { op: "usePortal" }, "quest: portal");
+  }
+  let dest = 0;
+  for (const w of dungeon.waypoints) if (w >= 1 && w <= depth && w > dest) dest = w;
+  if (dest > 0) {
+    const wp = nearestInteractable(c, "waypoint");
+    if (wp !== 0)
+      return goTravel(c, wp, { op: "waypoint", depth: dest }, `quest: waypoint ${dest}`);
+  }
+  const stairs = nearestInteractable(c, "stairsDown");
+  if (stairs !== 0) return goTravel(c, stairs, { op: "stairs", target: stairs }, "quest: stairs");
+  return "skip";
+}
+
+/**
+ * True when the open portal leads back to a level whose boss still lives and
+ * the hero is ready for it (dungeon.ts bossReady): that fight comes before a
+ * clearLevel objective (the objective is taken up on a later return).
+ */
+function portalToBoss(c: AutoCtx, dungeon: DungeonState): boolean {
+  const p = dungeon.portal;
+  if (!p || p.depth !== dungeon.live || !isBossDepth(p.depth) || !dungeon.liveBossAlive)
+    return false;
+  if (dungeon.bossesKilled.includes(p.depth)) return false;
+  return bossReady(effectiveLevel(c.world.get(c.hero, Level)?.level ?? 1, c.st), p.depth);
+}
+
+/**
+ * Back to the dungeon: toward a clearLevel quest objective first
+ * (objectiveReturn; unless the portal leads back to a boss the hero is
+ * ready for), then a Rift run once the main dungeon is done
+ * (riftLoop.ts), else the open portal, else the deepest suitable waypoint,
+ * else the town stairs.
  */
 function returnStep(c: AutoCtx): StepResult {
-  const rift = riftTownStep(c);
-  if (rift !== "skip") return rift;
   const dungeon = c.world.getResource<DungeonState>(RES.dungeon);
-  const avoid = c.st.deathDepth;
   // Two quick retreats: the portal leads back into a fight the hero keeps losing.
   const loop = retreatLoop(c);
+  const goal = dungeon ? clearObjective(c) : 0;
+  if (goal > 0 && dungeon && !portalToBoss(c, dungeon)) {
+    const r = objectiveReturn(c, goal, dungeon, loop);
+    if (r !== "skip") return r;
+  }
+  const rift = riftTownStep(c);
+  if (rift !== "skip") return rift;
+  const avoid = c.st.deathDepth;
   if (dungeon?.portal && !loop && !(avoid > 0 && dungeon.portal.depth >= avoid)) {
     const portal = nearestInteractable(c, "portal");
     if (portal !== 0) return goTravel(c, portal, { op: "usePortal" }, "portal");

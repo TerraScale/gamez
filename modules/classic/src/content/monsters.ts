@@ -293,8 +293,10 @@ const REGULAR: Record<string, MonsterProto> = {
     life: 18,
     armor: 6,
     toHit: 35,
-    dmgMin: 3,
-    dmgMax: 7,
+    // Balance (quest fix): 3-7 made its frostbolt the top killer at depths 9-11 for every
+    // class (L19 heroes, 4 seeds x 20 000 ticks each: 31 deaths -> 19 at 2-5).
+    dmgMin: 2,
+    dmgMax: 5,
     element: "cold",
     resist: { fire: 0, cold: 80, lightning: 0, poison: 60 },
     xp: 18,

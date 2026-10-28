@@ -1,15 +1,22 @@
 import { DurableObject } from "cloudflare:workers";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
-import { INSTANCE_HEADERS, sqlStoreOf, type Env } from "../contracts.ts";
+import type { ArenaBuild } from "@gamez/protocol";
+import { featureEnabled } from "../config/flags.ts";
+import { INSTANCE_HEADERS, sqlStoreOf, type Env, type InstancePlatformApi } from "../contracts.ts";
+import { accountGateway } from "../economy/gateway.ts";
+import { SqlBankStore } from "../instance/bank-store.ts";
 import { InstanceHost, type InstanceSocket, type SocketInfo } from "../instance/host.ts";
 import { encodeServerMessage } from "../instance/messages.ts";
 import { findMode, instanceName, loadedMode } from "../instance/modes.ts";
 import { SqlInstanceStore } from "../instance/sql-store.ts";
-import { VerifiedHost } from "../instance/verified-host.ts";
+import { VerifiedHost, type VerifiedPlatformDeps } from "../instance/verified-host.ts";
 import { SqlVerifiedStore } from "../instance/verified-store.ts";
 
 /** Outbox records per queue message (reports are small; well under 128 KB). */
 const FLUSH_BATCH = 200;
+/** First re-drive of a pending bank op, and the retry period while some stay pending. */
+const REDRIVE_MS = 5_000;
+const REDRIVE_RETRY_MS = 30_000;
 
 /**
  * Generic host for instanced modes, per contracts.ts (InstanceDO section).
@@ -23,7 +30,7 @@ const FLUSH_BATCH = 200;
  * this DO replays and persists its input segments, and reports verified state
  * to D1 through an outbox drained by the alarm.
  */
-export class InstanceDO extends DurableObject<Env> {
+export class InstanceDO extends DurableObject<Env> implements InstancePlatformApi {
   #host: InstanceHost | VerifiedHost | null = null;
   #store: SqlInstanceStore | null = null;
   #outbox: Outbox | null = null;
@@ -87,10 +94,60 @@ export class InstanceDO extends DurableObject<Env> {
     await this.#getHost()?.handleClose(this.#wrap(ws));
   }
 
+  /**
+   * Wave C (docs/design/wave-C.md §6.2): the verified hero as an arena build
+   * (VerifiedHost.exportBuild), or null for instances that never started or
+   * modes without builds.
+   */
+  async exportBuild(displayName: string): Promise<ArenaBuild | null> {
+    if (this.ctx.storage.kv.get<string>("mode") === undefined) return null;
+    const host = this.#getHost();
+    return host instanceof VerifiedHost ? host.exportBuild(displayName) : null;
+  }
+
   async alarm(): Promise<void> {
     const host = this.#getHost();
-    if (host instanceof VerifiedHost) await this.#flushOutbox();
-    else host?.alarm();
+    if (!(host instanceof VerifiedHost)) {
+      host?.alarm();
+      return;
+    }
+    // Pending bank ops first (their own errors are caught inside), then the outbox.
+    let pending = 0;
+    try {
+      pending = await host.redrive();
+    } catch (err) {
+      console.error(`instance ${this.#name}: bank re-drive failed`, err);
+      pending = host.pendingBankOps();
+    }
+    try {
+      await this.#flushOutbox();
+    } finally {
+      if (pending > 0 && (await this.ctx.storage.getAlarm()) === null) {
+        await this.ctx.storage.setAlarm(Date.now() + REDRIVE_RETRY_MS);
+      }
+    }
+  }
+
+  /** Wave C platform deps of the verified host: bank account calls, flag, season reports. */
+  #platformDeps(): VerifiedPlatformDeps {
+    const env = this.env;
+    return {
+      store: new SqlBankStore(sqlStoreOf(this.ctx.storage)),
+      account: accountGateway(env),
+      bankEnabled: () => featureEnabled(env, "bank"),
+      vaultCount: async (accountId) => (await env.ACCOUNT.getByName(accountId).vault()).length,
+      seasonProgress: (accountId, key, total) =>
+        env.ACCOUNT.getByName(accountId).seasonProgress(key, total),
+      scheduleRedrive: () => {
+        void (async () => {
+          if ((await this.ctx.storage.getAlarm()) === null) {
+            await this.ctx.storage.setAlarm(Date.now() + REDRIVE_MS);
+          }
+        })().catch((err: unknown) => {
+          console.error(`instance ${this.#name}: could not schedule the bank re-drive`, err);
+        });
+      },
+    };
   }
 
   /** Drains the verified host's report outbox into the sync queue (a throw retries the alarm). */
@@ -132,6 +189,7 @@ export class InstanceDO extends DurableObject<Env> {
             console.error(`instance ${this.#name}: could not schedule the outbox flush`, err);
           });
         },
+        platform: policy.platform ? this.#platformDeps() : null,
       });
       return this.#host;
     }

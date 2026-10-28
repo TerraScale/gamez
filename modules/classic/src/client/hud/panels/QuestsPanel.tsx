@@ -1,4 +1,4 @@
-/** Quest log: accept and turn in while in town (panel "quests"). */
+/** Quest log: accept and turn in with the quest giver in reach, in town (panel "quests"). */
 import { ACTION } from "../../../actions.ts";
 import type { QuestView } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
@@ -13,21 +13,32 @@ const STATE_TEXT: Record<QuestView["state"], string> = {
   completed: "Completed",
 };
 
+/** Touch target height (AGENTS.md §10: at least 44px). */
+const TOUCH_H = 44;
+
 export function QuestsPanel({ api }: SlotProps) {
   const quests = useSelect(api.hud, (s) => s.quests);
   const inTown = useSelect(api.hud, (s) => s.area?.isTown ?? false);
+  const giver = useSelect(api.hud, (s) => s.questGiver ?? null);
+  // No giver NPC in the area: the sim does not range-check then, so the buttons stay enabled.
+  const inReach = giver === null || giver.inReach;
+  const canAct = inTown && inReach;
+  const needsWalk = inTown && giver !== null && !giver.inReach;
+  const actionable = quests.some((q) => q.state === "available" || q.state === "done");
+  let subtitle: string;
+  if (!inTown) subtitle = "Return to town to accept or turn in quests";
+  else if (!inReach)
+    subtitle = `Talk to ${giver?.name ?? "the quest giver"} to accept or turn in quests`;
+  else subtitle = "In town: accept and turn in quests here";
   return (
-    <PanelFrame
-      api={api}
-      id="quests"
-      title="Quests"
-      width={440}
-      subtitle={
-        inTown
-          ? "In town: accept and turn in quests here"
-          : "Return to town to accept or turn in quests"
-      }
-    >
+    <PanelFrame api={api} id="quests" title="Quests" width={440} subtitle={subtitle}>
+      {needsWalk && actionable && giver !== null ? (
+        <div style={{ marginBottom: 8 }}>
+          <Btn height={TOUCH_H} onClick={() => api.act(ACTION.interact, { target: giver.entity })}>
+            {`Go to ${giver.name}`}
+          </Btn>
+        </div>
+      ) : null}
       {quests.length === 0 ? <p style={labelStyle}>No quests yet.</p> : null}
       <ul
         style={{
@@ -75,7 +86,8 @@ export function QuestsPanel({ api }: SlotProps) {
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               {q.state === "available" ? (
                 <Btn
-                  disabled={!inTown}
+                  height={TOUCH_H}
+                  disabled={!canAct}
                   onClick={() => api.act(ACTION.acceptQuest, { quest: q.id })}
                 >
                   Accept
@@ -83,7 +95,8 @@ export function QuestsPanel({ api }: SlotProps) {
               ) : null}
               {q.state === "done" ? (
                 <Btn
-                  disabled={!inTown}
+                  height={TOUCH_H}
+                  disabled={!canAct}
                   pressed
                   onClick={() => api.act(ACTION.completeQuest, { quest: q.id })}
                 >

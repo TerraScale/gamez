@@ -6,22 +6,46 @@ import {
   type CharacterRecord,
   type ChunkApi,
   type ChunkPoseApi,
+  type ChunkFixtureApi,
   type Env,
+  sqlStoreOf,
 } from "../contracts.ts";
 import { planWalk, walkAt, walkEnd } from "../../shared/walk.ts";
 import { worldOfChunk, type PresenceWorldSpec } from "../../shared/worlds.ts";
-import { continueWalk, sanitisePose } from "../presence/pose.ts";
+import { RelayFanout } from "../presence/fanout.ts";
+import { FixtureError, FixtureStore, validateFixtures } from "../presence/fixtures.ts";
+import { continueWalk, sameStanding, sanitisePose } from "../presence/pose.ts";
 import { defaultWorld } from "../presence/world.ts";
 
 /** Min interval between delta flushes; changes inside the window are coalesced. */
 const FLUSH_INTERVAL_MS = 50;
-/** Consecutive failed deliveries after which a relay is dropped. */
-const MAX_RELAY_FAILURES = 3;
 
 interface Avatar {
   state: EntityState;
   /** Relay holding this player's socket. */
   relay: string;
+}
+
+/**
+ * The persisted seq is a ceiling, raised SEQ_RESERVE at a time, instead of a
+ * write per delta: a restarted chunk resumes at the ceiling, past anything it
+ * delivered, so every relay sees a gap and resyncs with a full snapshot.
+ */
+const SEQ_RESERVE = 10_000;
+
+/** Counters since the chunk woke up (dev stats route, load tests). */
+export interface ChunkStats {
+  chunk: string;
+  avatars: number;
+  fixtures: number;
+  relays: string[];
+  seq: number;
+  poses: number;
+  flushes: number;
+  upsertsSent: number;
+  deliverFailures: number;
+  /** Epoch ms the counters started at. */
+  since: number;
 }
 
 interface PresenceRow extends Record<string, SqlStorageValue> {
@@ -33,28 +57,40 @@ interface PresenceRow extends Record<string, SqlStorageValue> {
 /**
  * Presence authority for one world slice. Name: the chunk name of a presence
  * world (shared/worlds.ts, e.g. "classic:0:0" for plaza, "classic-town:0:0").
- * Avatars, subscribed relays and the delta seq are persisted, so an evicted
- * chunk wakes up with the same state. Deltas fan out once per relay, never
+ * Avatars, subscribed relays and a delta seq ceiling are persisted, so an
+ * evicted chunk wakes up with the same members and relays resync (pose
+ * worlds persist an avatar at join, not at every pose). Deltas fan out once per relay, never
  * once per player.
  *
  * Server-path worlds (plaza) plan walks on the world's map and settle them
  * with an alarm, persisting the final tile to the CharacterDO. Client-pose
  * worlds (classic-town) take poses from the clients (bounds and shape
  * checked), never touch a CharacterDO and never use alarms.
+ *
+ * World fixtures (wave C §5.4, presence/fixtures.ts) live next to the avatars:
+ * persisted per group, part of subscribe() state and broadcast as normal
+ * upserts/removes, but never moved, never timed out and never addressable by
+ * join, pose, moveTo or leave.
  */
-export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseApi {
+export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseApi, ChunkFixtureApi {
   readonly #world: PresenceWorldSpec;
   #sql = this.ctx.storage.sql;
   #kv = this.ctx.storage.kv;
   #avatars = new Map<EntityId, Avatar>();
-  /** Subscribed relay name -> consecutive delivery failures. */
-  #relays = new Map<string, number>();
+  /** Subscribed relays (one delivery per relay per delta, sharded relays included). */
+  #relays = new RelayFanout();
   #stubs = new Map<string, DurableObjectStub<import("./relay.ts").RelayDO>>();
   #seq = 0;
   #upserts = new Set<EntityId>();
   #removes = new Set<EntityId>();
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
   #lastFlush = 0;
+  #seqCeiling = 0;
+  /** True while a delta is being delivered; changes meanwhile wait for the next flush (backpressure). */
+  #flushing = false;
+  /** Persistent world fixtures (own SQLite table, loaded synchronously). */
+  readonly #fixtures = new FixtureStore(sqlStoreOf(this.ctx.storage));
+  readonly #stats = { poses: 0, flushes: 0, upsertsSent: 0, deliverFailures: 0, since: Date.now() };
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -69,8 +105,9 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
           state: JSON.parse(row.state) as EntityState,
         });
       }
-      for (const relay of this.#kv.get<string[]>("relays") ?? []) this.#relays.set(relay, 0);
+      this.#relays = new RelayFanout(this.#kv.get<string[]>("relays") ?? []);
       this.#seq = this.#kv.get<number>("seq") ?? 0;
+      this.#seqCeiling = this.#seq;
     });
   }
 
@@ -82,23 +119,24 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
     relay: string,
     liveIds?: EntityId[],
   ): Promise<{ seq: number; entities: EntityState[] }> {
-    if (!this.#relays.has(relay)) {
-      this.#relays.set(relay, 0);
-      this.#saveRelays();
-    }
+    if (this.#relays.add(relay)) this.#saveRelays();
     if (liveIds) {
       const live = new Set(liveIds);
       for (const [id, a] of this.#avatars) if (a.relay === relay && !live.has(id)) this.#drop(id);
     }
-    return { seq: this.#seq, entities: [...this.#avatars.values()].map((a) => a.state) };
+    return {
+      seq: this.#seq,
+      entities: [...this.#avatars.values()].map((a) => a.state).concat(this.#fixtures.all()),
+    };
   }
 
   async unsubscribe(relay: string): Promise<void> {
-    if (this.#relays.delete(relay)) this.#saveRelays();
+    if (this.#relays.remove(relay)) this.#saveRelays();
     this.#stubs.delete(relay);
   }
 
   async join(character: CharacterRecord, relay: string): Promise<EntityState> {
+    if (this.#fixtures.has(character.id)) throw new Error(`id ${character.id} is a world fixture`);
     const existing = this.#avatars.get(character.id);
     const state: EntityState = existing
       ? { ...existing.state, name: character.name, appearance: character.appearance }
@@ -114,6 +152,45 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
         };
     this.#put({ state, relay });
     return state;
+  }
+
+  /**
+   * Wave C (docs/design/wave-C.md §5.4): replaces one fixture group (pose
+   * worlds only). Throws FixtureError (message "<code>: …") for a bad set,
+   * leaving the old group in place. Changes go out with the next delta.
+   */
+  async setFixtures(group: string, fixtures: EntityState[]): Promise<void> {
+    if (this.#world.movement !== "client-pose") {
+      throw new FixtureError("bad-group", `world ${this.#world.id} has no fixtures`);
+    }
+    const clean = validateFixtures(group, fixtures, this.#world);
+    const change = this.#fixtures.replace(group, clean, (id) => this.#avatars.has(id));
+    for (const id of change.removes) {
+      this.#upserts.delete(id);
+      this.#removes.add(id);
+    }
+    for (const f of change.upserts) {
+      this.#removes.delete(f.id);
+      this.#upserts.add(f.id);
+    }
+    if (change.upserts.length > 0 || change.removes.length > 0) this.#scheduleFlush();
+  }
+
+  /** The fixtures of one group (or all), in id order. */
+  async fixtures(group?: string): Promise<EntityState[]> {
+    return group === undefined ? this.#fixtures.all() : this.#fixtures.group(group);
+  }
+
+  /** Load counters (dev stats route and tools/loadtest). */
+  async stats(): Promise<ChunkStats> {
+    return {
+      chunk: this.chunkId,
+      avatars: this.#avatars.size,
+      fixtures: this.#fixtures.size,
+      relays: this.#relays.names().sort(),
+      seq: this.#seq,
+      ...this.#stats,
+    };
   }
 
   async leave(id: EntityId): Promise<void> {
@@ -142,21 +219,44 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
    * beyond the presence row.
    */
   async pose(id: EntityId, pose: PoseUpdate): Promise<{ ok: boolean; reason?: string }> {
+    return this.#pose(id, pose);
+  }
+
+  #pose(id: EntityId, pose: PoseUpdate): { ok: boolean; reason?: string } {
     if (this.#world.movement !== "client-pose") return { ok: false, reason: "wrong-world" };
     const avatar = this.#avatars.get(id);
     if (!avatar) return { ok: false, reason: "not-joined" };
+    this.#stats.poses++;
     const check = sanitisePose(pose, this.#world);
     if (!check.ok) return { ok: false, reason: check.reason };
     const { appearance, tag } = check.pose;
+    const now = Date.now();
     const state: EntityState = {
       ...avatar.state,
-      ...continueWalk(avatar.state, check.pose, Date.now()),
+      ...continueWalk(avatar.state, check.pose, now),
       appearance,
     };
     delete state.tag;
     if (tag !== undefined) state.tag = tag;
-    this.#put({ ...avatar, state });
+    // A keepalive of a hero standing still: nothing to broadcast.
+    if (sameStanding(avatar.state, state, now)) return { ok: true };
+    // Pose worlds keep poses in memory only (the row stays as of the join): a
+    // SQLite write per pose held every outgoing delta behind storage commits
+    // (docs/bench/2026-10-waveC-presence.md). A restarted chunk shows the avatar
+    // at its join tile until its next pose, a fraction of a second later.
+    this.#put({ ...avatar, state }, false);
     return { ok: true };
+  }
+
+  /**
+   * A relay's batch of poses (wave C §12: one RPC per relay round trip instead
+   * of one per pose); same rules as pose(), one result per entry.
+   */
+  async poses(
+    batch: { id: EntityId; pose: PoseUpdate }[],
+  ): Promise<{ ok: boolean; reason?: string }[]> {
+    if (!Array.isArray(batch)) return [];
+    return batch.map((entry) => this.#pose(entry.id, entry.pose));
   }
 
   /** Settles every finished walk and persists its final tile to the CharacterDO (server-path worlds). */
@@ -194,8 +294,9 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
   }
 
   /** Stores an avatar and queues it for the next delta. */
-  #put(avatar: Avatar): void {
-    this.#persist(avatar);
+  #put(avatar: Avatar, persist = true): void {
+    if (persist) this.#persist(avatar);
+    else this.#avatars.set(avatar.state.id, avatar);
     this.#removes.delete(avatar.state.id);
     this.#upserts.add(avatar.state.id);
     this.#scheduleFlush();
@@ -243,7 +344,7 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
   }
 
   #scheduleFlush(): void {
-    if (this.#flushTimer) return;
+    if (this.#flushTimer || this.#flushing) return;
     const delay = Math.max(0, this.#lastFlush + FLUSH_INTERVAL_MS - Date.now());
     this.#flushTimer = setTimeout(() => {
       this.#flushTimer = null;
@@ -255,39 +356,43 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
     if (this.#upserts.size === 0 && this.#removes.size === 0) return;
     const upserts: EntityState[] = [];
     for (const id of this.#upserts) {
-      const avatar = this.#avatars.get(id);
-      if (avatar) upserts.push(avatar.state);
+      const state = this.#avatars.get(id)?.state ?? this.#fixtures.get(id);
+      if (state) upserts.push(state);
     }
     const removes = [...this.#removes];
     this.#upserts.clear();
     this.#removes.clear();
     const seq = ++this.#seq;
-    this.#kv.put("seq", seq);
+    if (seq > this.#seqCeiling) {
+      this.#seqCeiling = seq + SEQ_RESERVE;
+      this.#kv.put("seq", this.#seqCeiling);
+    }
     this.#lastFlush = Date.now();
+    this.#stats.flushes++;
+    this.#stats.upsertsSent += upserts.length;
 
-    const relays = [...this.#relays.keys()];
-    const results = await Promise.allSettled(
-      relays.map((r) => this.#relay(r).deliver(this.chunkId, seq, upserts, removes)),
-    );
-    results.forEach((result, i) => {
-      const relay = relays[i]!;
-      if (!this.#relays.has(relay)) return;
-      if (result.status === "fulfilled") {
-        this.#relays.set(relay, 0);
-        return;
-      }
-      const failures = (this.#relays.get(relay) ?? 0) + 1;
-      console.error("deliver failed", relay, failures, result.reason);
-      if (failures < MAX_RELAY_FAILURES) {
-        this.#relays.set(relay, failures);
-        return;
-      }
-      // Give up on the relay and the players behind it; it re-subscribes when it recovers.
-      this.#relays.delete(relay);
-      this.#stubs.delete(relay);
-      this.#saveRelays();
-      for (const [id, a] of this.#avatars) if (a.relay === relay) this.#drop(id);
-    });
+    // One delta in flight at a time: under load, changes pile into the next
+    // (bigger) delta instead of piling up concurrent deliveries.
+    this.#flushing = true;
+    let result;
+    try {
+      result = await this.#relays.deliver((r) =>
+        this.#relay(r).deliver(this.chunkId, seq, upserts, removes),
+      );
+    } finally {
+      this.#flushing = false;
+      if (this.#upserts.size > 0 || this.#removes.size > 0) this.#scheduleFlush();
+    }
+    for (const f of result.failed) {
+      this.#stats.deliverFailures++;
+      console.error("deliver failed", f.relay, f.failures, f.reason);
+    }
+    if (result.dropped.length === 0) return;
+    // Give up on those relays and the players behind them; they re-subscribe when they recover.
+    const dropped = new Set(result.dropped);
+    for (const relay of dropped) this.#stubs.delete(relay);
+    this.#saveRelays();
+    for (const [id, a] of this.#avatars) if (dropped.has(a.relay)) this.#drop(id);
   }
 
   /** One cached stub per relay, so deliveries to it stay in order. */
@@ -301,7 +406,7 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
   }
 
   #saveRelays(): void {
-    this.#kv.put("relays", [...this.#relays.keys()]);
+    this.#kv.put("relays", this.#relays.names());
   }
 }
 

@@ -6,7 +6,9 @@
  */
 import type { SegmentInput } from "@gamez/kernel";
 import {
+  isOpId,
   MAX_VERIFIED_CLIENT_FRAME,
+  type BankOp,
   type PackedSnapshot,
   type VerifiedClientMessage,
   type VerifiedServerMessage,
@@ -58,6 +60,36 @@ function parsePacked(v: unknown): PackedSnapshot | null {
     return { enc: "gzip64", data: v.data };
   }
   return null;
+}
+
+/** Largest amount a bank op may carry (the mode's own cap is usually lower). */
+export const MAX_BANK_AMOUNT = 1_000_000_000;
+/** Longest accepted vault uid. */
+export const MAX_VAULT_UID = 64;
+
+function isAmount(v: unknown): v is number {
+  return Number.isSafeInteger(v) && (v as number) >= 1 && (v as number) <= MAX_BANK_AMOUNT;
+}
+
+/** Strict BankOp shape (wave-C.md §2.2); null when anything is off. */
+export function parseBankOp(v: unknown): BankOp | null {
+  if (!isRecord(v)) return null;
+  switch (v.kind) {
+    case "depositGold":
+      return isAmount(v.gold) ? { kind: "depositGold", gold: v.gold } : null;
+    case "withdrawCoin":
+      return isAmount(v.coin) ? { kind: "withdrawCoin", coin: v.coin } : null;
+    case "depositItem":
+      return Number.isSafeInteger(v.ref) && (v.ref as number) >= 1
+        ? { kind: "depositItem", ref: v.ref as number }
+        : null;
+    case "withdrawItem":
+      return typeof v.uid === "string" && v.uid.length > 0 && v.uid.length <= MAX_VAULT_UID
+        ? { kind: "withdrawItem", uid: v.uid }
+        : null;
+    default:
+      return null;
+  }
 }
 
 /** Decodes and validates one client frame; null when it is not a valid message. */
@@ -117,6 +149,14 @@ export function parseVerifiedClientMessage(
     case "ping": {
       if (typeof raw.clientTime !== "number" || !Number.isFinite(raw.clientTime)) return null;
       return { t: "ping", clientTime: raw.clientTime };
+    }
+    case "bank": {
+      if (!isOpId(raw.opId)) return null;
+      const op = parseBankOp(raw.op);
+      if (!op) return null;
+      const at = raw.at;
+      if (!isRecord(at) || !isUint(at.tick) || !isHash(at.hash)) return null;
+      return { t: "bank", opId: raw.opId, op, at: { tick: at.tick, hash: at.hash } };
     }
     default:
       return null;

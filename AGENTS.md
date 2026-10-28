@@ -27,10 +27,12 @@ This guide is for anyone (human or AI agent) adding **modules**, **game modes** 
 apps/game/                 The one Worker: API + Durable Objects + static client (Vite + @cloudflare/vite-plugin)
   cloudflare.config.ts     cf config: DOs, D1, queues, assets, secrets
   migrations/              D1 SQL migrations (read model)
-  src/server/              Worker, DOs (relay, chunk, character, instance, account, identity, chat, guild), projections
-    routes/                One file per feature and path prefix (auth, account, leaderboards, guilds, chat, presence)
+  src/server/              Worker, DOs (relay, chunk, character, instance, account, identity, chat, guild; wave C:
+                           escrow, market, plots, shop, arena, config), projections
+    routes/                One file per feature and path prefix (auth, account, vault, trade, market, shops, arena, …)
     instance/              InstanceHost (event-ticked modes) and VerifiedHost (client-driven classic)
     auth/ account/ chat/ guild/ presence/ leaderboards/   Pure logic behind the DOs and routes (unit-tested)
+    trade/ market/ shops/ arena/ payments/ admin/ economy/ config/   Wave C logic (custody sagas, providers, flags)
   src/client/              React app shell, mode views (lazy chunks), net, Pixi renderer, platform SDK, verified + presence connections
   src/shared/catalog.ts    THE module catalog + list of modes (shared by client and server)
 packages/
@@ -41,7 +43,10 @@ packages/
   assets/                  Asset manifest types, mergeManifests, resolveId fallback
   ui-host/                 Client SDK for modes: ClientModeView, ClientServices, InstanceConnection, UI slots, renderer contract
 modules/
-  classic/                 The classic idle ARPG (@gamez/mode-classic): sim modules in src/, client in src/client/
+  classic/                 The classic idle ARPG (@gamez/mode-classic): sim modules in src/, client in src/client/,
+                           verified-host hooks + bank + vault codec + arena build + season total in src/platform/
+  economy/                 @gamez/economy: pure economy rules (fees, market, leases, rating, seasons, products, telemetry)
+  arena/                   @gamez/mode-arena: deterministic async arena fight() + ArenaScreen/ArenaReplay (./client)
   classic.town/            Town Plaza map (content)
   art.kenney/              Starter CC0 art pack → apps/game/public/art/kenney/
   steps/  duel/            Test modes (also the regression suite for the module system)
@@ -49,8 +54,10 @@ tools/
   e2e/                     End-to-end tests against a real local `vp dev`
   qa/                      Browser QA harness (headless Chrome over CDP): scenarios + screenshots
   bench/                   Benchmarks (results in docs/bench/)
+  loadtest/                Presence bot swarm with private server state (results in docs/bench/)
+apps/native/               Capacitor + Electron shells (not workspace packages; docs/ship.md)
 docs/adr/                  Architecture decision records
-docs/design/               Mode designs (classic.md, wave-A.md): the binding spec for builders
+docs/design/               Designs (classic.md, wave-A/B/C.md): the binding spec for builders
 ```
 
 ---
@@ -355,6 +362,10 @@ Add a file in `apps/game/src/server/routes/` that returns `null` for paths it do
 - The economy is player-driven. NPCs only provide **sinks**: cheap low-level potions and a lowball junk buyer.
 - Every faucet needs a sink. Add listing fees, taxes, rent, repairs and fees when you add new income.
 - Items carry a `tradable` policy hook and a `universal` flag. Only universal items cross modes.
+- Value that crosses players lives only in AccountDO (coin wallet + vault). A mode reaches it through a bank action applied by the verified host (ADR 0006 §1).
+- Venues use **custody, not holds**: debit into the venue DO with txIds derived from the request `opId`, persist each saga step before its call, re-drive from the alarm, refund on failure. Keep the logic in a class taking `SqlStore`, `AccountGateway`, `Outbox` and a clock, and test it with `tests/support/fake-gateway.ts`, failing and crashing every step.
+- Wallet telemetry: signed deltas tagged `faucet` / `sink` / `transfer`; a refunded sink is a positive `sink` amount.
+- Writes need a registered account (`economyCaller(c, flag, { write: true })`); every feature sits behind a ConfigDO flag that fails open.
 
 ---
 

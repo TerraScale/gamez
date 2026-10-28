@@ -5,6 +5,7 @@ import {
   presenceEntityId,
   presenceWorld,
   relayName,
+  relayShard,
   worldOfChunk,
 } from "../../src/shared/worlds.ts";
 import { defaultWorld, placement, worldFromParam } from "../../src/server/presence/world.ts";
@@ -72,7 +73,7 @@ describe("worldFromParam and placement", () => {
   it("gives the relay and entity id of a player in a world", () => {
     const town = PRESENCE_WORLDS["classic-town"]!;
     expect(placement("NA", "acc-1", town)).toEqual({
-      relay: "relay:NA:classic-town:0",
+      relay: `relay:NA:classic-town:${relayShard("acc-1", town)}`,
       entityId: "acc-1:classic-town",
     });
     expect(placement("NA", "acc-1", PRESENCE_WORLDS.plaza!)).toEqual({

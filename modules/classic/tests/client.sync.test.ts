@@ -535,7 +535,8 @@ describe("ServerSync recording and verification", () => {
       expect(s.toTick - s.fromTick).toBeLessThanOrEqual(DEFAULT_LIMITS.maxTicksPerSegment);
     }
     expect(server.resyncs).toEqual([]);
-  });
+    // About 7 s on a loaded machine (12 frames of 160 ticks at x8, replayed by the fake server).
+  }, 30_000);
 
   it("refuses server-only actions in server mode", async () => {
     const server = new FakeServer(LOADED);
@@ -715,6 +716,21 @@ describe("new game", () => {
     // The server's sim has the new hero too (its seed, not the client's).
     const game = server.sim.world.getResource<GameState>(RES.game);
     expect(game?.hero).toBeGreaterThan(0);
+  });
+});
+
+describe("reset progress", () => {
+  it("newGame drops the per-account sync cache so a reload cannot restore the old hero", async () => {
+    const server = new FakeServer(LOADED);
+    const storage = new MemoryStorage();
+    const c = await openClient(server, storage);
+    newHero(c, "classic.rogue");
+    play(c, server, 3000);
+    c.game.api.save();
+    expect(storage.getItem(syncCacheKey("acc"))).not.toBeNull();
+    c.game.api.newGame();
+    expect(storage.getItem(syncCacheKey("acc"))).toBeNull();
+    expect(server.joins.at(-1)?.fresh).toBe(true);
   });
 });
 

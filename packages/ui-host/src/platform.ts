@@ -9,7 +9,35 @@
 import type { GameEvent, RecordedSegment, SimSnapshot } from "@gamez/kernel";
 import type {
   AccountView,
+  ArenaLadderResponse,
+  ArenaMatch,
+  ArenaStatus,
+  ArenaTicket,
   AuthProvider,
+  BankOp,
+  BankResult,
+  CheckoutResponse,
+  ConfigResponse,
+  FiatCurrency,
+  ItemCategory,
+  MarketListing,
+  MarketListRequest,
+  MarketMineResponse,
+  MarketSearchQuery,
+  MarketSearchResponse,
+  NoticesResponse,
+  OrdersResponse,
+  PassTrack,
+  PassView,
+  PaymentProviderId,
+  PlotsResponse,
+  PlotView,
+  ShopConfigureRequest,
+  ShopView,
+  StoreResponse,
+  TradeListResponse,
+  TradeView,
+  VaultResponse,
   ChannelId,
   ChatMessage,
   CosmeticsView,
@@ -77,6 +105,13 @@ export interface VerifiedResync {
   snapshot: SimSnapshot;
 }
 
+/** Wave C: the server's answer to a bank op (protocol verified.ts "bank"). */
+export interface BankAnswer {
+  opId: string;
+  result: BankResult;
+  applied: { tick: number; name: string; payload: unknown; hash: string } | null;
+}
+
 export interface VerifiedHandlers {
   /**
    * Asked before every (re)join. Return the local continuation point (the
@@ -89,6 +124,8 @@ export interface VerifiedHandlers {
   resync(r: VerifiedResync): void;
   status(s: VerifiedStatus): void;
   error?(code: string, message: string): void;
+  /** Wave C: answer to sendBank (after any resync it caused). */
+  bank?(answer: BankAnswer): void;
 }
 
 /** A segment as submitted: the recorder's segment plus the epoch it was recorded in and a client seq. */
@@ -112,6 +149,12 @@ export interface VerifiedConnection {
   /** Server clock estimate (epoch ms). */
   serverNow(): number;
   close(): void;
+  /**
+   * Wave C bank op (docs/design/wave-C.md §2.4): the caller has submitted a
+   * segment ending at `at` and paused its sim. false when not online.
+   * Answered through handlers.bank.
+   */
+  sendBank?(msg: { opId: string; op: BankOp; at: { tick: number; hash: string } }): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +249,97 @@ export interface AccountApi {
   cosmetics(): Promise<ApiResult<CosmeticsView>>;
 }
 
+// ---------------------------------------------------------------------------
+// Wave C (docs/design/wave-C.md §10.1). Mutating calls take an optional opId;
+// the SDK generates one when absent and reuses it for its own retries.
+// ---------------------------------------------------------------------------
+
+export interface VaultApi {
+  vault(): Promise<ApiResult<VaultResponse>>;
+  notices(sinceId?: string | null): Promise<ApiResult<NoticesResponse>>;
+  markRead(upToId: string): Promise<ApiResult<{ marked: number }>>;
+}
+
+export interface TradeApi {
+  list(): Promise<ApiResult<TradeListResponse>>;
+  open(withAccountId: string, opId?: string): Promise<ApiResult<TradeView>>;
+  get(tradeId: string): Promise<ApiResult<TradeView>>;
+  offer(tradeId: string, coin: number, uids: string[]): Promise<ApiResult<TradeView>>;
+  accept(tradeId: string, versions: [number, number]): Promise<ApiResult<TradeView>>;
+  cancel(tradeId: string): Promise<ApiResult<TradeView>>;
+}
+
+export interface MarketApi {
+  search(q: MarketSearchQuery): Promise<ApiResult<MarketSearchResponse>>;
+  mine(): Promise<ApiResult<MarketMineResponse>>;
+  list(req: Omit<MarketListRequest, "opId"> & { opId?: string }): Promise<ApiResult<MarketListing>>;
+  bid(listingId: string, amount: number, opId?: string): Promise<ApiResult<MarketListing>>;
+  buy(listingId: string, opId?: string): Promise<ApiResult<MarketListing>>;
+  cancel(listingId: string, opId?: string): Promise<ApiResult<MarketListing>>;
+}
+
+export interface ShopsApi {
+  plots(world: string): Promise<ApiResult<PlotsResponse>>;
+  bidPlot(
+    world: string,
+    plotId: string,
+    amount: number,
+    opId?: string,
+  ): Promise<ApiResult<PlotView>>;
+  shop(world: string, plotId: string): Promise<ApiResult<ShopView>>;
+  configure(world: string, plotId: string, req: ShopConfigureRequest): Promise<ApiResult<ShopView>>;
+  stock(
+    world: string,
+    plotId: string,
+    uid: string,
+    price: number,
+    opId?: string,
+  ): Promise<ApiResult<ShopView>>;
+  unstock(
+    world: string,
+    plotId: string,
+    entryId: string,
+    opId?: string,
+  ): Promise<ApiResult<ShopView>>;
+  buy(world: string, plotId: string, entryId: string, opId?: string): Promise<ApiResult<ShopView>>;
+  claim(world: string, plotId: string, opId?: string): Promise<ApiResult<ShopView>>;
+}
+
+export interface ArenaApi {
+  status(mode?: string): Promise<ApiResult<ArenaStatus>>;
+  /** Registers the current verified build and queues a fight. */
+  queue(mode?: string, opId?: string): Promise<ApiResult<ArenaTicket>>;
+  poll(ticket: string, mode?: string): Promise<ApiResult<ArenaTicket>>;
+  ladder(q?: {
+    mode?: string;
+    classId?: string;
+    limit?: number;
+  }): Promise<ApiResult<ArenaLadderResponse>>;
+  match(id: string, mode?: string): Promise<ApiResult<ArenaMatch>>;
+}
+
+export interface PassApi {
+  view(): Promise<ApiResult<PassView>>;
+  claim(tier: number, track: PassTrack): Promise<ApiResult<PassView>>;
+  /** Buys the premium track with gems (registered only); idempotent by opId. */
+  premium?(opId?: string): Promise<ApiResult<PassView>>;
+}
+
+export interface StoreApi {
+  catalog(country?: string): Promise<ApiResult<StoreResponse>>;
+  checkout(
+    sku: string,
+    provider: PaymentProviderId,
+    currency: FiatCurrency,
+    opId?: string,
+  ): Promise<ApiResult<CheckoutResponse>>;
+  orders(): Promise<ApiResult<OrdersResponse>>;
+}
+
+export interface ConfigApi {
+  get(): Promise<ApiResult<ConfigResponse>>;
+}
+
 /** Everything platform-side a mode may use (ClientServices.platform). */
 export interface PlatformServices {
   auth: AuthApi;
@@ -213,4 +347,28 @@ export interface PlatformServices {
   chat: ChatApi;
   guilds: GuildApi;
   account: AccountApi;
+  // Wave C (optional so wave B fakes stay valid; createPlatform always sets them).
+  vault?: VaultApi;
+  trade?: TradeApi;
+  market?: MarketApi;
+  shops?: ShopsApi;
+  arena?: ArenaApi;
+  pass?: PassApi;
+  store?: StoreApi;
+  config?: ConfigApi;
 }
+
+/**
+ * Wave C: shell screens a mode can open over itself (ClientServices.openScreen).
+ * The app shell renders them as sheets; the mode keeps running underneath.
+ */
+export type PlatformScreen =
+  | { id: "market"; category?: ItemCategory; q?: string }
+  | { id: "vault" }
+  | { id: "trade"; with?: { accountId: string; displayName: string }; tradeId?: string }
+  | { id: "plots"; world: string }
+  | { id: "shop"; world: string; plotId: string }
+  | { id: "arena"; mode: string }
+  | { id: "pass" }
+  | { id: "store" }
+  | { id: "notices" };

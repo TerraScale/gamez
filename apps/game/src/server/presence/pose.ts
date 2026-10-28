@@ -188,3 +188,16 @@ export function continueWalk(
     speed,
   };
 }
+
+/**
+ * True when `next` (the state a pose turns into) would draw exactly like `old`
+ * at `now`: both standing on the same tile with the same look. Keepalive poses
+ * of a hero standing still are answered without a delta (no fan-out cost).
+ */
+export function sameStanding(old: EntityState, next: EntityState, now: number): boolean {
+  if (next.path.length > 0) return false;
+  if (old.appearance !== next.appearance || old.tag !== next.tag || old.name !== next.name)
+    return false;
+  const at = walkAt(old, now);
+  return !at.next && sameTile(at.from, next.pos);
+}

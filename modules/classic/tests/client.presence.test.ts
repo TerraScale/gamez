@@ -17,6 +17,7 @@ import { heroOf, RES, type AreaState } from "../src/resources.ts";
 import {
   LEAVE_GRACE_MS,
   POSE_INTERVAL_MS,
+  POSE_KEEPALIVE_MS,
   PRESENCE_WORLD,
   TownPresence,
 } from "../src/client/presence/index.ts";
@@ -206,6 +207,19 @@ describe("TownPresence: connection lifecycle", () => {
 });
 
 describe("TownPresence: pose reporting", () => {
+  it("re-reports a still hero's unchanged pose only as a keepalive", () => {
+    const { sim, conns, presence } = setup();
+    let t = 0;
+    frame(sim, presence, (t += 50), false);
+    expect(conns[0]!.poses.length).toBe(1);
+    // Just short of the keepalive: nothing more.
+    while (t + 50 < 50 + POSE_KEEPALIVE_MS) frame(sim, presence, (t += 50), false);
+    expect(conns[0]!.poses.length).toBe(1);
+    frame(sim, presence, (t += 100), false);
+    expect(conns[0]!.poses.length).toBe(2);
+    expect(conns[0]!.poses[1]).toEqual(conns[0]!.poses[0]);
+  });
+
   it("reports once for a still hero and never repeats an unchanged pose", () => {
     const { sim, conns, presence } = setup();
     let t = 0;

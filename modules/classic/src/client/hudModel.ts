@@ -37,6 +37,8 @@ import {
 } from "../components.ts";
 import { itemScore } from "../auto/score.ts";
 import { SUB } from "../fixed.ts";
+import { INTERACT_RANGE } from "../actions.ts";
+import { requiredOf } from "../progression/quests.ts";
 import {
   DEFAULT_AUTO_CONFIG,
   RES,
@@ -49,6 +51,7 @@ import {
   type GameState,
   type QuestState,
   type StashState,
+  currentDepth,
   type VendorState,
 } from "../resources.ts";
 import {
@@ -99,6 +102,7 @@ import {
   type HudSnapshot,
   type ItemView,
   type MinimapData,
+  type QuestGiverView,
   type QuestView,
   type SkillBarSlot,
   type SkillView,
@@ -544,6 +548,44 @@ function vendorView(
   };
 }
 
+/**
+ * The quest giver of the current area for the quest panel: the nearest NPC
+ * whose proto gives a quest (ties: entity id order), preferring one in reach.
+ * `inReach` is the rule of progression/ops.ts (giverInReach): within
+ * INTERACT_RANGE of the hero. Null when no giver NPC is in the area.
+ */
+export function questGiverOf(
+  world: World,
+  registry: FrozenRegistry,
+  hero: Entity,
+): QuestGiverView | null {
+  const givers = new Set<string>();
+  for (const [, q] of registry.all<QuestProto>(KIND.quest)) givers.add(q.giver);
+  if (givers.size === 0) return null;
+  const depth = currentDepth(world);
+  const hp = hero !== 0 ? world.get(hero, Pos) : undefined;
+  let best: { e: Entity; proto: string; d2: number; inReach: boolean } | null = null;
+  for (const e of world.query(Npc, Pos, AreaTag)) {
+    if (world.read(e, AreaTag).depth !== depth) continue;
+    const proto = world.read(e, Npc).proto;
+    if (!givers.has(proto)) continue;
+    const np = world.read(e, Pos);
+    const d2 = hp ? (hp.x - np.x) ** 2 + (hp.y - np.y) ** 2 : Number.POSITIVE_INFINITY;
+    const inReach = hp !== undefined && d2 <= INTERACT_RANGE * INTERACT_RANGE;
+    const better =
+      best === null || (inReach && !best.inReach) || (inReach === best.inReach && d2 < best.d2);
+    if (better) best = { e, proto, d2, inReach };
+  }
+  if (best === null) return null;
+  const npc = registry.get<NpcProto>(KIND.npc, best.proto);
+  return {
+    entity: best.e,
+    proto: best.proto,
+    name: npc?.name ?? best.proto,
+    inReach: best.inReach,
+  };
+}
+
 function questViews(
   registry: FrozenRegistry,
   quests: QuestState | undefined,
@@ -555,9 +597,11 @@ function questViews(
     const active = quests?.active.find((a) => a.id === id);
     let state: QuestView["state"] | null = null;
     let progress = 0;
+    // Progress target (requiredOf): clearLevel's `count` is the depth, its target is 1.
+    const need = requiredOf(q);
     if (completed.includes(id)) {
       state = "completed";
-      progress = q.count;
+      progress = need;
     } else if (active) {
       state = active.done ? "done" : "active";
       progress = active.progress;
@@ -574,7 +618,7 @@ function questViews(
       giver: giver?.name ?? q.giver,
       state,
       progress,
-      count: q.count,
+      count: need,
       reward: `${q.reward.gold} gold, ${q.reward.xp} XP${item}`,
     });
   }
@@ -658,6 +702,7 @@ function emptySnapshot(registry: FrozenRegistry, tick: number): HudSnapshot {
     stashSize: 0,
     skills: [],
     quests: [],
+    questGiver: null,
     vendor: null,
   };
 }
@@ -735,6 +780,7 @@ export function buildHud(world: World, registry: FrozenRegistry, ctx: HudContext
     stashSize: bal.stashSize,
     skills: skillViews(registry, cls, book, bar?.slots ?? [], level, heroV?.skillPoints ?? 0),
     quests: questViews(registry, world.getResource(RES.quests), level),
+    questGiver: questGiverOf(world, registry, hero),
     vendor: ctx.vendor !== 0 ? vendorView(world, registry, ctx.vendor, itemCtx) : null,
   };
   // Wave A sections, one builder file each (src/client/model/).

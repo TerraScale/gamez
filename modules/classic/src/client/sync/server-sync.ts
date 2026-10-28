@@ -19,6 +19,14 @@
  *
  * It never mutates a sim except through dispatch/step, never dispatches
  * server-only actions and never waits for the network.
+ *
+ * Wave C (docs/design/wave-C.md §2.5): the bank. bankRun(op) cuts and submits
+ * the open segment (right after a step), PAUSES the game (paused(): no step,
+ * refuse(): no dispatch), sends the op at the cut's tick/hash and waits for
+ * the server's answer (8 s at most). An `applied` answer is dispatched on the
+ * paused sim with actor BANK_ACTOR outside the recorder (never a segment
+ * input: the server applied it at that same tick) and must reproduce the
+ * server's hash, else the client rejoins and the server's state replaces it.
  */
 import {
   createSim,
@@ -29,7 +37,9 @@ import {
   type Sim,
   type SimSnapshot,
 } from "@gamez/kernel";
+import { BANK_ACTOR, type BankOp, type BankResult } from "@gamez/protocol";
 import type {
+  BankAnswer,
   VerifiedAck,
   VerifiedConnection,
   VerifiedHandlers,
@@ -37,10 +47,12 @@ import type {
   VerifiedState,
   VerifiedStatus,
 } from "@gamez/ui-host";
-import type { Settings, Store, SyncView, Toast } from "../contract.ts";
+import type { BankClient, BankView, Settings, Store, SyncView, Toast } from "../contract.ts";
+import { currentDepth, heroOf } from "../../resources.ts";
 import type { ServerHooks } from "../game.ts";
 import type { KeyValueStorage, LegacyImport } from "../persist.ts";
 import {
+  clearSyncCache,
   readSyncCache,
   writeSyncCache,
   type PendingSegment,
@@ -63,6 +75,26 @@ export const BOOT_TIMEOUT_MS = 8000;
 export const HIDDEN_RECONNECT_MS = 60_000;
 /** SyncView refresh period while ticking. */
 const VIEW_EVERY_MS = 500;
+/** The bank answer must arrive within this (ms), else the game resumes and run() says "unavailable". */
+export const BANK_TIMEOUT_MS = 8000;
+
+export const BANK_TEXT = {
+  busy: "Another bank operation is in progress",
+  offline: "The bank needs a connection to the server",
+  town: "The bank is only open in town",
+  timeout: "The bank did not answer, try again",
+  failed: "The bank could not be reached",
+  mismatch: "Bank result did not match; restoring the server state",
+} as const;
+
+/** A fresh idempotency key (protocol isOpId: 8..64 of [A-Za-z0-9_-]). */
+export function newBankOpId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID) return c.randomUUID().replace(/-/g, "");
+  let out = "";
+  for (let i = 0; i < 32; i++) out += Math.floor(Math.random() * 16).toString(16);
+  return out;
+}
 
 export const SYNC_TEXT = {
   resyncTitle: "Progress corrected by the server",
@@ -80,7 +112,8 @@ export const SYNC_TEXT = {
 /** The game as ServerSync sees it (ClassicGame implements it). */
 export interface SyncHost {
   currentSim(): Sim;
-  replaceSim(next: Sim): void;
+  /** keepUi: leave panels open (a quiet bank resync while the bank panel is open). */
+  replaceSim(next: Sim, opts?: { keepUi?: boolean }): void;
   emit(events: readonly GameEvent[]): void;
   notify(kind: Toast["kind"], title: string, body: string, ms?: number): void;
   log(text: string): void;
@@ -102,6 +135,17 @@ export interface ServerSyncOptions {
   /** Timers (tests inject fakes). */
   setTimer?(cb: () => void, ms: number): unknown;
   clearTimer?(handle: unknown): void;
+  /** Bank op ids (tests inject a counter). Default newBankOpId(). */
+  newOpId?(): string;
+}
+
+/** The bank op in flight: waiting for a legal cut ("cut"), or for the answer ("sent"). */
+interface BankFlight {
+  opId: string;
+  op: BankOp;
+  phase: "cut" | "sent";
+  resolve(r: BankResult): void;
+  timer: unknown;
 }
 
 /** Result of boot(): the sim to start with and how it was obtained. */
@@ -139,6 +183,15 @@ function makeStore<T>(initial: T): MutableStore<T> {
       for (const cb of subs) cb();
     },
   };
+}
+
+function sameBankView(a: BankView, b: BankView): boolean {
+  return (
+    a.blocked === b.blocked &&
+    a.last?.opId === b.last?.opId &&
+    a.last?.ok === b.last?.ok &&
+    a.last?.message === b.last?.message
+  );
 }
 
 function sameView(a: SyncView, b: SyncView): boolean {
@@ -206,6 +259,15 @@ export class ServerSync implements ServerHooks {
   #early: VerifiedState | null = null;
   /** A legacy import whose answer is still out (after a boot timeout). */
   #importInFlight = false;
+  /** Wave C bank op in flight. */
+  #bank: BankFlight | null = null;
+  /** Ops whose answer did not come in time (a late `applied` forces a rejoin). */
+  readonly #lateOps = new Set<string>();
+  readonly #bankView = makeStore<BankView>({ blocked: "offline", last: null });
+  readonly #bankClient: BankClient = {
+    view: this.#bankView.store,
+    run: (op) => this.bankRun(op),
+  };
 
   constructor(opts: ServerSyncOptions) {
     this.#opts = opts;
@@ -403,6 +465,9 @@ export class ServerSync implements ServerHooks {
       error: (code, message) => {
         if (live()) this.#guard(() => this.#onError(code, message));
       },
+      bank: (a) => {
+        if (live()) this.#guard(() => this.#onBank(a));
+      },
     };
     try {
       this.#conn = this.#opts.connect();
@@ -449,6 +514,11 @@ export class ServerSync implements ServerHooks {
 
   #onStatus(st: VerifiedStatus): void {
     this.#status = st;
+    if (st !== "online" && this.#bank) {
+      // The answer cannot arrive on another socket; a rejoin carries any applied change.
+      this.#lateOps.add(this.#bank.opId);
+      this.#finishBank({ ok: false, code: "unavailable", message: BANK_TEXT.failed });
+    }
     this.#updateView(true);
   }
 
@@ -536,6 +606,7 @@ export class ServerSync implements ServerHooks {
     s: { epoch: number; tick: number; hash: string },
     snapshot: SimSnapshot,
     host: SyncHost,
+    keepUi = false,
   ): boolean {
     const cur = host.currentSim();
     if (
@@ -559,7 +630,7 @@ export class ServerSync implements ServerHooks {
       return false;
     }
     this.#acceptState(s, sim);
-    host.replaceSim(sim);
+    host.replaceSim(sim, keepUi ? { keepUi: true } : undefined);
     this.#updateView(true);
     return true;
   }
@@ -578,6 +649,11 @@ export class ServerSync implements ServerHooks {
     const host = this.#host;
     if (!host || this.#restarting || this.#boot) {
       if (!this.#boot) this.#epoch = r.epoch;
+      return;
+    }
+    if (r.code === "bank") {
+      // The server applied a bank op at its verified tick (the slow path): adopt quietly.
+      this.#adopt(r, r.snapshot, host, true);
       return;
     }
     this.#lastResync = { code: r.code, message: r.message, at: this.#opts.wall() };
@@ -613,6 +689,8 @@ export class ServerSync implements ServerHooks {
 
   /** ServerHooks.newGame: restarts the server instance; plays a placeholder until it answers. */
   newGame(seed: number): Sim {
+    // Starting from scratch: drop the per-account cache so a reload cannot bring the old hero back.
+    clearSyncCache(this.#opts.storage, this.#opts.accountId);
     const placeholder = createSim(this.#opts.loaded, { seed });
     this.#pending = [];
     this.#overflow = false;
@@ -687,6 +765,7 @@ export class ServerSync implements ServerHooks {
     if (this.#serverOnly.has(name)) {
       return { code: "server_only", message: "Only the server grants this" };
     }
+    if (this.#bank) return { code: "busy", message: "Banking…" };
     if (this.#recording && this.#recorder.inputs.length >= this.#limits.maxInputsPerSegment) {
       return { code: "busy", message: "Too many actions at once" };
     }
@@ -703,7 +782,13 @@ export class ServerSync implements ServerHooks {
     return Math.max(1, this.#limits.maxTicksPerSegment - (sim.tick - this.#recorder.fromTick));
   }
 
+  /** ServerHooks.paused: a bank op is out (no step, no dispatch until it is answered). */
+  paused(): boolean {
+    return this.#bank?.phase === "sent";
+  }
+
   stepped(sim: Sim, nowMs: number): void {
+    if (this.#bank?.phase === "cut") this.#guard(() => this.#bankTryCut());
     if (!this.#recording || this.#restarting) return;
     const span = sim.tick - this.#recorder.fromTick;
     if (
@@ -792,6 +877,7 @@ export class ServerSync implements ServerHooks {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#gen++;
+    this.#finishBank({ ok: false, code: "unavailable", message: BANK_TEXT.failed });
     const b = this.#boot;
     if (b) {
       this.#boot = null;
@@ -806,12 +892,165 @@ export class ServerSync implements ServerHooks {
     this.#conn = null;
   }
 
+  // ---- bank (wave C) ------------------------------------------------------------
+
+  /** api.bank */
+  get bank(): BankClient {
+    return this.#bankClient;
+  }
+
+  /** Why a bank op cannot start now (BankView.blocked), or null. */
+  #bankBlocked(): BankView["blocked"] {
+    if (this.#bank) return "busy";
+    if (
+      this.#detached ||
+      this.#destroyed ||
+      this.#restarting ||
+      this.#boot !== null ||
+      this.#overflow ||
+      this.#status !== "online" ||
+      this.#epoch < 0 ||
+      this.#verified === null ||
+      !this.#conn?.sendBank
+    ) {
+      return "offline";
+    }
+    const sim = this.#host?.currentSim();
+    if (!sim) return "offline";
+    if (heroOf(sim.world) === 0 || currentDepth(sim.world) !== 0) return "town";
+    return null;
+  }
+
+  #updateBankView(last?: BankView["last"]): void {
+    const cur = this.#bankView.get();
+    const next: BankView = {
+      blocked: this.#bankBlocked(),
+      last: last === undefined ? cur.last : last,
+    };
+    if (!sameBankView(next, cur)) this.#bankView.set(next);
+  }
+
+  /**
+   * BankClient.run: cuts the open segment, pauses, sends the op and resolves
+   * with the server's result (or "unavailable" after BANK_TIMEOUT_MS).
+   */
+  bankRun(op: BankOp): Promise<BankResult> {
+    const blocked = this.#bankBlocked();
+    if (blocked !== null) {
+      const result: BankResult =
+        blocked === "busy"
+          ? { ok: false, code: "busy", message: BANK_TEXT.busy }
+          : blocked === "town"
+            ? { ok: false, code: "not_in_town", message: BANK_TEXT.town }
+            : { ok: false, code: "unavailable", message: BANK_TEXT.offline };
+      return Promise.resolve(result);
+    }
+    return new Promise<BankResult>((resolve) => {
+      const opId = this.#opts.newOpId ? this.#opts.newOpId() : newBankOpId();
+      this.#bank = { opId, op, phase: "cut", resolve, timer: null };
+      this.#updateBankView();
+      this.#guard(() => this.#bankTryCut());
+      // A cut that threw leaves the op waiting for the next step; the timeout still bounds it.
+      const b = this.#bank;
+      if (b !== null && b.opId === opId && b.timer === null) {
+        b.timer = this.#setTimer(() => this.#bankTimeout(opId), BANK_TIMEOUT_MS);
+      }
+    });
+  }
+
+  /**
+   * Cuts the open segment and sends the op, when legal now (no input at the
+   * current tick, i.e. right after a step); otherwise stepped() retries.
+   */
+  #bankTryCut(): void {
+    const b = this.#bank;
+    const host = this.#host;
+    if (!b || b.phase !== "cut" || !host) return;
+    const sim = host.currentSim();
+    if (this.#recorder.inputs.some((i) => i.tick >= sim.tick)) return;
+    this.#cut(sim);
+    const conn = this.#conn;
+    if (this.#overflow || this.#status !== "online" || !conn?.sendBank) {
+      this.#finishBank({ ok: false, code: "unavailable", message: BANK_TEXT.offline });
+      return;
+    }
+    const sent = conn.sendBank({
+      opId: b.opId,
+      op: b.op,
+      at: { tick: sim.tick, hash: sim.hash() },
+    });
+    if (!sent) {
+      this.#finishBank({ ok: false, code: "unavailable", message: BANK_TEXT.offline });
+      return;
+    }
+    b.phase = "sent";
+  }
+
+  #bankTimeout(opId: string): void {
+    if (this.#bank?.opId !== opId) return;
+    this.#lateOps.add(opId);
+    this.#host?.log(`Bank: no answer for ${opId}`);
+    this.#finishBank({ ok: false, code: "unavailable", message: BANK_TEXT.timeout });
+  }
+
+  #onBank(a: BankAnswer): void {
+    const b = this.#bank;
+    if (!b || b.opId !== a.opId || b.phase !== "sent") {
+      if (a.applied !== null && this.#lateOps.delete(a.opId)) {
+        // Applied after we gave up and resumed: the server's state differs now.
+        this.#host?.log(BANK_TEXT.mismatch);
+        this.reconnect();
+      }
+      return;
+    }
+    if (a.applied !== null) this.#applyBank(a.applied);
+    this.#finishBank(a.result);
+  }
+
+  /** Replays the server's bank dispatch on the paused sim, outside the recorder. */
+  #applyBank(applied: NonNullable<BankAnswer["applied"]>): void {
+    const host = this.#host;
+    if (!host) return;
+    const sim = host.currentSim();
+    let events: readonly GameEvent[] = [];
+    let ok = sim.tick === applied.tick;
+    if (ok) {
+      try {
+        const res = sim.dispatch(applied.name, applied.payload, BANK_ACTOR);
+        ok = res.ok && sim.hash() === applied.hash;
+        events = res.events;
+      } catch {
+        ok = false;
+      }
+    }
+    if (!ok) {
+      host.log(BANK_TEXT.mismatch);
+      this.reconnect();
+      return;
+    }
+    // The server's new base: it replaced the verified state at the same tick.
+    this.#verified = { tick: applied.tick, hash: applied.hash };
+    this.#recorder.reset(sim.tick);
+    if (events.length > 0) host.emit(events);
+  }
+
+  #finishBank(result: BankResult): void {
+    const b = this.#bank;
+    if (!b) return;
+    this.#bank = null;
+    if (b.timer !== null) this.#clearTimer(b.timer);
+    const message = result.ok ? "" : result.message;
+    this.#updateBankView({ opId: b.opId, ok: result.ok, message });
+    b.resolve(result);
+  }
+
   // ---- view --------------------------------------------------------------------
 
   #updateView(force: boolean): void {
     const now = this.#opts.now();
     if (!force && now - this.#lastViewAt < VIEW_EVERY_MS) return;
     this.#lastViewAt = now;
+    this.#updateBankView();
     const sim = this.#host?.currentSim();
     const verifiedTick = this.#verified?.tick ?? 0;
     const next: SyncView = {

@@ -11,6 +11,10 @@
  *   craft and gamble town steps (./craft.ts), stash tabs and the loot
  *   filter (./town.ts, ./think.ts), telegraph dodging (./dodge.ts), the
  *   Rift (./riftLoop.ts), stairs-biased exploration (./dungeon.ts).
+ *   Quests: chained quests accepted in the same visit (./town.ts questOps),
+ *   clearLevel objectives hunted to the last monster (./dungeon.ts
+ *   clearObjective, town.ts objectiveReturn), offline kills credited to
+ *   "any monster" kill quests (./offline.ts).
  * - classic.auto.allocate (pre 10, ./allocate.ts): stat/skill points by class
  *   autoAlloc / autoSkillOrder, new skills into empty bar slots.
  * - Actions (./actions.ts, ./offline.ts): classic.setControl,
@@ -31,7 +35,7 @@ import { thinkSystem } from "./think.ts";
 
 export const classicAuto = defineModule({
   id: MODULE.auto,
-  version: "0.3.1",
+  version: "0.3.2",
   deps: [MODULE.core],
   optionalDeps: [
     MODULE.content,

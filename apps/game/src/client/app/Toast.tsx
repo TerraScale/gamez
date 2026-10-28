@@ -8,7 +8,12 @@ export function Toast({ notice }: { notice: Notice | null }) {
       className={`toast toast-${notice.tone}`}
       role={notice.tone === "error" ? "alert" : "status"}
     >
-      {notice.text}
+      <span className="toast-text">{notice.text}</span>
+      {notice.action ? (
+        <button type="button" className="toast-action" onClick={() => notice.action?.run()}>
+          {notice.action.label}
+        </button>
+      ) : null}
     </div>
   );
 }

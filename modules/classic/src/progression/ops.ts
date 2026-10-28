@@ -35,6 +35,7 @@ import {
   type SkillProto,
 } from "../types.ts";
 import { addXp, healFull } from "./level.ts";
+import { settleAcceptedClear } from "./quests.ts";
 import { applyHeroStats } from "./stats.ts";
 import { byString, replace } from "./util.ts";
 
@@ -216,6 +217,8 @@ export function execAcceptQuest(world: World, ctx: SimContext, quest: string): O
   active.sort((a, b) => byString(a.id, b.id));
   world.setResource(RES.quests, { active, completed: qs.completed });
   emit(ctx, { type: "classic.quest.accepted", quest });
+  // A clearLevel quest accepted on an already empty live level completes at once.
+  settleAcceptedClear(world, ctx, quest);
   return OK;
 }
 

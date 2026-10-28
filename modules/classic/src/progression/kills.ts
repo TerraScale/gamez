@@ -7,7 +7,7 @@ import type { SimContext, SystemDef, World } from "@gamez/kernel";
 import { busOf, type DeathRecord } from "../bus.ts";
 import { HeroStats, Level, Life, Mana } from "../components.ts";
 import { SYSTEM } from "../ids.ts";
-import { heroOf, RES, runStatsOf } from "../resources.ts";
+import { heroOf, RES, runStatsOf, type DungeonState } from "../resources.ts";
 import { xpForKill } from "../rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../types.ts";
 import { addXp } from "./level.ts";
@@ -36,11 +36,22 @@ export const progressionKills: SystemDef = {
   run(world, ctx) {
     const hero = heroOf(world);
     if (hero === 0) return;
-    const kills = busOf(world).deaths.filter(isCreditedKill);
+    const deaths = busOf(world).deaths;
+    const kills = deaths.filter(isCreditedKill);
     if (kills.length > 0) creditKills(world, ctx, hero, kills);
-    advanceLevelQuests(world, ctx, kills.length > 0);
+    advanceLevelQuests(world, ctx, levelDeathThisTick(world, deaths));
   },
 };
+
+/**
+ * True when a monster died on the live level this tick, credited or not (an
+ * exploder that kills itself leaves no hero credit, but may empty the level).
+ */
+function levelDeathThisTick(world: World, deaths: DeathRecord[]): boolean {
+  const live = world.getResource<DungeonState>(RES.dungeon)?.live ?? 0;
+  if (live === 0) return false;
+  return deaths.some((d) => !d.isHero && d.team === "monster" && d.depth === live);
+}
 
 function creditKills(world: World, ctx: SimContext, hero: number, kills: DeathRecord[]): void {
   const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);

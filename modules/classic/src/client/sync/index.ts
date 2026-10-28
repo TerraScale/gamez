@@ -7,9 +7,12 @@ import type { SaveRecord, SaveStore } from "../persist.ts";
 import type { ServerSync } from "./server-sync.ts";
 
 export {
+  BANK_TEXT,
+  BANK_TIMEOUT_MS,
   BOOT_TIMEOUT_MS,
   DEFAULT_LIMITS,
   HIDDEN_RECONNECT_MS,
+  newBankOpId,
   ServerSync,
   SYNC_ACTOR,
   SYNC_TEXT,

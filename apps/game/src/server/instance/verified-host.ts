@@ -26,16 +26,37 @@ import {
   type SimSnapshot,
 } from "@gamez/kernel";
 import {
+  BANK_ACTOR,
   packSnapshot,
   unpackSnapshot,
+  VAULT_MAX_ITEMS,
   VERIFIED_ACTOR,
+  type ArenaBuild,
+  type BankOp,
+  type BankResult,
+  type EconomyErrorCode,
   type OfflineGrant,
+  type VaultItem,
   type ResyncCode,
   type VerifiedClientMessage,
   type VerifiedServerMessage,
   type VerifyLimits,
 } from "@gamez/protocol";
 import type { ReportEnvelope } from "../contracts.ts";
+import {
+  actionCode,
+  BANK_KEEP_MS,
+  BANK_LIMIT,
+  balanceOf,
+  bankEventOf,
+  creditAccount,
+  failure,
+  refundToAccount,
+  SEASON_KV,
+  takeFromAccount,
+  type BankAccount,
+} from "./bank-saga.ts";
+import type { BankEffect, BankOpRow, BankStore } from "./bank-store.ts";
 import { TokenBucket, type BucketSpec } from "../rate-limit.ts";
 import { PING_LIMIT, type InstanceSocket, type SocketInfo } from "./host.ts";
 import { CLOSE_REPLACED } from "./messages.ts";
@@ -84,6 +105,42 @@ export interface ReportOutbox {
   append(table: string, pk: string, op: "upsert" | "delete", payload: unknown): unknown;
 }
 
+/**
+ * Wave C platform services of a verified instance (docs/design/wave-C.md
+ * §2.4, §2.7-§2.8): the bank saga's store and account calls, the feature
+ * flag, season reporting. Absent: the bank answers "unavailable".
+ */
+export interface VerifiedPlatformDeps {
+  /** bank_op rows + platform_kv on the same SQLite as the VerifiedStore. */
+  store: BankStore;
+  account: BankAccount;
+  /** Feature flag "bank" (config/flags.ts featureEnabled; fail open). */
+  bankEnabled(): Promise<boolean>;
+  /** Items in the account vault (pre-check for vault_full on item deposits). Optional. */
+  vaultCount?(accountId: string): Promise<number>;
+  /** AccountDO.seasonProgress (monotonic; retried at the next compaction on failure). */
+  seasonProgress?(accountId: string, key: string, total: number): Promise<unknown>;
+  /** A bank op is pending (account error, crash): call redrive() soon (DO: alarm). */
+  scheduleRedrive(): void;
+}
+
+type BankMessage = Extract<VerifiedClientMessage, { t: "bank" }>;
+type BankApplied = Extract<VerifiedServerMessage, { t: "bank" }>["applied"];
+interface BankOutcome {
+  result: BankResult;
+  /** The verified sim changed (and was committed). */
+  changed: boolean;
+  payload: unknown;
+}
+
+const WITHDRAWALS: ReadonlySet<BankOp["kind"]> = new Set(["withdrawCoin", "withdrawItem"]);
+
+/** "<mode>:<accountId>" -> accountId. */
+export function accountOfInstance(name: string): string {
+  const i = name.indexOf(":");
+  return i >= 0 ? name.slice(i + 1) : "";
+}
+
 export interface VerifiedHostDeps {
   /** DO name ("<mode>:<accountId>"); prefix of instance ids and report pks. */
   name: string;
@@ -102,6 +159,8 @@ export interface VerifiedHostDeps {
   scheduleFlush(): void;
   /** Diagnostics (default console). */
   log?(level: "info" | "warn" | "error", message: string, data?: unknown): void;
+  /** Wave C: bank, builds, season progress (null/absent: no platform). */
+  platform?: VerifiedPlatformDeps | null;
 }
 
 interface Limits {
@@ -109,6 +168,7 @@ interface Limits {
   import: TokenBucket;
   join: TokenBucket;
   ping: TokenBucket;
+  bank: TokenBucket;
 }
 
 type LoadResult = "ok" | "new" | "carried" | "reset";
@@ -131,6 +191,8 @@ export class VerifiedHost {
   #sim: Sim | null = null;
   #queue: Promise<void> = Promise.resolve();
   readonly #limits = new WeakMap<InstanceSocket, Limits>();
+  /** A season report is in flight (one at a time; the next compaction retries). */
+  #seasonInFlight = false;
 
   constructor(deps: VerifiedHostDeps) {
     const tick = deps.loaded.mode.tick;
@@ -182,6 +244,14 @@ export class VerifiedHost {
     });
   }
 
+  /** Like #enqueue, for work that returns a value (fallback when it throws). */
+  #enqueueValue<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+    let out = fallback;
+    return this.#enqueue(async () => {
+      out = await fn();
+    }).then(() => out);
+  }
+
   #enqueue(fn: () => Promise<void>): Promise<void> {
     const run = async (): Promise<void> => {
       try {
@@ -221,6 +291,9 @@ export class VerifiedHost {
           return;
         case "import":
           await this.#import(socket, msg);
+          return;
+        case "bank":
+          await this.#bank(socket, msg);
           return;
       }
     } catch (err) {
@@ -516,6 +589,383 @@ export class VerifiedHost {
     }
   }
 
+  // ---- bank (wave C, docs/design/wave-C.md §2.4) ------------------------------
+
+  async #bank(socket: InstanceSocket, msg: BankMessage): Promise<void> {
+    const answer = (result: BankResult, applied: BankApplied = null): void =>
+      this.#send(socket, { t: "bank", opId: msg.opId, result, applied });
+    const fail = (code: EconomyErrorCode, message: string): void => answer(failure(code, message));
+    if (!socket.info.joined) return fail("unavailable", "join first");
+    const now = this.#d.now();
+    if (!this.#limitsOf(socket).bank.take(now)) {
+      return fail("rate_limited", "too many bank operations, wait a moment");
+    }
+    const p = this.#d.platform;
+    const hooks = this.#d.policy.platform;
+    if (!p || !hooks) return fail("unavailable", "this mode has no bank");
+    if (!(await this.#bankEnabled(p))) return fail("disabled", "the bank is closed right now");
+    if (this.#ensure(socket.info) !== "ok") {
+      await this.#resync(socket, 0, "content_changed", "the game was updated", now);
+      return fail("unavailable", "the game was updated, try again");
+    }
+    const rec = this.#rec!;
+    const fast = msg.at.tick === rec.verifiedTick && msg.at.hash === rec.verifiedHash;
+    const accountId = socket.info.accountId;
+
+    const prior = p.store.get(msg.opId);
+    if (prior) {
+      if (prior.accountId !== accountId || stableHash(prior.op) !== stableHash(msg.op)) {
+        return fail("conflict", "this operation id was already used for something else");
+      }
+      if (prior.state !== "done") await this.#redriveOp(p, prior);
+      const row = p.store.get(msg.opId);
+      // The client may lack the change (its first answer was lost): send the verified state.
+      if (!fast && (this.#sim !== null || this.#ensure(socket.info) === "ok")) {
+        await this.#resync(socket, 0, "bank", "bank operation already applied", now, false);
+      }
+      return answer(row?.result ?? failure("unavailable", "the operation is still pending"));
+    }
+    try {
+      p.store.prune(now - BANK_KEEP_MS);
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: bank prune failed`, err);
+    }
+
+    const out = WITHDRAWALS.has(msg.op.kind)
+      ? await this.#bankWithdraw(p, hooks.bankAction, accountId, msg, now)
+      : await this.#bankDeposit(p, hooks, accountId, msg, now);
+    if (out.changed && this.#rec && this.#sim) {
+      if (fast) {
+        const r = this.#rec;
+        return answer(out.result, {
+          tick: r.verifiedTick,
+          name: hooks.bankAction,
+          payload: out.payload,
+          hash: r.verifiedHash,
+        });
+      }
+      await this.#resync(socket, 0, "bank", "a bank operation changed your hero", now, false);
+    }
+    answer(out.result);
+  }
+
+  async #bankEnabled(p: VerifiedPlatformDeps): Promise<boolean> {
+    try {
+      return await p.bankEnabled();
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: bank flag unreadable, open`, err);
+      return true;
+    }
+  }
+
+  /** Withdrawals take from the account first, then dispatch; a failed dispatch refunds. */
+  async #bankWithdraw(
+    p: VerifiedPlatformDeps,
+    action: string,
+    accountId: string,
+    msg: BankMessage,
+    now: number,
+  ): Promise<BankOutcome> {
+    const none = (result: BankResult): BankOutcome => ({ result, changed: false, payload: null });
+    const row: BankOpRow = {
+      opId: msg.opId,
+      accountId,
+      state: "taking",
+      op: msg.op,
+      effect: null,
+      result: null,
+      at: now,
+    };
+    p.store.put(row);
+    let taken: Awaited<ReturnType<typeof takeFromAccount>>;
+    try {
+      taken = await takeFromAccount(p.account, this.#d.name, this.mode, row);
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: bank take failed`, err);
+      p.scheduleRedrive();
+      return none(failure("unavailable", "the account did not answer, try again"));
+    }
+    if (!taken.ok) {
+      this.#finishOp(p, row, taken.result);
+      return none(taken.result);
+    }
+    const effect: BankEffect = taken.effect;
+    if (effect.balance === null) effect.balance = await balanceOf(p.account, accountId);
+    row.state = "applied";
+    row.effect = effect;
+    p.store.put(row);
+
+    const payload: Record<string, unknown> = { opId: msg.opId, op: msg.op };
+    if (effect.item !== null) payload.item = effect.item;
+    const sim = this.#sim!;
+    const res = sim.dispatch(action, payload, BANK_ACTOR);
+    if (!res.ok) {
+      const result = failure(actionCode(res.error?.code), res.error?.message ?? "refused");
+      await this.#refundOp(p, row, result);
+      return none(result);
+    }
+    const result: BankResult = { ok: true, balance: effect.balance ?? 0 };
+    if (msg.op.kind === "withdrawCoin") {
+      result.coin = effect.coin;
+      result.gold = effect.coin;
+    } else if (effect.item !== null) {
+      result.item = effect.item as VaultItem;
+    }
+    row.state = "done";
+    row.result = result;
+    try {
+      this.#commitBank(() => p.store.put(row));
+    } catch (err) {
+      // Nothing was committed (the row is still "applied"): undo the take.
+      this.#log("error", `verified ${this.#d.name}: bank commit failed`, err);
+      this.#forget();
+      row.state = "applied";
+      row.result = null;
+      const r = failure("internal", "the bank could not save, nothing was moved");
+      await this.#refundOp(p, row, r);
+      return none(r);
+    }
+    return { result, changed: true, payload };
+  }
+
+  /** Deposits dispatch first, commit the sim with the op row, then credit the account. */
+  async #bankDeposit(
+    p: VerifiedPlatformDeps,
+    hooks: NonNullable<ClientDrivenPolicy["platform"]>,
+    accountId: string,
+    msg: BankMessage,
+    now: number,
+  ): Promise<BankOutcome> {
+    const none = (result: BankResult): BankOutcome => ({ result, changed: false, payload: null });
+    if (msg.op.kind === "depositItem" && p.vaultCount) {
+      try {
+        if ((await p.vaultCount(accountId)) >= VAULT_MAX_ITEMS) {
+          return none(failure("vault_full", "the vault is full"));
+        }
+      } catch (err) {
+        this.#log("warn", `verified ${this.#d.name}: vault size unknown`, err);
+      }
+    }
+    const payload = { opId: msg.opId, op: msg.op };
+    const sim = this.#sim!;
+    const res = sim.dispatch(hooks.bankAction, payload, BANK_ACTOR);
+    if (!res.ok) {
+      return none(failure(actionCode(res.error?.code), res.error?.message ?? "refused"));
+    }
+    const ev = bankEventOf(res.events, hooks.bankEvent);
+    if (!ev || (ev.credit === null && ev.item === null)) {
+      this.#log("error", `verified ${this.#d.name}: bank action without an effect`, res.events);
+      this.#restoreSim();
+      return none(failure("internal", "the bank made a mistake, nothing was moved"));
+    }
+    const row: BankOpRow = {
+      opId: msg.opId,
+      accountId,
+      state: "crediting",
+      op: msg.op,
+      effect: { coin: ev.credit?.coin ?? 0, gold: Math.abs(ev.gold), item: ev.item, balance: null },
+      result: null,
+      at: now,
+    };
+    try {
+      this.#commitBank(() => p.store.put(row));
+    } catch (err) {
+      this.#log("error", `verified ${this.#d.name}: bank commit failed`, err);
+      this.#forget();
+      return none(failure("internal", "the bank could not save, nothing was moved"));
+    }
+    return { result: await this.#creditOp(p, row), changed: true, payload };
+  }
+
+  /** The bank changed the sim at the verified tick: it becomes the new base (log restarts there). */
+  #commitBank(extra: () => void): void {
+    const rec = this.#rec!;
+    rec.verifiedTick = this.#sim!.tick;
+    rec.verifiedHash = this.#sim!.hash();
+    this.#compact(extra);
+  }
+
+  #finishOp(p: VerifiedPlatformDeps, row: BankOpRow, result: BankResult): void {
+    row.state = "done";
+    row.result = result;
+    try {
+      p.store.put(row);
+    } catch (err) {
+      this.#log("error", `verified ${this.#d.name}: bank row not saved`, err);
+    }
+  }
+
+  /** Credits a committed deposit; a provisional ok result while the account is unreachable. */
+  async #creditOp(p: VerifiedPlatformDeps, row: BankOpRow): Promise<BankResult> {
+    try {
+      const r = await creditAccount(p.account, this.#d.name, this.mode, row);
+      if (r) {
+        this.#finishOp(p, row, r);
+        return r;
+      }
+      this.#log("warn", `verified ${this.#d.name}: credit of ${row.opId} refused, retrying later`);
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: credit of ${row.opId} failed`, err);
+    }
+    p.scheduleRedrive();
+    // The hero's side is done; the account side follows on the next re-drive.
+    const e = row.effect!;
+    const result: BankResult = { ok: true, balance: await balanceOf(p.account, row.accountId) };
+    if (e.coin > 0) result.coin = e.coin;
+    if (e.gold > 0) result.gold = e.gold;
+    return result;
+  }
+
+  /** Gives a withdrawal's take back and finishes the op with `result`. */
+  async #refundOp(p: VerifiedPlatformDeps, row: BankOpRow, result: BankResult): Promise<void> {
+    row.state = "refunding";
+    row.result = result;
+    p.store.put(row);
+    try {
+      await refundToAccount(p.account, this.#d.name, this.mode, row);
+      this.#finishOp(p, row, result);
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: refund of ${row.opId} failed`, err);
+      p.scheduleRedrive();
+    }
+  }
+
+  /** Continues one pending op (crash, account error). Every account call is idempotent by txId. */
+  async #redriveOp(p: VerifiedPlatformDeps, row: BankOpRow): Promise<void> {
+    const interrupted = failure("unavailable", "the operation was interrupted and undone");
+    switch (row.state) {
+      case "taking": {
+        // Did the take happen? Replaying it (same txId) tells, or takes now; either way undo it.
+        let taken: Awaited<ReturnType<typeof takeFromAccount>>;
+        try {
+          taken = await takeFromAccount(p.account, this.#d.name, this.mode, row, true);
+        } catch (err) {
+          this.#log("warn", `verified ${this.#d.name}: re-take of ${row.opId} failed`, err);
+          p.scheduleRedrive();
+          return;
+        }
+        if (!taken.ok) {
+          this.#finishOp(p, row, interrupted);
+          return;
+        }
+        row.effect = taken.effect;
+        await this.#refundOp(p, row, interrupted);
+        return;
+      }
+      case "applied":
+        // Taken but never committed (the commit writes "done" with the new base).
+        await this.#refundOp(p, row, interrupted);
+        return;
+      case "refunding":
+        await this.#refundOp(p, row, row.result ?? interrupted);
+        return;
+      case "crediting":
+        await this.#creditOp(p, row);
+        return;
+      case "done":
+        return;
+    }
+  }
+
+  /**
+   * Re-drives every pending bank op (the DO alarm; also on wake). Resolves
+   * with the number of ops still pending afterwards.
+   */
+  redrive(): Promise<number> {
+    return this.#enqueueValue(async () => {
+      const p = this.#d.platform;
+      if (!p) return 0;
+      for (const row of p.store.pending()) await this.#redriveOp(p, row);
+      return p.store.pending().length;
+    }, 0);
+  }
+
+  /** Pending bank ops right now (DO: keep the alarm while > 0). */
+  pendingBankOps(): number {
+    try {
+      return this.#d.platform?.store.pending().length ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Cold load: a pending bank op from before the restart is re-driven soon. */
+  #wakePending(): void {
+    const p = this.#d.platform;
+    if (p && this.pendingBankOps() > 0) p.scheduleRedrive();
+  }
+
+  // ---- arena builds and season progress (wave-C.md §2.7, §2.8) ------------------
+
+  /**
+   * The verified hero as an arena build (policy.platform.build of the verified
+   * sim + accountId from the instance name, displayName and sourceHash), or
+   * null: no build hook, nothing stored yet, no hero.
+   */
+  exportBuild(displayName: string): Promise<ArenaBuild | null> {
+    return this.#enqueueValue(async () => {
+      const hooks = this.#d.policy.platform;
+      if (!hooks?.build) return null;
+      if (!this.#sim && !this.#d.store.load()) return null;
+      this.#ensure();
+      const sim = this.#sim;
+      if (!sim) return null;
+      const b = this.#safe(() => hooks.build?.(sim.world, this.#d.loaded.registry) ?? null, null);
+      if (!b) return null;
+      return {
+        ...b,
+        accountId: accountOfInstance(this.#d.name),
+        displayName,
+        sourceHash: sim.hash(),
+      } as unknown as ArenaBuild;
+    }, null);
+  }
+
+  /** After a compaction: report a changed season total (fire-and-forget, monotonic). */
+  #reportSeason(sim: Sim): void {
+    const p = this.#d.platform;
+    const hooks = this.#d.policy.platform;
+    if (!p?.seasonProgress || !hooks?.seasonTotal || this.#seasonInFlight) return;
+    const accountId = this.#rec?.accountId || accountOfInstance(this.#d.name);
+    if (!accountId) return;
+    const s = this.#safe(
+      () => hooks.seasonTotal?.(sim.world, this.#d.loaded.registry) ?? null,
+      null,
+    );
+    if (!s || !Number.isSafeInteger(s.total) || s.total <= 0) return;
+    const value = JSON.stringify({ key: s.key, total: s.total });
+    let last: string | null;
+    try {
+      last = p.store.kvGet(SEASON_KV);
+    } catch {
+      return;
+    }
+    if (last === value) return;
+    this.#seasonInFlight = true;
+    let sent: Promise<unknown>;
+    try {
+      sent = Promise.resolve(p.seasonProgress(accountId, s.key, s.total));
+    } catch (err) {
+      sent = Promise.reject(err);
+    }
+    void sent
+      .then(
+        () => {
+          try {
+            p.store.kvSet(SEASON_KV, value);
+          } catch (err) {
+            this.#log("warn", `verified ${this.#d.name}: season report not saved`, err);
+          }
+        },
+        (err: unknown) => {
+          this.#log("warn", `verified ${this.#d.name}: season report failed`, err);
+        },
+      )
+      .finally(() => {
+        this.#seasonInFlight = false;
+      });
+  }
+
   // ---- import ----------------------------------------------------------------
 
   async #import(socket: InstanceSocket, msg: Extract<VerifiedClientMessage, { t: "import" }>) {
@@ -638,6 +1088,7 @@ export class VerifiedHost {
       return "new";
     }
     owner(stored);
+    this.#wakePending();
     if (stored.base.modeId === loaded.mode.id && stored.base.contentHash === loaded.contentHash) {
       this.#rec = stored;
       if (this.#restoreSim()) return "ok";
@@ -795,7 +1246,7 @@ export class VerifiedHost {
    * Writes the current verified state as the new base (dropping the log) and,
    * in the same transaction, the report rows that changed since last time.
    */
-  #compact(): void {
+  #compact(extra?: () => void): void {
     const rec = this.#rec!;
     const sim = this.#sim!;
     rec.base = sim.snapshot();
@@ -807,8 +1258,10 @@ export class VerifiedHost {
     this.#d.store.transaction(() => {
       this.#d.store.writeBase(rec);
       appended = this.#appendReports(sim);
+      extra?.();
     });
     if (appended > 0) this.#d.scheduleFlush();
+    this.#reportSeason(sim);
   }
 
   /** Appends changed report rows to the outbox (inside the caller's transaction). */
@@ -871,6 +1324,7 @@ export class VerifiedHost {
         import: new TokenBucket(IMPORT_LIMIT, now),
         join: new TokenBucket(JOIN_LIMIT, now),
         ping: new TokenBucket(PING_LIMIT, now),
+        bank: new TokenBucket(BANK_LIMIT, now),
       };
       this.#limits.set(socket, l);
     }

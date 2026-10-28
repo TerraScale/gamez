@@ -9,6 +9,7 @@ import {
   type ActionDef,
   type Entity,
   type FrozenRegistry,
+  type SimContext,
   type World,
 } from "@gamez/kernel";
 import { ACTION, ERR } from "../actions.ts";
@@ -25,7 +26,7 @@ import {
 } from "../components.ts";
 import { emit } from "../events.ts";
 import { clamp } from "../fixed.ts";
-import { heroOf, RES, type DungeonState, type RunStats } from "../resources.ts";
+import { heroOf, RES, type DungeonState, type QuestState, type RunStats } from "../resources.ts";
 import {
   effectiveRank,
   itemValue,
@@ -46,6 +47,7 @@ import {
   type ItemBaseProto,
   type MonsterProto,
   type NpcProto,
+  type QuestProto,
   type SkillProto,
   type ThemeProto,
 } from "../types.ts";
@@ -218,6 +220,34 @@ function junkPrice(reg: FrozenRegistry, ilvl: number): number {
   return Math.max(1, Math.floor((sum * buyPct) / (count * 100)));
 }
 
+/**
+ * Offline kills count for quests: every active, not done killMonsters quest
+ * whose target is "*" (any monster) gains `kills` (capped at its count),
+ * with the same classic.quest.progress / classic.quest.done events as live
+ * kills (progression/quests.ts). No other quest kind changes offline.
+ */
+export function creditOfflineKills(world: World, ctx: SimContext, kills: number): void {
+  if (kills <= 0) return;
+  const qs = world.getResource<QuestState>(RES.quests);
+  if (!qs || qs.active.length === 0) return;
+  let changed = false;
+  for (const q of qs.active) {
+    if (q.done) continue;
+    const qp = ctx.registry.get<QuestProto>(KIND.quest, q.id);
+    if (!qp || qp.kind !== "killMonsters" || qp.target !== "*") continue;
+    const progress = Math.min(qp.count, q.progress + kills);
+    if (progress === q.progress) continue;
+    q.progress = progress;
+    emit(ctx, { type: "classic.quest.progress", quest: q.id, progress, count: qp.count });
+    if (progress >= qp.count) {
+      q.done = true;
+      emit(ctx, { type: "classic.quest.done", quest: q.id });
+    }
+    changed = true;
+  }
+  if (changed) world.setResource(RES.quests, qs);
+}
+
 export const offlineAction: ActionDef<{ elapsedMs: number }> = {
   name: ACTION.offlineProgress,
   parse(_world, payload) {
@@ -246,6 +276,7 @@ export const offlineAction: ActionDef<{ elapsedMs: number }> = {
         toStash: true,
         reason: "offline",
       });
+    creditOfflineKills(world, ctx, r.kills);
     const stats = world.getResource<RunStats>(RES.stats);
     if (stats) stats.offlineMs += r.ms;
     emit(ctx, {

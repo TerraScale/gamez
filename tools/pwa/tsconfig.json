@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "typeRoots": ["../qa/node_modules/@types"]
+  },
+  "include": ["make-icons.ts"]
+}

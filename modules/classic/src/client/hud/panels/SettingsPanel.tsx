@@ -9,6 +9,7 @@ import { ITEM_RARITIES, type ItemRarity } from "../../../types.ts";
 import { DEFAULT_AUTO_CONFIG, type AutoConfig } from "../../../resources.ts";
 import type { ClassicClientApi, GraphicsQuality, Settings } from "../../contract.ts";
 import { tipsStore } from "../../tips/index.ts";
+import { TITLE_STORAGE_KEY } from "./AchievementsPanel.tsx";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
 import { C, labelStyle } from "../styles.ts";
@@ -121,6 +122,33 @@ export function settingsHandlers(api: ClassicClientApi) {
       api.act(ACTION.setAutoConfig, { config });
     },
   };
+}
+
+/** What "Reset progress" wipes, shown in the confirmation (account bank and cosmetics are kept). */
+export const RESET_PROGRESS_WARNING =
+  "Reset all Classic progress and start from scratch?\n\n" +
+  "This permanently deletes your hero, level, items, gold, quests, achievements and rift progress " +
+  "(on this device and on the server). Your account, bank and cosmetics are kept.";
+
+/**
+ * Wipes classic progress: the hero (local save, server instance and sync cache via
+ * api.newGame), dismissed tips and the chosen title. Returns false when the player cancels.
+ */
+export function resetProgress(
+  api: Pick<ClassicClientApi, "newGame" | "closeAll">,
+  confirm: (message: string) => boolean = (m) =>
+    typeof window === "undefined" ? true : window.confirm(m),
+): boolean {
+  if (!confirm(RESET_PROGRESS_WARNING)) return false;
+  tipsStore.reset();
+  try {
+    globalThis.localStorage?.removeItem(TITLE_STORAGE_KEY);
+  } catch {
+    // Storage blocked: the title is display-only.
+  }
+  api.closeAll();
+  api.newGame();
+  return true;
 }
 
 /** The automation draft with every field filled (stored configs may predate the wave A fields). */
@@ -353,24 +381,20 @@ export function SettingsPanel({ api }: SlotProps) {
       <Section title="Game">
         <Row>
           <Btn
-            label="Start a new game"
-            onClick={() => {
-              if (
-                typeof window === "undefined" ||
-                window.confirm("Start a new game? The local save will be wiped.")
-              ) {
-                api.newGame();
-              }
-            }}
+            label="Reset progress: delete this hero and start from scratch"
+            onClick={() => resetProgress(api)}
+            style={{ borderColor: C.danger, color: C.danger }}
           >
-            New game
+            Reset progress
           </Btn>
           <Btn label="Exit the mode" onClick={() => api.exit()}>
             Exit
           </Btn>
         </Row>
         <p style={{ ...labelStyle, color: C.muted }}>
-          New game wipes the local save. Exit leaves the classic mode.
+          Reset progress deletes your Classic hero, items, gold, quests and achievements (here and
+          on the server) and starts from scratch. Your account, bank and cosmetics are kept. Exit
+          leaves the classic mode.
         </p>
       </Section>
     </PanelFrame>

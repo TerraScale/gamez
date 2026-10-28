@@ -876,6 +876,9 @@ Deterministic rate model; `ms = min(elapsedMs, offlineCapMs)`, `minutes = floor(
 - XP = kills × average `xpForKill`; gold = kills × 45 % × average gold drop; items = `floor(kills ×
   0.02)` capped at 20, rolled magic+ → `{op:"grantItems", toStash: true}`; the rest auto-sold.
 - Queues `grantXp`, `grantGold`, `grantItems`; emits `classic.offline.summary`; adds `RunStats.offlineMs`.
+- Quest credit (quest fix round 1): the kill count also advances each active `killMonsters` quest
+  with target `*`, capped at its requirement. `reachDepth` and the other quest kinds are unchanged
+  (see §16).
 
 ---
 
@@ -888,6 +891,28 @@ Still" (reach depth 6), "Ash and Ember" (kill 15 ash seers), "Tunnel Mother" (bo
 "Ninth Flame" (boss depth 12), "Crown of Hollows" (boss depth 16), "Clear the Crypt" (clear depth 3).
 Accept at the quest giver; progress from `Bus.deaths` and transitions; `done` → turn in for gold,
 XP and an optional item (`grantItems`). Events `classic.quest.*`.
+
+Rules (quest fix round 1, `progression/quests.ts`, `progression/kills.ts`, `progression/ops.ts`):
+
+- **killBoss (a)**: a boss of the quest's depth that was killed before acceptance counts. The boss
+  slot is `((depth - 1) % 16) + 1` for every entry of `DungeonState.bossesKilled` that is not a
+  rift depth, matched against `MonsterProto.boss.depth`. A live kill of the boss also counts
+  (`advanceKillQuests`). Completion is checked every tick, so an accepted quest of this kind is done after one tick.
+- **clearLevel (b)**: the live level at depth N (`DungeonState.live`, kept while the hero visits
+  town) has no living hostile monsters after any monster death on it, credited or not (a
+  self-killing exploder included). Accepting the quest on an already empty live level completes it
+  at once (checked in the accept action). Only a clearLevel quest whose depth is the live level looks at the monsters.
+  Auto/Idle, when a clearLevel quest is active and achievable, travels to depth N and kills every
+  monster there before descending (auto/ owner).
+- **Reward items (c)**: a quest's item reward goes to the bag, else the stash, else is sold at 10 %
+  of its value as a last resort. Other grants (`reason` not `quest`) keep the old bag-or-sell rule.
+- **Offline (d, §15.4)**: offline progress credits its kill count to active `killMonsters` quests
+  whose target is `*`, capped at the requirement. It does not change `reachDepth`, `killBoss`,
+  `clearLevel` or the progress of other quests.
+- **Chains (e)**: Auto accepts chained quests in the same town visit in which their prerequisite is
+  turned in (auto/ owner).
+- `Trusted by the Town` (achievement) needs 10 quests: `questsCompleted` targets never exceed the
+  number of quests in the registry (`tests/achievements.content.test.ts`).
 
 ---
 

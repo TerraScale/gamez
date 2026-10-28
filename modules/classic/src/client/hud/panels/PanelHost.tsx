@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { Slot } from "@gamez/ui-host";
 import { useSelect } from "../hooks.ts";
 import { useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
-import { HUD_EDGE, PANEL_IDS, PANEL_ROW_RIGHT, bottomBarInset, panelSlot } from "../layout.ts";
+import { ALL_PANEL_IDS, HUD_EDGE, PANEL_ROW_RIGHT, bottomBarInset, panelSlot } from "../layout.ts";
 import type { PanelId } from "../../contract.ts";
 
 export function PanelHost({ api }: SlotProps) {
@@ -15,7 +15,7 @@ export function PanelHost({ api }: SlotProps) {
   const layout = useHudLayout(api);
   const compact = layout !== "desktop";
   const insets = useHudInsets();
-  const known = open.filter((id): id is PanelId => PANEL_IDS.includes(id));
+  const known = open.filter((id): id is PanelId => ALL_PANEL_IDS.includes(id));
   const shown = compact ? known.slice(-1) : known;
   const anyOpen = known.length > 0;
   // Esc closes every panel (closeAll is idempotent, so it may coexist with the input layer's own Esc).

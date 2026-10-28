@@ -12,6 +12,11 @@
  * actions are refused, and newGame asks the hooks for the sim to show until
  * the server's fresh state arrives. replaceSim swaps the sim after a resync.
  *
+ * Wave C (docs/design/wave-C.md §2.5): api.bank is the server's BankClient
+ * (GameDeps.bank) or, without a server, a local stand-in that is always
+ * blocked "local". While ServerHooks.paused() (a bank op is out) the sim does
+ * not step; dispatches are refused by ServerHooks.refuse.
+ *
  * Errors inside the frame loop never escape: they are shown in ui.error.
  */
 import {
@@ -26,6 +31,7 @@ import {
 import type {
   ArpgWorldRenderer,
   FloatTextSpec,
+  PlatformScreen,
   PlatformServices,
   PointerInfo,
 } from "@gamez/ui-host";
@@ -45,6 +51,8 @@ import { dist, SUB } from "../fixed.ts";
 import { RES, type AreaState, type ControlState, type GameState } from "../resources.ts";
 import { KIND, type SkillProto } from "../types.ts";
 import {
+  type BankClient,
+  type BankView,
   type ClassicClientApi,
   type HudSnapshot,
   type LogLine,
@@ -102,6 +110,11 @@ export interface GameDeps {
   extraFrame?(sim: Sim, nowMs: number): void;
   /** Server mode: segment recording and server-only rules (sync/ServerSync implements it). */
   server?: ServerHooks;
+  // ---- wave C (docs/design/wave-C.md §2.5)
+  /** The hero <-> account bank (server mode); absent: a local stand-in blocked "local". */
+  bank?: BankClient;
+  /** Opens a shell screen (services.openScreen); absent offline. */
+  openScreen?(screen: PlatformScreen): void;
 }
 
 /**
@@ -119,6 +132,8 @@ export interface ServerHooks {
   stepped(sim: Sim, nowMs: number): void;
   /** newGame: the sim to show until the server's fresh instance arrives (it restarts the server). */
   newGame(seed: number): Sim;
+  /** Wave C: true while a bank op is out; the sim does not step meanwhile. Optional. */
+  paused?(): boolean;
 }
 
 export interface ClassicGame {
@@ -134,8 +149,9 @@ export interface ClassicGame {
   /**
    * Swaps in another sim (server resync, adopted server state): resets the
    * scene, loop, pointer and panels like newGame, keeps the log and toasts.
+   * keepUi: panels and the hover stay (a quiet bank resync).
    */
-  replaceSim(next: Sim): void;
+  replaceSim(next: Sim, opts?: { keepUi?: boolean }): void;
   /** Fans events out like the sim's own (server offline-progress summary). */
   emit(events: readonly GameEvent[]): void;
   /** Adds a system line to the log. */
@@ -197,6 +213,20 @@ function isCoarsePointer(): boolean {
     return false;
   }
 }
+
+/** The bank without a server (seeded runs, cheats, offline hosts): always blocked "local". */
+export const LOCAL_BANK: BankClient = {
+  view: {
+    getSnapshot: (): BankView => LOCAL_BANK_VIEW,
+    subscribe: () => () => {},
+  },
+  run: async () => ({
+    ok: false,
+    code: "unavailable",
+    message: "The bank needs your account on the server",
+  }),
+};
+const LOCAL_BANK_VIEW: BankView = { blocked: "local", last: null };
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -597,6 +627,11 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       server.stepped(sim, nowMs);
       if (events === null) events = batch;
       else for (const ev of batch) events.push(ev);
+      // A bank op went out right after this step: hold here (the rest of the frame's ticks are dropped).
+      if (server.paused?.()) {
+        loop.reset();
+        break;
+      }
     }
     return events ?? [];
   }
@@ -604,6 +639,11 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   function tickSim(dtMs: number, nowMs: number): void {
     const control = sim.world.getResource<ControlState>(RES.control);
     const speed = control && control.mode === "idle" ? control.speed : 1;
+    if (deps.server?.paused?.()) {
+      // A bank op is out: hold the sim (no time accrues) until it is answered.
+      alpha = 0;
+      return;
+    }
     const adv = loop.advance(dtMs, speed);
     alpha = adv.alpha;
     if (adv.ticks <= 0 || nowMs < backoffUntil) return;
@@ -702,15 +742,21 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   // ---- API --------------------------------------------------------------------
 
   /** Makes `next` the current sim and resets everything derived from the old one. */
-  function swapSim(next: Sim, clearMessages: boolean): void {
+  function swapSim(next: Sim, clearMessages: boolean, keepUi = false): void {
     sim = next;
     scene.reset();
     loop.reset();
     backoffUntil = Number.NEGATIVE_INFINITY;
-    vendorNpc = 0;
-    gamblerNpc = 0;
     pointer.cancel();
     appliedZoom = Number.NaN;
+    if (keepUi) {
+      // Same hero, same place (a bank op applied by the server): keep the open panels.
+      lastHudAt = Number.NEGATIVE_INFINITY;
+      refreshHud();
+      return;
+    }
+    vendorNpc = 0;
+    gamblerNpc = 0;
     if (clearMessages) {
       setUi({ panels: [], toasts: [], error: null, hover: null });
       log.set([]);
@@ -814,6 +860,10 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     sync: deps.sync ?? cell<SyncView>(LOCAL_SYNC_VIEW).store,
     platform: deps.platform ?? null,
     session: deps.session ?? null,
+    bank: deps.bank ?? LOCAL_BANK,
+    ...(deps.openScreen
+      ? { openScreen: (screen: PlatformScreen) => deps.openScreen?.(screen) }
+      : {}),
   };
 
   refreshHud();
@@ -832,9 +882,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       audio.destroy();
     },
     currentSim: () => sim,
-    replaceSim(next) {
+    replaceSim(next, opts) {
       if (destroyed) return;
-      swapSim(next, false);
+      swapSim(next, false, opts?.keepUi === true);
     },
     emit(events) {
       if (destroyed) return;

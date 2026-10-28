@@ -4,10 +4,12 @@
  * tile) skipping ignored tiles, and the descend / under-levelled farming
  * rules. The BFS allocates its scratch arrays per call (no module state).
  */
-import type { Entity } from "@gamez/kernel";
+import { defineComponent, type Entity } from "@gamez/kernel";
 import { pushCommand } from "../bus.ts";
-import { AreaTag, Dead, Level, Monster, Pos } from "../components.ts";
+import { AreaTag, Dead, Faction, Level, Life, Monster, Pos, Summoned } from "../components.ts";
+import { emit } from "../events.ts";
 import type { TilePos } from "../fixed.ts";
+import { liveMonsterCount } from "../progression/quests.ts";
 import {
   exploreAreaOf,
   exploredPct,
@@ -15,8 +17,10 @@ import {
   RES,
   type DungeonState,
   type ExploreArea,
+  type QuestState,
 } from "../resources.ts";
 import { isBossDepth, isRiftDepth, MAIN_DUNGEON_DEPTH, monsterLevel } from "../rules.ts";
+import { KIND, type QuestProto } from "../types.ts";
 import { walkableAt, type ClassicMap } from "../world/maps.ts";
 import {
   bfs,
@@ -24,6 +28,7 @@ import {
   BFS_MAX_NODES,
   distanceField,
   freshMove,
+  LEG_TILES,
   onRecentMove,
   tileDist,
   walkTo,
@@ -283,6 +288,14 @@ export function dungeonStep(c: AutoCtx): boolean {
   // through when the hero may go on down: no second explorePct on the way back.
   const passing = canDescend && dungeon !== undefined && dungeon.deepest > c.depth;
 
+  // Quest objective (clearLevel): go down to its depth, then hunt every living monster there.
+  if (!stall) {
+    const goal = clearObjective(c);
+    if (goal > 0 && c.depth < goal && goStairs(c, "stairsDown")) return true;
+    if (goal > 0 && c.depth === goal && liveMonsterCount(c.world, goal) > 0 && clearStep(c, goal))
+      return true;
+  }
+
   let finished = stall || passing || (ea !== undefined && exploredPct(ea) >= c.cfg.explorePct);
   if (!finished) {
     const r = explore();
@@ -300,6 +313,151 @@ export function dungeonStep(c: AutoCtx): boolean {
   if (c.depth >= 2 && goStairs(c, "stairsUp")) return true;
   if (stall && depthOk && goStairs(c, "stairsDown")) return true;
   return explore() === "moving";
+}
+
+// ---------------------------------------------------------------------------
+// Quest objective: clear a level (clearLevel quests)
+// ---------------------------------------------------------------------------
+
+/**
+ * Quest objective memory (owner: classic.auto, on the hero, created lazily):
+ * a clearLevel objective given up at `depth` (every remaining monster
+ * unreachable) is not taken up again before tick `until`.
+ */
+export const AutoObjective = defineComponent<{ depth: number; until: number }>(
+  "classic.autoObjective",
+);
+/** A given-up clear objective waits this long (5 min) before Auto tries again. */
+export const OBJECTIVE_COOLDOWN_TICKS = 6000;
+/** Monsters of the objective depth may be this many levels above the (effective) hero level. */
+export const OBJECTIVE_LEVEL_MARGIN = 2;
+
+/**
+ * Depth of the clearLevel quest Auto works on now, or 0: an active, not done
+ * clearLevel quest whose depth was reached before (<= deepest), within
+ * maxDepth, with monsters at most OBJECTIVE_LEVEL_MARGIN levels above the
+ * effective hero level, not blocked by the death rules (first return after
+ * a death: not below the death depth; repeated deaths: strictly above it),
+ * not given up recently. Never with autoDescend off, during a watchdog stall
+ * or inside a rift. Several candidates: the shallowest (ties: quest id).
+ */
+export function clearObjective(c: AutoCtx): number {
+  if (!c.cfg.autoDescend || c.st.stallUntil > c.tick || isRiftDepth(c.depth)) return 0;
+  const qs = c.world.getResource<QuestState>(RES.quests);
+  const dungeon = c.world.getResource<DungeonState>(RES.dungeon);
+  if (!qs || !dungeon || qs.active.length === 0) return 0;
+  const level = effectiveLevel(c.world.get(c.hero, Level)?.level ?? 1, c.st);
+  const given = c.world.get(c.hero, AutoObjective);
+  let best = 0;
+  for (const q of qs.active) {
+    if (q.done) continue;
+    const qp = c.reg.get<QuestProto>(KIND.quest, q.id);
+    if (!qp || qp.kind !== "clearLevel") continue;
+    const d = qp.count;
+    if (d < 1 || d > dungeon.deepest || d > MAIN_DUNGEON_DEPTH) continue;
+    if (c.cfg.maxDepth > 0 && d > c.cfg.maxDepth) continue;
+    if (monsterLevel(d) > level + OBJECTIVE_LEVEL_MARGIN) continue;
+    if (c.st.deathDepth > 0) {
+      const limit = c.st.caution >= 2 ? c.st.deathDepth - 1 : c.st.deathDepth;
+      if (d > Math.max(1, limit)) continue;
+    }
+    if (given && given.depth === d && given.until > c.tick) continue;
+    if (best === 0 || d < best) best = d;
+  }
+  return best;
+}
+
+/** Gives the clear objective at `depth` up for OBJECTIVE_COOLDOWN_TICKS. */
+function giveUpObjective(c: AutoCtx, depth: number): void {
+  const v = { depth, until: c.tick + OBJECTIVE_COOLDOWN_TICKS };
+  if (c.world.has(c.hero, AutoObjective)) c.world.update(c.hero, AutoObjective, v);
+  else c.world.add(c.hero, AutoObjective, v);
+  emit(c.ctx, {
+    type: "classic.auto.notice",
+    code: "objective_unreachable",
+    message: "Auto: the last monsters of this level are out of reach, trying again later",
+  });
+}
+
+/** True for a living hostile monster of `depth` (the ones a clearLevel quest counts). */
+function isClearTarget(c: AutoCtx, e: Entity, depth: number): boolean {
+  if (c.world.read(e, Faction).team !== "monster") return false;
+  if (c.world.read(e, AreaTag).depth !== depth) return false;
+  if (c.world.has(e, Dead) || c.world.has(e, Summoned)) return false;
+  return c.world.read(e, Life).hp > 0;
+}
+
+/**
+ * The nearest living monster of `depth` by walking distance (BFS; a tile
+ * next to the monster counts, ties: BFS order, then the lower entity id),
+ * skipping ignored tiles. When the BFS was cut short: the nearest one in a
+ * straight line (ties: lower id). "unreachable" when none can be reached.
+ */
+function clearTarget(
+  c: AutoCtx,
+  depth: number,
+): { e: Entity; x: number; y: number; steps: number; next: TilePos } | "unreachable" {
+  const w = c.map.width;
+  const h = c.map.height;
+  // Tile index (the monster's tile and its 8 neighbours) -> the lowest-id monster there.
+  const near = new Map<number, Entity>();
+  let line: Entity = 0;
+  let lineD = Number.MAX_SAFE_INTEGER;
+  for (const e of c.world.query(Monster, Faction, AreaTag, Life, Pos)) {
+    if (!isClearTarget(c, e, depth)) continue;
+    const p = c.world.read(e, Pos);
+    const tx = p.x >> 8;
+    const ty = p.y >> 8;
+    if (isIgnored(c.st, tx, ty)) continue;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = tx + dx;
+        const y = ty + dy;
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const k = y * w + x;
+        if (dx === 0 && dy === 0) near.set(k, e);
+        else if (!near.has(k)) near.set(k, e);
+      }
+    const ddx = p.x - c.hx;
+    const ddy = p.y - c.hy;
+    const d = ddx * ddx + ddy * ddy;
+    if (d < lineD) {
+      lineD = d;
+      line = e;
+    }
+  }
+  if (line === 0) return "unreachable";
+  const r = bfs(c.map, c.tx, c.ty, (x, y) => (near.has(y * w + x) ? 2 : 0));
+  const pick = r.hit ? near.get(r.hit.y * w + r.hit.x)! : r.complete ? 0 : line;
+  if (pick === 0) return "unreachable";
+  const p = c.world.read(pick, Pos);
+  const x = p.x >> 8;
+  const y = p.y >> 8;
+  if (r.hit) return { e: pick, x, y, steps: r.hit.steps, next: r.hit.next };
+  return { e: pick, x, y, steps: tileDist(x, y, c.tx, c.ty), next: { x, y } };
+}
+
+/**
+ * The clear objective on its depth: walk to the nearest living monster (the
+ * fight step takes over once it is close). Stuck walks give the monster's
+ * tile up like a frontier (giveUpFrontier). False when every remaining
+ * monster is out of reach: the objective is given up for a while.
+ */
+function clearStep(c: AutoCtx, depth: number): boolean {
+  const t = clearTarget(c, depth);
+  if (t === "unreachable") {
+    giveUpObjective(c, depth);
+    return false;
+  }
+  const st = c.st;
+  const same = st.plan === "explore" && st.frontierX === t.x && st.frontierY === t.y;
+  st.frontierX = t.x;
+  st.frontierY = t.y;
+  st.focus = t.e;
+  setPlan(c, "explore", "clear level");
+  if (t.steps <= LEG_TILES || tileDist(t.x, t.y, c.tx, c.ty) <= LEG_TILES) moveTo(c, t.x, t.y);
+  else if (!(same && onRecentMove(c))) freshMove(c, t.next.x, t.next.y);
+  return true;
 }
 
 /** Stuck handling for exploration targets. */

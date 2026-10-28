@@ -43,6 +43,7 @@ async function waitForRow(
   accountId: string,
   kind: string,
   timeoutMs = 15_000,
+  displayName?: string,
 ): Promise<Record<string, unknown> | null> {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
@@ -50,10 +51,18 @@ async function waitForRow(
       "SELECT account_id, display_name, kind FROM account_summary WHERE account_id = ?",
       [accountId],
     );
-    if (rows[0] && rows[0].kind === kind) return rows[0];
+    const row = rows[0];
+    // Registration and a later rename replicate as separate versions: wait for the
+    // expected name too, not only the first row of the right kind.
+    if (row && row.kind === kind && (displayName === undefined || row.display_name === displayName))
+      return row;
     await new Promise((r) => setTimeout(r, 300));
   }
-  return null;
+  const rows = await ctx.db.query(
+    "SELECT account_id, display_name, kind FROM account_summary WHERE account_id = ?",
+    [accountId],
+  );
+  return rows[0] ?? null;
 }
 
 export const authFeature: E2eFeature = {
@@ -213,9 +222,15 @@ export const authFeature: E2eFeature = {
     );
 
     // 8. the account_summary read model gets the registered profile
-    const row = await waitForRow(ctx, main.accountId, "registered");
+    const row = await waitForRow(
+      ctx,
+      main.accountId,
+      "registered",
+      15_000,
+      `Ember ${suffix.slice(-4)}`,
+    );
     check(
-      row !== null && row.display_name === `Ember ${suffix.slice(-4)}`,
+      row !== null && row.kind === "registered" && row.display_name === `Ember ${suffix.slice(-4)}`,
       `auth: account_summary row in D1 (${row ? `${String(row.display_name)}/${String(row.kind)}` : "missing"})`,
     );
 

@@ -13,6 +13,13 @@ export { AccountDO } from "./do/account.ts";
 export { IdentityDO } from "./do/identity.ts";
 export { ChatChannelDO } from "./do/chat.ts";
 export { GuildDO } from "./do/guild.ts";
+// wave C (docs/design/wave-C.md)
+export { EscrowDO } from "./do/escrow.ts";
+export { MarketDO } from "./do/market.ts";
+export { PlotAuctionDO } from "./do/plots.ts";
+export { ShopDO } from "./do/shop.ts";
+export { ArenaDO } from "./do/arena.ts";
+export { ConfigDO } from "./do/config.ts";
 
 export default {
   async fetch(request, env, ctx) {

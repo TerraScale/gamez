@@ -65,6 +65,8 @@ export const ACTION = {
   setSpeed: "classic.setSpeed",
   setAutoConfig: "classic.setAutoConfig",
   offlineProgress: "classic.offlineProgress",
+  // ---- wave C: classic.platform (server-only, src/platform/bank.ts)
+  bank: "classic.bank",
   // ---- wave A (docs/design/wave-A.md)
   // classic.items
   gamble: "classic.gamble",
@@ -134,6 +136,8 @@ export interface ActionPayloads {
   "classic.setAutoConfig": { config: Partial<AutoConfig> };
   /** Elapsed wall time supplied by the host (server-verified later). 0 < elapsedMs <= 7 days. */
   "classic.offlineProgress": { elapsedMs: number };
+  /** Wave C, server-only: hero <-> account bank op (src/platform/bank.ts ClassicBankPayload). */
+  "classic.bank": import("./platform/bank.ts").ClassicBankPayload;
   // ---- wave A
   /** Town, gambler NPC in reach: buy a random item of `category` (EconomyProto.gamble) into the bag. */
   "classic.gamble": { npc: Entity; category: ItemCategory };

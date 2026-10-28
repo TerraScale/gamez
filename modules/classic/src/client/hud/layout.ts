@@ -42,6 +42,15 @@ export const PANEL_IDS: readonly PanelId[] = [
   "account",
 ];
 
+/**
+ * Wave C panel ids. Kept apart from PANEL_IDS (its size is pinned by the wave A
+ * helper test); ALL_PANEL_IDS is what the HUD registers and renders.
+ */
+export const WAVE_C_PANEL_IDS: readonly PanelId[] = ["bank"];
+
+/** Every panel the HUD renders: PANEL_IDS, then the wave C panels. */
+export const ALL_PANEL_IDS: readonly PanelId[] = [...PANEL_IDS, ...WAVE_C_PANEL_IDS];
+
 export function panelSlot(id: PanelId): string {
   return `classic.panel.${id}`;
 }

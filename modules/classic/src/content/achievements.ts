@@ -315,9 +315,9 @@ const ROWS: Row[] = [
   {
     slug: "trusted_by_the_town",
     name: "Trusted by the Town",
-    description: "Complete 15 quests.",
+    description: "Complete every quest.",
     metric: "questsCompleted",
-    target: 15,
+    target: 10,
     gold: 575,
     hidden: true,
   },

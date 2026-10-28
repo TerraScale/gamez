@@ -8,7 +8,8 @@
  *                              \--world--> buildHud() at 10 Hz --> hud store --> React (selectors)
  *   React buttons / keys / taps --> api.act(name, payload) --> sim.dispatch()
  */
-import type { PlatformServices } from "@gamez/ui-host";
+import type { PlatformScreen, PlatformServices } from "@gamez/ui-host";
+import type { BankOp, BankResult } from "@gamez/protocol";
 import type { DispatchResult, Entity } from "@gamez/kernel";
 import type { AutoPlan, HeroStatsValue } from "../components.ts";
 import type { AutoConfig, ControlMode, LootFilter, RiftRecord, SimSpeed } from "../resources.ts";
@@ -60,7 +61,10 @@ export type PanelId =
   /** Leaderboards (level, depth, rift; per class) — key B. */
   | "leaderboard"
   /** Sign in / register / link the guest, display name. */
-  | "account";
+  | "account"
+  // ---- wave C (docs/design/wave-C.md §10.4)
+  /** Hero <-> account bank and vault; opened from the stash chest (needs api.bank). */
+  | "bank";
 
 /** Display colours (0xRRGGBB) shared by HUD and renderer. */
 export const RARITY_COLOR: Record<ItemRarity, number> = {
@@ -232,6 +236,18 @@ export interface QuestView {
   reward: string;
 }
 
+/**
+ * The quest giver of the current area (Captain Hale in town), for the quest
+ * panel. `inReach` uses the sim's rule (INTERACT_RANGE from the hero):
+ * Accept and Turn in need it, otherwise the panel offers to walk over.
+ */
+export interface QuestGiverView {
+  entity: Entity;
+  proto: string;
+  name: string;
+  inReach: boolean;
+}
+
 export interface VendorView {
   npc: Entity;
   proto: string;
@@ -338,6 +354,8 @@ export interface HudSnapshot {
   stashSize: number;
   skills: SkillView[];
   quests: QuestView[];
+  /** Quest giver of the area (null: no giver NPC here). Optional: absent in fixtures means none. */
+  questGiver?: QuestGiverView | null;
   /** NPC panel opened by classic.npc.opened (cleared when the hero walks away). */
   vendor: VendorView | null;
   // ---- wave A sections (optional: null/absent when the module is not loaded or nothing applies).
@@ -641,4 +659,32 @@ export interface ClassicClientApi {
   readonly session?: { accountId: string; name: string } | null;
   /** Leaves the mode (services.exit). */
   exit(): void;
+  // Wave C (docs/design/wave-C.md §2.5, §10.4). Optional so older fakes stay valid.
+  /** Hero <-> account bank (server mode only; absent or unavailable in local mode). */
+  readonly bank?: BankClient;
+  /** Opens a shell screen over the game (services.openScreen); absent offline. */
+  openScreen?(screen: PlatformScreen): void;
+}
+
+/** Wave C: bank state for the HUD (Bank tab of the stash panel). */
+export interface BankView {
+  /**
+   * Why bank ops are unavailable right now, or null when they work:
+   * "local" (local mode), "offline" (socket down), "town" (hero not in town),
+   * "busy" (an op is in flight).
+   */
+  blocked: "local" | "offline" | "town" | "busy" | null;
+  /** Last finished op result, for a toast. */
+  last: { opId: string; ok: boolean; message: string } | null;
+}
+
+/**
+ * Wave C bank client (implemented by the classic client, T-bridge): run() cuts
+ * a segment, pauses the sim, sends the op over the verified socket, applies
+ * the server's answer and resumes. Never resolves later than ~8 s (timeout ->
+ * { ok: false, code: "unavailable" }; the sim resumes, a resync fixes any drift).
+ */
+export interface BankClient {
+  readonly view: Store<BankView>;
+  run(op: BankOp): Promise<BankResult>;
 }

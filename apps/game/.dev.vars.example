@@ -17,3 +17,17 @@ AUTH_SECRET=dev-only-secret-change-me
 # ADMIN_ACCOUNT_IDS=
 # Chat moderation: llama-guard (needs the AI binding) | stub | off.
 # MODERATION=stub
+
+# ---- Payments (wave C, see docs/secrets.md "Payments"). Placeholders only: never real keys.
+# Leave every line commented to use the local sandbox stub on dev hosts (PAYMENTS_STUB unset).
+# Note: undeclared keys do not reach env in local dev (verified, docs/secrets.md); declare them in
+# cloudflare.config.ts to test a real provider locally.
+# PAYMENTS_STUB=1
+# PUBLIC_ORIGIN=https://<your-public-host>
+# STRIPE_SECRET_KEY=sk_test_<placeholder>
+# STRIPE_WEBHOOK_SECRET=whsec_<placeholder>
+# ASAAS_API_KEY=<asaas-sandbox-api-key>
+# ASAAS_WEBHOOK_TOKEN=<token-you-choose-for-the-asaas-webhook>
+# ASAAS_ENV=sandbox
+# MERCADOPAGO_ACCESS_TOKEN=TEST-<placeholder>
+# MERCADOPAGO_WEBHOOK_SECRET=<mercadopago-webhook-secret>
