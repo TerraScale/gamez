@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { mkdirSync, openSync, rmSync } from "node:fs";
 import { GAME_DIR, VP_BIN } from "./paths.ts";
 
 export interface DevServer {
@@ -18,9 +18,26 @@ async function healthy(url: string): Promise<boolean> {
   }
 }
 
+/** Private state for the e2e server on `port` (apps/game/vite.config.ts reads the env). */
+export function e2eStateDirs(port: number): { persist: string; cache: string } {
+  const base = `/tmp/gamez-e2e-state-${port}`;
+  return { persist: `${base}/persist`, cache: `${base}/vite` };
+}
+
+/** Wipes the e2e server's private state: each e2e run starts from empty DOs and D1. */
+export function resetE2eState(port: number): void {
+  const { persist } = e2eStateDirs(port);
+  rmSync(persist, { recursive: true, force: true });
+  mkdirSync(persist, { recursive: true });
+}
+
 /**
  * Starts `vp dev` for apps/game in its own process group (so stop() also ends
  * workerd) and waits for /api/health. Output is appended to `logFile`.
+ * The server persists into /tmp/gamez-e2e-state-<port> (DO + D1 SQLite, Vite dep
+ * cache), never into apps/game/.cloudflare/state, which the live :5173 server uses:
+ * two workerd processes on one SQLite file hit SQLITE_BUSY, and a shared dep cache
+ * makes one server's re-optimisation answer 504 to the other.
  */
 export async function startDevServer(port: number, logFile: string): Promise<DevServer> {
   const url = `http://localhost:${port}`;
@@ -28,8 +45,10 @@ export async function startDevServer(port: number, logFile: string): Promise<Dev
     throw new Error(`something already serves ${url}; stop it or set E2E_PORT`);
   const log = openSync(logFile, "a");
   const started = performance.now();
+  const dirs = e2eStateDirs(port);
   const child = spawn(VP_BIN, ["dev", "--port", String(port), "--strictPort"], {
     cwd: GAME_DIR,
+    env: { ...process.env, GAMEZ_PERSIST_STATE: dirs.persist, GAMEZ_VITE_CACHE_DIR: dirs.cache },
     detached: true,
     stdio: ["ignore", log, log],
   });

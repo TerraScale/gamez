@@ -8,7 +8,9 @@
  *  5. A plays the instanced test modes (steps, duel) over /ws/instance: scripted
  *     actions replayed on a local sim, invalid / unknown / stale actions rejected;
  *  6. the dev server restarts: A's welcome must put it on that tile, and each
- *     instance must resume from its persisted snapshot; a fresh join resets it.
+ *     instance must resume from its persisted snapshot; a fresh join resets it;
+ *  7. the client module graph (classic runs its whole sim in the browser) loads:
+ *     every module the page imports, statically or dynamically, answers 200.
  *
  * Usage: `vp run e2e` (plain node, type stripping). Env: E2E_PORT, default 5299;
  * E2E_LOG, default /tmp/gamez-e2e-dev.log.
@@ -18,7 +20,9 @@ import { townMap } from "@gamez/classic.town";
 import type { EntityState, ServerMessage, TilePos } from "@gamez/protocol";
 import { findPath, isWalkable, pathDuration } from "@gamez/world";
 import { BotClient, loginGuest, type Received } from "./client.ts";
-import { startDevServer, type DevServer } from "./dev-server.ts";
+import { crawlClientGraph } from "./client-graph.ts";
+import { FEATURES, type E2eContext } from "./features.ts";
+import { resetE2eState, startDevServer, type DevServer } from "./dev-server.ts";
 import { play, resume, SCRIPTS, type PlayedInstance } from "./instance.ts";
 import { LocalD1 } from "./local-d1.ts";
 import { MIGRATIONS_DIR } from "./paths.ts";
@@ -30,6 +34,17 @@ type Delta = Extract<ServerMessage, { t: "delta" }>;
 const PORT = Number(process.env.E2E_PORT ?? 5299);
 const LOG = process.env.E2E_LOG ?? "/tmp/gamez-e2e-dev.log";
 const REPLICATION_TIMEOUT_MS = 20_000;
+/** Modules the client graph must reach: the classic view and the wave A modules. */
+const CLIENT_MODULES = [
+  "modules/classic/src/client/game.ts",
+  "modules/classic/src/client/audio/index.ts",
+  "modules/classic/src/talents/index.ts",
+  "modules/classic/src/crafting/index.ts",
+  "modules/classic/src/rift/index.ts",
+  "modules/classic/src/achievements/index.ts",
+  "modules/steps/src/client",
+  "modules/duel/src/client",
+];
 
 const isWelcome = (m: ServerMessage): m is Welcome => m.t === "welcome";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -122,7 +137,8 @@ async function walkAndReplicate(
 async function run(): Promise<void> {
   let server: DevServer | null = null;
   try {
-    // 1. dev server + local D1 migrations
+    // 1. dev server (fresh private state) + local D1 migrations
+    resetE2eState(PORT);
     server = await startDevServer(PORT, LOG);
     timings["dev server startup"] = server.startupMs;
     const db = await LocalD1.open(server.url);
@@ -188,6 +204,19 @@ async function run(): Promise<void> {
     const played: PlayedInstance[] = [];
     for (const script of SCRIPTS) played.push(await play(server.url, guestA, script));
 
+    // 5b. wave B features (features.ts), each with its own fresh guests
+    const [wbA, wbB] = await Promise.all([loginGuest(server.url), loginGuest(server.url)]);
+    const wave: E2eContext = { url: server.url, db, guestA: wbA, guestB: wbB, state: new Map() };
+    for (const f of FEATURES) {
+      const t0 = performance.now();
+      try {
+        await f.run(wave);
+      } catch (err) {
+        fail(`${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      timings[`wave B ${f.name}`] = performance.now() - t0;
+    }
+
     // 6. restart the dev server (every DO restarts) and reconnect A
     await server.stop();
     server = null;
@@ -207,6 +236,33 @@ async function run(): Promise<void> {
     );
     await a2.close();
     for (const run of played) await resume(server.url, run);
+    wave.url = server.url;
+    for (const f of FEATURES) {
+      if (!f.afterRestart) continue;
+      try {
+        await f.afterRestart(wave);
+      } catch (err) {
+        fail(`${f.name} after restart: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // 7. the client module graph, including every classic module (sim + client)
+    const graphStart = performance.now();
+    const graph = await crawlClientGraph(server.url);
+    timings["client module graph (cold transform)"] = performance.now() - graphStart;
+    check(
+      graph.failed.length === 0,
+      `client module graph: ${graph.modules.length} modules, ${graph.failed.length} failed${graph.failed
+        .slice(0, 5)
+        .map((f) => `\n      ${f.status} ${f.url}`)
+        .join("")}`,
+    );
+    for (const want of CLIENT_MODULES) {
+      check(
+        graph.modules.some((u) => u.includes(want)),
+        `client module graph includes ${want}`,
+      );
+    }
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   } finally {

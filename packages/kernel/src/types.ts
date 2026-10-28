@@ -221,7 +221,101 @@ export interface ModeSpec {
   modules: string[];
   tick: TickPolicy;
   /** Instance rules belong to the mode (party size etc.). */
-  instance?: { maxPlayers: number };
+  instance?: {
+    maxPlayers: number;
+    /**
+     * Wave B (docs/design/wave-B.md §2): the client runs this fixed-tick mode
+     * locally and streams input segments; the InstanceDO replays and verifies
+     * them instead of ticking the sim itself. Absent = server-ticked.
+     */
+    clientDriven?: ClientDrivenPolicy;
+  };
+}
+
+/**
+ * Verification rules of a client-driven fixed-tick mode (wave B §2). The
+ * InstanceDO (VerifiedHost) stays generic: everything mode-specific is here.
+ * Functions must be pure and deterministic (they run on the server only, but
+ * read sim state). They are not part of contentHash.
+ */
+export interface ClientDrivenPolicy {
+  /** Most ticks one segment may cover (segments above this are rejected as bad_segment). */
+  maxTicksPerSegment: number;
+  /** Most inputs (successful dispatches) one segment may carry. */
+  maxInputsPerSegment: number;
+  /**
+   * Sim speed multiplier in effect for the next tick (>= 1). A tick costs
+   * msPerTick / speedOf(world) of wall time in the anti speed-hack ledger.
+   * Sampled at the start of a segment and after every input.
+   */
+  speedOf(world: World): number;
+  /** Highest value speedOf may return; larger values are clamped (and logged). */
+  maxSpeed: number;
+  /** Actions only the server may dispatch; a segment containing one is rejected. */
+  serverOnlyActions: readonly string[];
+  /**
+   * Offline progress: on a join after at least `minMs` of server-measured
+   * absence (and no client continuation), the host dispatches
+   * `action` with payload `{ elapsedMs: min(elapsed, capMs) }` when
+   * `eligible(world)` is true. Failures are ignored.
+   */
+  offline?: {
+    action: string;
+    minMs: number;
+    capMs: number;
+    eligible(world: World): boolean;
+  };
+  /**
+   * Read-model rows derived from verified state (leaderboards, summaries).
+   * The host calls it after persisting verified state and appends the rows
+   * whose content changed to its outbox (docs/design/wave-B.md §4).
+   */
+  reports?(world: World, registry: FrozenRegistry): InstanceReport[];
+  /** Wave C platform hooks (docs/design/wave-C.md §2): bank, arena builds, season progress. */
+  platform?: PlatformHooks;
+}
+
+/**
+ * Wave C: how the verified host connects a client-driven mode to the account
+ * economy, the arena and the battle pass. Everything stays plain JSON so the
+ * kernel knows nothing about the economy; @gamez/protocol (economy.ts) types
+ * the payloads (BankOp, VaultItemInput, ArenaBuild).
+ */
+export interface PlatformHooks {
+  /**
+   * Server-only action applying a bank operation (must also be listed in
+   * serverOnlyActions). The host dispatches it with actor "server" and payload
+   * { opId, op, item? } (item: the VaultItem taken from the account for
+   * withdrawItem, coin for withdrawCoin is in op). It throws ActionError when
+   * the op is impossible (not in town, no room, unknown ref) and on success
+   * emits exactly one event of type `effectEvent` (see below).
+   */
+  bankAction: string;
+  /**
+   * Event type the bank action emits on success:
+   * { type, opId, credit: { coin: number } | null, item: VaultItemInput | null,
+   *   gold: number } — what the host must hand to the account (deposits) and
+   * the gold moved, for the result.
+   */
+  bankEvent: string;
+  /** Pure: the hero reduced to an arena build (plain JSON ArenaBuild without accountId/displayName/sourceHash), or null. */
+  build?(world: World, registry: FrozenRegistry): Record<string, unknown> | null;
+  /**
+   * Pure: monotonic season progress of this hero. `key` identifies the hero
+   * (classic: "classic:<worldSeed>") so a new hero starts a new counter; the
+   * account adds max(0, total - lastTotal[key]) season xp. null = no hero.
+   */
+  seasonTotal?(world: World, registry: FrozenRegistry): { key: string; total: number } | null;
+}
+
+/** One read-model row produced by ClientDrivenPolicy.reports(). */
+export interface InstanceReport {
+  /** Outbox/projection table, e.g. "classic_hero". */
+  table: string;
+  /** Row key, unique per instance within `table`, e.g. "hero" or "run:12". */
+  key: string;
+  /** Plain JSON columns (the projection maps them to D1 columns). */
+  data: Record<string, string | number | boolean | null>;
 }
 
 /** Result of resolving and loading a mode. Immutable and shareable across sims. */

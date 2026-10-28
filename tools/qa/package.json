@@ -1,0 +1,16 @@
+{
+  "name": "@gamez/qa",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/cdp.ts"
+  },
+  "scripts": {
+    "qa": "node src/run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

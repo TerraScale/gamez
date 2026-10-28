@@ -14,7 +14,10 @@
   "dependencies": {
     "@gamez/assets": "workspace:*",
     "@gamez/classic.town": "workspace:*",
+    "@gamez/economy": "workspace:*",
     "@gamez/kernel": "workspace:*",
+    "@gamez/mode-arena": "workspace:*",
+    "@gamez/mode-classic": "workspace:*",
     "@gamez/mode-duel": "workspace:*",
     "@gamez/mode-steps": "workspace:*",
     "@gamez/protocol": "workspace:*",

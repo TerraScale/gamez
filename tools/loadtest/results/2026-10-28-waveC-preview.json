@@ -1,0 +1,465 @@
+{
+  "kind": "gamez-presence-swarm",
+  "at": "2026-10-28T16:02:27.642Z",
+  "machine": {
+    "cpus": 46,
+    "cpuModel": "Intel(R) Xeon(R) CPU E5-2660 v4 @ 2.00GHz",
+    "memGb": 31.3,
+    "node": "v24.22.1",
+    "platform": "linux x64"
+  },
+  "config": {
+    "world": "classic-town",
+    "poseHz": 3,
+    "durationS": 10,
+    "warmupS": 3,
+    "workers": 4,
+    "steps": [50, 100, 150, 200, 250, 500, 1000],
+    "observability": false,
+    "mode": "preview",
+    "sharedState": false,
+    "url": "http://127.0.0.1:5413"
+  },
+  "saturationRule": "e2e p95 > 300 ms, any error/close/failed join, or delivery < 95 %",
+  "firstSaturatedStep": 150,
+  "steps": [
+    {
+      "bots": 50,
+      "joined": 50,
+      "joinFailed": 0,
+      "joinErrors": [],
+      "joinMs": {
+        "n": 50,
+        "mean": 737.1237085800001,
+        "p50": 724.8445620000002,
+        "p95": 1039.8872069999998,
+        "p99": 1097.7458350000006,
+        "max": 1097.7458350000006
+      },
+      "windowS": 10.045,
+      "e2eMs": {
+        "n": 73598,
+        "mean": 38.282331041604394,
+        "p50": 39,
+        "p95": 65,
+        "p99": 79,
+        "max": 108
+      },
+      "serverMs": {
+        "n": 73598,
+        "mean": 217.67293350442395,
+        "p50": 225,
+        "p95": 380,
+        "p99": 431,
+        "max": 543.5
+      },
+      "posesPerS": 149.82578397212544,
+      "framesPerBotS": 19.51219512195122,
+      "kbPerBotS": 52.39848416500747,
+      "upsertsPerBotS": 146.53658536585365,
+      "deliveryRatio": 0.9980066445182725,
+      "errors": {},
+      "closes": 0,
+      "seenMin": 49,
+      "seenMean": 49,
+      "chunk": {
+        "posesPerS": 149.92533598805375,
+        "flushesPerS": 19.313091090094574,
+        "upsertsPerFlush": 7.742268041237113,
+        "relays": [
+          "relay:SA:classic-town:0",
+          "relay:SA:classic-town:1",
+          "relay:SA:classic-town:2",
+          "relay:SA:classic-town:3"
+        ],
+        "deliverFailures": 0
+      },
+      "workerd": {
+        "cpuPct": 40.23173959609886,
+        "rssMb": 236.921875,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.06679642223671307,
+        "eluMean": 0.061758053518124495,
+        "cpuPct": 24.250701841712292
+      },
+      "loadavg1": 16.95,
+      "saturated": false
+    },
+    {
+      "bots": 100,
+      "joined": 50,
+      "joinFailed": 0,
+      "joinErrors": [],
+      "joinMs": {
+        "n": 50,
+        "mean": 705.9221411999997,
+        "p50": 765.3491600000016,
+        "p95": 1023.2578619999986,
+        "p99": 1026.855776999997,
+        "max": 1026.855776999997
+      },
+      "windowS": 10.352,
+      "e2eMs": {
+        "n": 298502,
+        "mean": 108.94573235690213,
+        "p50": 108,
+        "p95": 189,
+        "p99": 216,
+        "max": 262
+      },
+      "serverMs": {
+        "n": 298502,
+        "mean": 212.47964636311195,
+        "p50": 206,
+        "p95": 403,
+        "p99": 446,
+        "max": 650.33984375
+      },
+      "posesPerS": 295.20865533230295,
+      "framesPerBotS": 14.573029366306029,
+      "kbPerBotS": 99.65713901903014,
+      "upsertsPerBotS": 288.35200927357033,
+      "deliveryRatio": 0.9866399598074991,
+      "errors": {},
+      "closes": 0,
+      "seenMin": 99,
+      "seenMean": 99,
+      "chunk": {
+        "posesPerS": 297.52704791344667,
+        "flushesPerS": 14.489953632148376,
+        "upsertsPerFlush": 20.366666666666667,
+        "relays": [
+          "relay:SA:classic-town:0",
+          "relay:SA:classic-town:1",
+          "relay:SA:classic-town:2",
+          "relay:SA:classic-town:3"
+        ],
+        "deliverFailures": 0
+      },
+      "workerd": {
+        "cpuPct": 89.74073326660641,
+        "rssMb": 309.15625,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.13258753248824565,
+        "eluMean": 0.12796172277047602,
+        "cpuPct": 49.442329984544045
+      },
+      "loadavg1": 16.68,
+      "saturated": false
+    },
+    {
+      "bots": 150,
+      "joined": 50,
+      "joinFailed": 0,
+      "joinErrors": [],
+      "joinMs": {
+        "n": 50,
+        "mean": 1618.18126468,
+        "p50": 1310.6988770000025,
+        "p95": 2189.525161999998,
+        "p99": 2191.5497869999963,
+        "max": 2191.5497869999963
+      },
+      "windowS": 11.182,
+      "e2eMs": {
+        "n": 573203,
+        "mean": 735.7736613381297,
+        "p50": 723,
+        "p95": 1071,
+        "p99": 1187,
+        "max": 1310
+      },
+      "serverMs": {
+        "n": 573203,
+        "mean": 424.824939542034,
+        "p50": 422,
+        "p95": 701,
+        "p99": 811,
+        "max": 1113.5
+      },
+      "posesPerS": 432.9279198712216,
+      "framesPerBotS": 2.6989805043820425,
+      "kbPerBotS": 115.46961634770167,
+      "upsertsPerBotS": 341.741489298277,
+      "deliveryRatio": 0.7946705226192935,
+      "errors": {},
+      "closes": 0,
+      "seenMin": 149,
+      "seenMean": 149,
+      "chunk": {
+        "posesPerS": 411.6437131103559,
+        "flushesPerS": 2.5040243248077267,
+        "upsertsPerFlush": 140.25,
+        "relays": [
+          "relay:SA:classic-town:0",
+          "relay:SA:classic-town:1",
+          "relay:SA:classic-town:2",
+          "relay:SA:classic-town:3"
+        ],
+        "deliverFailures": 0
+      },
+      "workerd": {
+        "cpuPct": 97.41393520353161,
+        "rssMb": 352.83984375,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.1369640154328831,
+        "eluMean": 0.11883409654214051,
+        "cpuPct": 45.723171167948486
+      },
+      "loadavg1": 17.48,
+      "saturated": true
+    },
+    {
+      "bots": 200,
+      "joined": 50,
+      "joinFailed": 0,
+      "joinErrors": [],
+      "joinMs": {
+        "n": 50,
+        "mean": 3195.902383499999,
+        "p50": 3505.1284289999967,
+        "p95": 3540.6477550000054,
+        "p99": 3554.353627999997,
+        "max": 3554.353627999997
+      },
+      "windowS": 12.062,
+      "e2eMs": {
+        "n": 693913,
+        "mean": 1105.8722606436254,
+        "p50": 1115,
+        "p95": 1498,
+        "p99": 1609,
+        "max": 1763
+      },
+      "serverMs": {
+        "n": 693913,
+        "mean": 523.7792430714815,
+        "p50": 520,
+        "p95": 869,
+        "p99": 991,
+        "max": 1510.5
+      },
+      "posesPerS": 576.4384015917758,
+      "framesPerBotS": 1.6605869673354339,
+      "kbPerBotS": 96.92002939241006,
+      "upsertsPerBotS": 287.644254684132,
+      "deliveryRatio": 0.501510139508126,
+      "errors": {},
+      "closes": 0,
+      "seenMin": 199,
+      "seenMean": 199,
+      "chunk": {
+        "posesPerS": 578.0135964185044,
+        "flushesPerS": 1.492289835848118,
+        "upsertsPerFlush": 194.72222222222223,
+        "relays": [
+          "relay:SA:classic-town:0",
+          "relay:SA:classic-town:1",
+          "relay:SA:classic-town:2",
+          "relay:SA:classic-town:3"
+        ],
+        "deliverFailures": 0
+      },
+      "workerd": {
+        "cpuPct": 97.68142537728131,
+        "rssMb": 408.44921875,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.12795871230596914,
+        "eluMean": 0.12313900432857094,
+        "cpuPct": 45.67663737356989
+      },
+      "loadavg1": 17.36,
+      "saturated": true
+    },
+    {
+      "bots": 250,
+      "joined": 50,
+      "joinFailed": 0,
+      "joinErrors": [],
+      "joinMs": {
+        "n": 50,
+        "mean": 5365.811229920001,
+        "p50": 5110.619649,
+        "p95": 5857.033035999993,
+        "p99": 5857.791649000006,
+        "max": 5857.791649000006
+      },
+      "windowS": 13.09,
+      "e2eMs": {
+        "n": 429915,
+        "mean": 3066.502394659409,
+        "p50": 2995,
+        "p95": 4295,
+        "p99": 4562,
+        "max": 4921
+      },
+      "serverMs": {
+        "n": 429915,
+        "mean": 1149.5907901875407,
+        "p50": 1093,
+        "p95": 2230,
+        "p99": 2403,
+        "max": 3324
+      },
+      "posesPerS": 830.0993124522537,
+      "framesPerBotS": 0.8818945760122231,
+      "kbPerBotS": 43.811325737681436,
+      "upsertsPerBotS": 131.3720397249809,
+      "deliveryRatio": 0.15889621434384696,
+      "errors": {
+        "rate_limited": 409
+      },
+      "closes": 0,
+      "seenMin": 249,
+      "seenMean": 249,
+      "chunk": {
+        "posesPerS": 617.4178762414057,
+        "flushesPerS": 0.5347593582887701,
+        "upsertsPerFlush": 250,
+        "relays": [
+          "relay:SA:classic-town:0",
+          "relay:SA:classic-town:1",
+          "relay:SA:classic-town:2",
+          "relay:SA:classic-town:3"
+        ],
+        "deliverFailures": 0
+      },
+      "workerd": {
+        "cpuPct": 77.0281030780896,
+        "rssMb": 449.765625,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.1320224849355076,
+        "eluMean": 0.12347224762512926,
+        "cpuPct": 42.063529411764705
+      },
+      "loadavg1": 35.31,
+      "saturated": true
+    },
+    {
+      "bots": 500,
+      "joined": 250,
+      "joinFailed": 0,
+      "joinErrors": [],
+      "joinMs": {
+        "n": 250,
+        "mean": 14966.329639508,
+        "p50": 14424.731887000002,
+        "p95": 24518.262657999992,
+        "p99": 24530.517714999994,
+        "max": 24537.05359299999
+      },
+      "windowS": 20.059,
+      "e2eMs": {
+        "n": 735526,
+        "mean": 6372.525622479695,
+        "p50": 6351,
+        "p95": 9017,
+        "p99": 9556,
+        "max": 10052
+      },
+      "serverMs": {
+        "n": 735526,
+        "mean": 2749.0154947370756,
+        "p50": 2888,
+        "p95": 4440,
+        "p99": 5004,
+        "max": 5575.5
+      },
+      "posesPerS": 1496.734632833142,
+      "framesPerBotS": 0.5878657959020888,
+      "kbPerBotS": 24.396142317662893,
+      "upsertsPerBotS": 73.33625803878557,
+      "deliveryRatio": 0.049095693301801954,
+      "errors": {
+        "rate_limited": 2308
+      },
+      "closes": 0,
+      "seenMin": 499,
+      "seenMean": 499,
+      "chunk": null,
+      "workerd": {
+        "cpuPct": 97.9705901028506,
+        "rssMb": 677.765625,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.1400569459378003,
+        "eluMean": 0.13499241126709643,
+        "cpuPct": 53.16602024029113
+      },
+      "loadavg1": 21.89,
+      "saturated": true
+    },
+    {
+      "bots": 668,
+      "joined": 168,
+      "joinFailed": 332,
+      "joinErrors": [
+        "Error: welcome timed out",
+        "Error: welcome timed out",
+        "Error: welcome timed out",
+        "Error: welcome timed out",
+        "Error: welcome timed out"
+      ],
+      "joinMs": {
+        "n": 168,
+        "mean": 49860.98986877973,
+        "p50": 49863.28782900004,
+        "p95": 78321.33343899995,
+        "p99": 78411.44204200001,
+        "max": 78412.57710200001
+      },
+      "windowS": 20.078,
+      "e2eMs": {
+        "n": 549608,
+        "mean": 18405.10444535014,
+        "p50": 17730,
+        "p95": 23358,
+        "p99": 23812,
+        "max": 24466
+      },
+      "serverMs": {
+        "n": 555620,
+        "mean": 7774.145902839431,
+        "p50": 8314,
+        "p95": 11433,
+        "p99": 12590,
+        "max": 13229
+      },
+      "posesPerS": 2002.5898993923697,
+      "framesPerBotS": 0.4231998201027967,
+      "kbPerBotS": 13.739825806320173,
+      "upsertsPerBotS": 41.426758993219856,
+      "deliveryRatio": 0.02071760578127172,
+      "errors": {
+        "rate_limited": 2528
+      },
+      "closes": 0,
+      "seenMin": 999,
+      "seenMean": 999,
+      "chunk": null,
+      "workerd": {
+        "cpuPct": 96.79045288687583,
+        "rssMb": 783.5546875,
+        "procs": 1
+      },
+      "generator": {
+        "eluMax": 0.132523337480984,
+        "eluMean": 0.1302688641505531,
+        "cpuPct": 46.20235083175615
+      },
+      "loadavg1": 35.39,
+      "saturated": true
+    }
+  ]
+}

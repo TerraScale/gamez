@@ -56,9 +56,11 @@ export function ModeHost({ view, services, onExit }: ModeHostProps) {
           Could not start {view.modeId}: {error}
         </p>
       ) : null}
-      <button type="button" className="back-button" onClick={onExit}>
-        Modes
-      </button>
+      {view.ownsExitControl ? null : (
+        <button type="button" className="back-button" onClick={onExit}>
+          Modes
+        </button>
+      )}
     </SlotProvider>
   );
 }

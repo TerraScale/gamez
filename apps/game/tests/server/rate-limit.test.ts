@@ -53,6 +53,23 @@ describe("SocketLimiter", () => {
     expect(l.admit("moveTo", 200)).toBe(true);
   });
 
+  it("limits pose reports to a burst of 5 refilling at 5 per second", () => {
+    const l = new SocketLimiter(0);
+    const poses = Array.from({ length: 6 }, () => l.admit("pose", 0));
+    expect(poses).toEqual([true, true, true, true, true, false]);
+    expect(l.admit("pose", 199)).toBe(false);
+    expect(l.admit("pose", 200)).toBe(true);
+  });
+
+  it("counts dropped pose reports in the socket total", () => {
+    const l = new SocketLimiter(0);
+    for (let i = 0; i < 7; i++) l.admit("pose", 0);
+    expect(l.dropped).toBe(2);
+    // Pose buckets do not share tokens with moveTo or ping.
+    expect(l.admit("moveTo", 0)).toBe(true);
+    expect(l.admit("ping", 0)).toBe(true);
+  });
+
   it("issues at most one notice per second", () => {
     const l = new SocketLimiter(0);
     expect(l.noticeDue(0)).toBe(true);

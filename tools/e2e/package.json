@@ -6,9 +6,11 @@
   "dependencies": {
     "@gamez/classic.town": "workspace:*",
     "@gamez/kernel": "workspace:*",
+    "@gamez/mode-classic": "workspace:*",
     "@gamez/mode-duel": "workspace:*",
     "@gamez/mode-steps": "workspace:*",
     "@gamez/protocol": "workspace:*",
+    "@gamez/sync": "workspace:*",
     "@gamez/world": "workspace:*"
   },
   "devDependencies": {

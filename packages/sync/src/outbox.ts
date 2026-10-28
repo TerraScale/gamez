@@ -1,4 +1,38 @@
-import type { BatchSink, OutboxOp, OutboxRecord } from "./types.ts";
+import type { BatchSink, FlushOptions, OutboxOp, OutboxRecord } from "./types.ts";
+
+/** Default byte budget per queue message. Queue messages are capped at 128 KiB. */
+export const DEFAULT_MAX_BATCH_BYTES = 96 * 1024;
+/** A single record estimated above this is dropped instead of blocking the outbox. */
+export const DEFAULT_HARD_MAX_RECORD_BYTES = 120 * 1024;
+
+const RECORD_OVERHEAD_BYTES = 32;
+/** Any char above U+00FF (V8 two-byte string). */
+const WIDE_CHAR = /[\u0100-\uffff]/;
+const TOO_LARGE = /too large|exceeds|size/i;
+
+/**
+ * Estimated serialised size of one record in a batch. The estimate is the JSON
+ * length. V8 stores strings with any char above U+00FF as two bytes per char, so
+ * such records count double. Plus a fixed overhead for the envelope fields.
+ */
+export function estimateRecordBytes(record: OutboxRecord): number {
+  const json = JSON.stringify(record);
+  const base = WIDE_CHAR.test(json) ? json.length * 2 : json.length;
+  return base + RECORD_OVERHEAD_BYTES;
+}
+
+function isTooLargeError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return TOO_LARGE.test(message);
+}
+
+function logOversize(record: OutboxRecord, bytes: number): void {
+  console.error("outbox: record too large for a queue message, dropped", {
+    tbl: record.table,
+    pk: record.pk,
+    size: bytes,
+  });
+}
 
 type OutboxRow = {
   seq: number;
@@ -28,10 +62,11 @@ type OutboxRow = {
  * - `append()` is synchronous (must run inside the caller's transaction),
  *   bumps the per-(table, pk) version and returns the new record.
  * - `pending(limit)` returns the oldest unflushed records in seq order.
- * - `flush(sink, maxBatch)` sends pending records in seq order as batches of
- *   at most `maxBatch`, deleting each batch's rows only after `sink.send`
- *   resolves. If send throws, rows stay and the error propagates (the alarm
- *   retries). Returns the number of records sent.
+ * - `flush(sink, maxBatch, opts)` sends pending records in seq order as batches
+ *   of at most `maxBatch` records and `opts.maxBytes` estimated bytes, deleting
+ *   each batch's rows only after `sink.send` resolves. If send throws, rows stay
+ *   and the error propagates (the alarm retries). Returns the number of records
+ *   sent.
  *
  * `_outbox_versions` is never pruned: versions must keep growing across
  * deletes and re-creates, otherwise D1 would ignore the re-created row.
@@ -116,26 +151,75 @@ export class Outbox {
   }
 
   /**
-   * Stops after the first batch shorter than `maxBatch` (the outbox was empty
-   * at that read); records appended meanwhile are left for the next alarm.
-   * Concurrent flushes may send the same records twice, which is allowed.
+   * Sends pending records in seq order. A batch holds at most `maxBatch`
+   * records and `opts.maxBytes` estimated bytes (see `estimateRecordBytes`), and
+   * always at least one record. A record estimated above `opts.hardMaxBytes` is
+   * deleted and passed to `opts.onOversize`, so it can never block the head.
+   * If `send` fails with a size-like error, the first half of the batch is sent
+   * once instead, and the error is rethrown if that also fails.
+   *
+   * Stops after a read that returned fewer than `maxBatch` rows, once every row
+   * of that read has been sent or dropped. Records appended meanwhile are left
+   * for the next alarm. Concurrent flushes may send the same records twice,
+   * which is allowed.
    */
-  async flush(sink: BatchSink, maxBatch = 500): Promise<number> {
+  async flush(sink: BatchSink, maxBatch = 500, opts: FlushOptions = {}): Promise<number> {
     if (!Number.isInteger(maxBatch) || maxBatch < 1) {
       throw new Error(`maxBatch must be a positive integer, got ${maxBatch}`);
     }
+    const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BATCH_BYTES;
+    const hardMaxBytes = opts.hardMaxBytes ?? DEFAULT_HARD_MAX_RECORD_BYTES;
+    const onOversize = opts.onOversize ?? logOversize;
     let sent = 0;
     for (;;) {
-      const records = this.pending(maxBatch);
-      const last = records.at(-1);
-      if (!last) break;
-      await sink.send({ source: this.source, records });
-      // New appends always get a higher seq, so this only drops what was sent.
-      this.sql.exec("DELETE FROM _outbox WHERE seq <= ?", last.seq);
-      sent += records.length;
-      if (records.length < maxBatch) break;
+      const window = this.pending(maxBatch);
+      if (window.length === 0) break;
+      let i = 0;
+      while (i < window.length) {
+        const head = window[i]!;
+        const headBytes = estimateRecordBytes(head);
+        if (headBytes > hardMaxBytes) {
+          this.sql.exec("DELETE FROM _outbox WHERE seq = ?", head.seq);
+          onOversize(head, headBytes);
+          i++;
+          continue;
+        }
+        const batch: OutboxRecord[] = [];
+        let bytes = 0;
+        for (let j = i; j < window.length && batch.length < maxBatch; j++) {
+          const rec = window[j]!;
+          const size = estimateRecordBytes(rec);
+          if (size > hardMaxBytes) break;
+          if (batch.length > 0 && bytes + size > maxBytes) break;
+          batch.push(rec);
+          bytes += size;
+        }
+        const records = await this.sendBatch(sink, batch);
+        // New appends always get a higher seq, so this only drops what was sent.
+        this.sql.exec("DELETE FROM _outbox WHERE seq <= ?", records.at(-1)!.seq);
+        sent += records.length;
+        i += records.length;
+      }
+      // A short read means the outbox was drained at read time.
+      if (window.length < maxBatch) break;
     }
     return sent;
+  }
+
+  /**
+   * Sends `batch`. On a size-like error, retries once with the first half and
+   * returns the records actually sent. Other errors propagate.
+   */
+  private async sendBatch(sink: BatchSink, batch: OutboxRecord[]): Promise<OutboxRecord[]> {
+    try {
+      await sink.send({ source: this.source, records: batch });
+      return batch;
+    } catch (err) {
+      if (batch.length < 2 || !isTooLargeError(err)) throw err;
+      const half = batch.slice(0, Math.ceil(batch.length / 2));
+      await sink.send({ source: this.source, records: half });
+      return half;
+    }
   }
 
   /** Sets a DO alarm `delayMs` from now unless one is already scheduled. */

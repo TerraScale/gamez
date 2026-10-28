@@ -1,0 +1,100 @@
+/**
+ * Level themes (design §9.2, §14). Dungeon themes carry one tier each
+ * (crypt 0, caves 1, forge 2, abyss 3); depths cycle through the tiers.
+ * The town theme is tier 0 with no monsters. Monster pools match the
+ * `themes` lists of the monsters (minDepth filters the pool per depth).
+ */
+import type { ThemeProto } from "../types.ts";
+
+export const THEMES: Record<string, ThemeProto> = {
+  "classic.theme.town": {
+    name: "Town",
+    tier: 0,
+    floor: ["tile.grass", "tile.grass.dark", "tile.dirt", "tile.stone"],
+    wall: "prop.tree",
+    door: "prop.door",
+    stairsDown: "prop.stairs.down",
+    stairsUp: "prop.stairs.up",
+    waypoint: "prop.waypoint",
+    decor: ["prop.well", "prop.fence", "prop.rock", "prop.cart", "prop.tent", "prop.statue"],
+    monsters: [],
+    darkness: 0,
+  },
+  "classic.theme.crypt": {
+    name: "Crypt",
+    tier: 0,
+    floor: ["tile.crypt.floor", "tile.crypt.floor.1", "tile.crypt.floor.2", "tile.crypt.floor.3"],
+    wall: "wall.crypt",
+    door: "prop.door",
+    stairsDown: "prop.stairs.down",
+    stairsUp: "prop.stairs.up",
+    waypoint: "prop.waypoint",
+    decor: ["prop.barrel", "prop.crate", "prop.bones", "prop.torch"],
+    monsters: [
+      "classic.monster.husk",
+      "classic.monster.gnawling",
+      "classic.monster.bonefletcher",
+      "classic.monster.ash_seer",
+      "classic.monster.hollow_cantor",
+    ],
+    darkness: 70,
+  },
+  "classic.theme.caves": {
+    name: "Caves",
+    tier: 1,
+    floor: ["tile.cave.floor", "tile.cave.floor.1", "tile.cave.floor.2", "tile.cave.floor.3"],
+    wall: "wall.cave",
+    door: "prop.door",
+    stairsDown: "prop.stairs.down",
+    stairsUp: "prop.stairs.up",
+    waypoint: "prop.waypoint",
+    decor: ["prop.rock", "prop.bones", "prop.pillar", "prop.torch"],
+    monsters: [
+      "classic.monster.husk",
+      "classic.monster.gnawling",
+      "classic.monster.blightbloat",
+      "classic.monster.bristleback",
+      "classic.monster.cairn_brute",
+      "classic.monster.webskitter",
+    ],
+    darkness: 80,
+  },
+  "classic.theme.forge": {
+    name: "Forge",
+    tier: 2,
+    floor: ["tile.forge.floor", "tile.forge.floor.1", "tile.forge.floor.2", "tile.forge.floor.3"],
+    wall: "wall.forge",
+    door: "prop.door",
+    stairsDown: "prop.stairs.down",
+    stairsUp: "prop.stairs.up",
+    waypoint: "prop.waypoint",
+    decor: ["prop.brazier", "prop.barrel", "prop.crate", "prop.pillar"],
+    monsters: [
+      "classic.monster.bonefletcher",
+      "classic.monster.ash_seer",
+      "classic.monster.cairn_brute",
+      "classic.monster.cinder_imp",
+      "classic.monster.rime_wraith",
+    ],
+    darkness: 45,
+  },
+  "classic.theme.abyss": {
+    name: "Abyss",
+    tier: 3,
+    floor: ["tile.abyss.floor", "tile.abyss.floor.1", "tile.abyss.floor.2", "tile.abyss.floor.3"],
+    wall: "wall.abyss",
+    door: "prop.door",
+    stairsDown: "prop.stairs.down",
+    stairsUp: "prop.stairs.up",
+    waypoint: "prop.waypoint",
+    decor: ["prop.statue", "prop.pillar", "prop.bones", "prop.torch"],
+    monsters: [
+      "classic.monster.blightbloat",
+      "classic.monster.cairn_brute",
+      "classic.monster.webskitter",
+      "classic.monster.hollow_cantor",
+      "classic.monster.rime_wraith",
+    ],
+    darkness: 90,
+  },
+};

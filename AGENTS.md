@@ -27,8 +27,13 @@ This guide is for anyone (human or AI agent) adding **modules**, **game modes** 
 apps/game/                 The one Worker: API + Durable Objects + static client (Vite + @cloudflare/vite-plugin)
   cloudflare.config.ts     cf config: DOs, D1, queues, assets, secrets
   migrations/              D1 SQL migrations (read model)
-  src/server/              Worker routes, DOs (relay, chunk, character, instance), auth, projections
-  src/client/              React app shell, mode views, net, Pixi renderer
+  src/server/              Worker, DOs (relay, chunk, character, instance, account, identity, chat, guild; wave C:
+                           escrow, market, plots, shop, arena, config), projections
+    routes/                One file per feature and path prefix (auth, account, vault, trade, market, shops, arena, …)
+    instance/              InstanceHost (event-ticked modes) and VerifiedHost (client-driven classic)
+    auth/ account/ chat/ guild/ presence/ leaderboards/   Pure logic behind the DOs and routes (unit-tested)
+    trade/ market/ shops/ arena/ payments/ admin/ economy/ config/   Wave C logic (custody sagas, providers, flags)
+  src/client/              React app shell, mode views (lazy chunks), net, Pixi renderer, platform SDK, verified + presence connections
   src/shared/catalog.ts    THE module catalog + list of modes (shared by client and server)
 packages/
   kernel/                  Module loader, registries, ECS, sim, RNG, overrides  ← read its README
@@ -38,13 +43,21 @@ packages/
   assets/                  Asset manifest types, mergeManifests, resolveId fallback
   ui-host/                 Client SDK for modes: ClientModeView, ClientServices, InstanceConnection, UI slots, renderer contract
 modules/
-  classic.town/            Classic town map (content)
+  classic/                 The classic idle ARPG (@gamez/mode-classic): sim modules in src/, client in src/client/,
+                           verified-host hooks + bank + vault codec + arena build + season total in src/platform/
+  economy/                 @gamez/economy: pure economy rules (fees, market, leases, rating, seasons, products, telemetry)
+  arena/                   @gamez/mode-arena: deterministic async arena fight() + ArenaScreen/ArenaReplay (./client)
+  classic.town/            Town Plaza map (content)
   art.kenney/              Starter CC0 art pack → apps/game/public/art/kenney/
   steps/  duel/            Test modes (also the regression suite for the module system)
 tools/
   e2e/                     End-to-end tests against a real local `vp dev`
+  qa/                      Browser QA harness (headless Chrome over CDP): scenarios + screenshots
   bench/                   Benchmarks (results in docs/bench/)
+  loadtest/                Presence bot swarm with private server state (results in docs/bench/)
+apps/native/               Capacitor + Electron shells (not workspace packages; docs/ship.md)
 docs/adr/                  Architecture decision records
+docs/design/               Designs (classic.md, wave-A/B/C.md): the binding spec for builders
 ```
 
 ---
@@ -62,6 +75,7 @@ docs/adr/                  Architecture decision records
 | Dev server (client + Worker + DOs, local D1/queues) | `node_modules/.bin/vp run dev`                                                   |
 | Apply D1 migrations to local dev                    | `node_modules/.bin/vp run migrate-local`                                         |
 | End-to-end                                          | `node_modules/.bin/vp run e2e` (starts and stops its own dev server)             |
+| Browser QA (against a running dev server)           | `node tools/qa/src/run.ts classic-idle warrior 2 8` (see `tools/qa/README.md`)   |
 | Production build                                    | `node_modules/.bin/vp -C apps/game build`                                        |
 | Cloudflare CLI                                      | `cf …`. Discover commands with `cf cli search "<task>"`. **Never use wrangler.** |
 
@@ -76,11 +90,12 @@ client ──WS /ws──────────► RelayDO (near player) ─�
    │                                                        │ fan-out once per relay
    └──WS /ws/instance────► InstanceDO "<mode>:<account>" (runs a kernel Sim for instanced modes)
                          CharacterDO "<account>:<mode>" (authoritative character state)
+client ──HTTP /api/*, WS /ws/chat──► AccountDO "<account>", IdentityDO "<login>", ChatChannelDO "<channel>", GuildDO "<slug>"
 DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read model: leaderboards, market search, admin)
 ```
 
 - **Presence is shared and simulation is sharded.** The overworld only broadcasts _where avatars are and what they visibly do_. Combat, loot and progress run per player (or per instance), so the cost stays flat as worlds get crowded.
-- **PvE is ping-independent.** The client runs the module sim locally for instant feedback, and the server re-runs it to verify. Rewards only become tradable after verification.
+- **PvE is ping-independent.** The client runs the module sim locally for instant feedback, and the server re-runs it to verify. Rewards only become tradable after verification. Classic is **client-driven**: the browser streams input segments with its hash and the InstanceDO's `VerifiedHost` replays every one (ADR 0005).
 - **PvP exists only in instanced arenas**, never in the overworld.
 - **Each mode has its own world. The economy (wallet, universal items) is shared across modes, and characters are per mode.**
 
@@ -125,7 +140,7 @@ Applies to everything the kernel runs: `data*`, `setup`, systems, actions. That 
 
 ## 7. Recipe: create a new module
 
-Example: an illustrative `steps.regen` module that heals the player 1 HP every 5 turns and makes potions stronger.
+Example: a `steps.regen` module that heals the hero 1 HP every 5 turns, adds a monster and buffs an existing one. It uses the real `steps` APIs (`modules/steps/src/components.ts`).
 
 **1. Decide where it lives.** Add to an existing mode package (for example `modules/steps/src/regen.ts`) or create a new package `modules/<name>/` when several modes will reuse it. For a new package, copy the shape of `packages/protocol`: `package.json` exporting `./src/index.ts`, `"test": "vp test"`, and a `tsconfig` extending `../../tsconfig.base.json`. Then run `node_modules/.bin/vp install`.
 
@@ -133,6 +148,15 @@ Example: an illustrative `steps.regen` module that heals the player 1 HP every 5
 
 ```ts
 import { ActionError, defineComponent, defineModule } from "@gamez/kernel";
+import {
+  Actor,
+  Health,
+  Player,
+  Position,
+  chebyshev,
+  heroEntity,
+  type MonsterProto,
+} from "@gamez/mode-steps"; // inside modules/steps use "./components.ts"
 
 // Components are owned by the module that defines them; others import the handle.
 export const Regen = defineComponent<{ every: number; amount: number }>("steps.regen");
@@ -143,17 +167,22 @@ export const regenModule = defineModule({
   deps: ["steps.core", "steps.combat"], // must load first and be in the mode
 
   data(reg) {
-    reg.define("steps.item", "potion.large", { heal: 12, weight: 1 });
+    // New content: an original monster.
+    reg.define<MonsterProto>("steps.monster", "steps.mirelurk", {
+      name: "Mirelurk",
+      hp: 7,
+      dmg: 2,
+    });
   },
   dataUpdates(reg) {
     // Patch another module's prototype instead of copying it.
-    reg.patch<{ heal: number }>("steps.item", "potion.small", (p) => {
-      p.heal += 2;
+    reg.patch<MonsterProto>("steps.monster", "steps.gloomcap", (m) => {
+      m.hp += 2;
     });
   },
 
   setup(world) {
-    for (const e of world.query(PlayerTag)) world.add(e, Regen, { every: 5, amount: 1 });
+    for (const e of world.query(Player)) world.add(e, Regen, { every: 5, amount: 1 });
   },
 
   systems: [
@@ -165,6 +194,7 @@ export const regenModule = defineModule({
           const r = world.read(e, Regen);
           if (ctx.tick % r.every !== 0) continue;
           const h = world.read(e, Health);
+          if (h.hp >= h.max) continue;
           world.update(e, Health, { hp: Math.min(h.max, h.hp + r.amount) });
           ctx.emit({ type: "steps.regen", entity: e, amount: r.amount });
         }
@@ -176,12 +206,20 @@ export const regenModule = defineModule({
     {
       name: "steps.rest",
       parse(_world, payload) {
-        if (payload !== null && typeof payload !== "object")
+        if (payload !== undefined && (payload === null || typeof payload !== "object"))
           throw new ActionError("bad_payload", "expected {}");
         return {};
       },
       apply(world, _p, ctx) {
-        if (isEnemyAdjacent(world)) throw new ActionError("not_safe", "Enemies nearby");
+        const hero = world.read(heroEntity(world), Position);
+        const threatened = world
+          .query(Actor, Position)
+          .some(
+            (e) =>
+              world.read(e, Actor).kind === "steps.monster" &&
+              chebyshev(world.read(e, Position), hero) <= 1,
+          );
+        if (threatened) throw new ActionError("not_safe", "Enemies nearby");
         ctx.emit({ type: "steps.rest" });
       },
     },
@@ -247,6 +285,7 @@ Overrides that target an unknown id fail loudly at load time. Declare the target
 2. Choose a **tick policy**:
    - `{ kind: "event" }` for turn- or step-based modes. Systems run after each successful action.
    - `{ kind: "fixed", hz }` for real-time modes.
+   - A fixed-tick mode that must run in the browser without lag adds `instance.clientDriven` (`ClientDrivenPolicy`: segment limits, `speedOf`, `maxSpeed`, `serverOnlyActions`, offline progress, `reports`). The InstanceDO then verifies it with `VerifiedHost`. Copy `modules/classic/src/platform/policy.ts`.
 3. Choose a **world**:
    - `world: null` for instance-only modes. They run in `InstanceDO "<mode>:<accountId>"`.
    - `world: "<id>"` for a persistent shared world. That uses presence, the chunks and the relay.
@@ -266,6 +305,7 @@ Examples to copy: `modules/steps` (event tick, Pixi grid, keyboard and tap) and 
   - `manifest`, `assetBaseUrl`
   - `createWorldRenderer()` for the Pixi isometric view
   - `connectInstance(mode)`, which returns an `InstanceConnection` with `getView`, `subscribe`, `act`, `restart`
+  - optional `connectVerified(mode, handlers)` for client-driven modes, `joinPresence(world)` for presence worlds, and `platform` (auth, leaderboards, chat, guilds, account). Shared React components for them are in `@gamez/ui-host` `social/`.
   - `exit()`
 - **Prediction is built in.** `connection.act(name, payload)` dispatches locally on a cloned sim, shows the predicted snapshot, and reconciles with the server result. Your UI only renders `view.world`, `view.events` and `view.error`.
 - **React** handles menus and panels. **Pixi** handles the world and in-world HUD (health bars, damage numbers). Keep game state out of React state: read it via `subscribe` with selectors, so 60 fps rendering never re-renders React.
@@ -296,11 +336,16 @@ A "feature system" is something like professions, player shops, an auction house
 | Wire format                                            | Extend `packages/protocol` (and both codecs), or reuse instance actions for instance modes                         |
 | UI                                                     | A module client panel in a UI slot                                                                                 |
 
+### Adding an HTTP route
+
+Add a file in `apps/game/src/server/routes/` that returns `null` for paths it does not own, list it in `routes/index.ts`, and authenticate with `authenticateRequest` (`auth/session.ts`), never by parsing tokens yourself. Use `http.ts` (`json`, `apiError`, `readJson`) for bodies and errors.
+
 ### Adding a DO
 
 1. Write the class in `apps/game/src/server/do/<name>.ts`, export it from `src/server/index.ts`, and add `exports.durableObject({ storage: "sqlite" })` plus a binding in `cloudflare.config.ts` and the `Env` in `contracts.ts`.
 2. Write its RPC surface as an interface in `contracts.ts` first.
 3. Create schema in the constructor inside `ctx.blockConcurrencyWhile`. Use hibernatable WebSockets (`ctx.acceptWebSocket`) for sockets, and alarms for timers.
+4. Keep the DO a thin adapter over a logic class that takes a `SqlStore` (`sqlStoreOf(ctx.storage)`), and test that class with `apps/game/tests/support/fake-sql.ts` (real SQLite through `node:sqlite`).
 
 ### Replicating to D1 (the sync engine, `packages/sync`)
 
@@ -317,19 +362,24 @@ A "feature system" is something like professions, player shops, an auction house
 - The economy is player-driven. NPCs only provide **sinks**: cheap low-level potions and a lowball junk buyer.
 - Every faucet needs a sink. Add listing fees, taxes, rent, repairs and fees when you add new income.
 - Items carry a `tradable` policy hook and a `universal` flag. Only universal items cross modes.
+- Value that crosses players lives only in AccountDO (coin wallet + vault). A mode reaches it through a bank action applied by the verified host (ADR 0006 §1).
+- Venues use **custody, not holds**: debit into the venue DO with txIds derived from the request `opId`, persist each saga step before its call, re-drive from the alarm, refund on failure. Keep the logic in a class taking `SqlStore`, `AccountGateway`, `Outbox` and a clock, and test it with `tests/support/fake-gateway.ts`, failing and crashing every step.
+- Wallet telemetry: signed deltas tagged `faucet` / `sink` / `transfer`; a refunded sink is a positive `sink` amount.
+- Writes need a registered account (`economyCaller(c, flag, { write: true })`); every feature sits behind a ConfigDO flag that fails open.
 
 ---
 
 ## 12. Testing and quality gates
 
-| Layer        | Required                                                                                                             |
-| ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                     |
-| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                           |
-| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes. |
-| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                |
-| End to end   | `tools/e2e` against real `vp dev`: classic presence, then each instance mode, then persistence across restart        |
-| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`                                   |
+| Layer        | Required                                                                                                                                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                                                                                                                           |
+| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                                                                                                                                 |
+| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes.                                                                                                       |
+| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                                                                                                                      |
+| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph, then the platform features (`E2eFeature`s in `tools/e2e/src/features.ts`: `run`, optional `afterRestart`) |
+| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                                                                                                                                 |
+| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`                                                                                                                                         |
 
 Before saying something is done: `node_modules/.bin/vp check`, `node_modules/.bin/vp run -r test`, `node_modules/.bin/vp -C apps/game build` and `node_modules/.bin/vp run e2e`, all green. Report failures honestly, with output.
 
@@ -378,3 +428,5 @@ Worktrees start from the last commit, so commit contracts first if you use `isol
 - Don't commit secrets. `.dev.vars` is git-ignored; use `.dev.vars.example` for defaults.
 - Don't bypass `vp`, the formatter or the lint guard.
 - Don't push, deploy or create cloud resources unless the user asked for it.
+- Don't import a file before it exists. A running `vp dev` remembers an unresolved import of a file outside `apps/game` and keeps serving a 500 for the importer even after the file appears. Create the new file first, then wire it in. Every saved file must compile, because the dev server hot-reloads the tree.
+- Don't leave headless browsers running after a QA script. Orphaned QA browsers keep the game running at x8 and slow every later measurement.

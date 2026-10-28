@@ -4,21 +4,31 @@
       "name": "event mode, world of 1 entity",
       "unit": "dispatches",
       "unitsPerCall": 20000,
-      "iterations": 35,
-      "medianMs": 43.05175499999996,
-      "meanMs": 43.78062251428571,
-      "minMs": 41.257975000000215,
-      "throughput": 464557.1359402194
+      "iterations": 60,
+      "medianMs": 23.878704999999968,
+      "meanMs": 25.047446550000004,
+      "minMs": 21.348649999999907,
+      "throughput": 837566.3588121729
     },
     {
       "name": "event mode, world of 1001 entities",
       "unit": "dispatches",
       "unitsPerCall": 2000,
-      "iterations": 3,
-      "medianMs": 2404.155033000001,
-      "meanMs": 2461.1065956666666,
-      "minMs": 2273.122926,
-      "throughput": 831.8931069533897
+      "iterations": 200,
+      "medianMs": 2.303282500000023,
+      "meanMs": 2.4664960850000033,
+      "minMs": 2.0903509999998278,
+      "throughput": 868325.9652257073
+    },
+    {
+      "name": "event mode, 1001 entities, rejected dispatch (rollback)",
+      "unit": "dispatches",
+      "unitsPerCall": 2000,
+      "iterations": 60,
+      "medianMs": 24.772220500000003,
+      "meanMs": 25.14136361666665,
+      "minMs": 24.269230000000334,
+      "throughput": 80735.59655259809
     }
   ],
   "step": [
@@ -26,11 +36,44 @@
       "name": "fixed mode, 1000 entities, step(100)",
       "unit": "ticks",
       "unitsPerCall": 100,
-      "iterations": 71,
-      "medianMs": 18.34387499999866,
-      "meanMs": 21.34966309859161,
-      "minMs": 17.19882200000029,
-      "throughput": 5451.4108932822155
+      "iterations": 81,
+      "medianMs": 18.227198999999928,
+      "meanMs": 18.659320728395116,
+      "minMs": 16.829698000000008,
+      "throughput": 5486.306480770874
+    },
+    {
+      "name": "fixed mode, 1000 entities, 20x step(1)",
+      "unit": "ticks",
+      "unitsPerCall": 20,
+      "iterations": 153,
+      "medianMs": 9.750019999999495,
+      "meanMs": 9.838392725490172,
+      "minMs": 9.159998999999516,
+      "throughput": 2051.277843532735
     }
-  ]
+  ],
+  "classic": [
+    {
+      "name": "classic-like, systems only (no sim, no rollback)",
+      "unit": "ticks",
+      "unitsPerCall": 20,
+      "iterations": 200,
+      "medianMs": 5.7288430000003245,
+      "meanMs": 5.948839749999961,
+      "minMs": 4.712419000000409,
+      "throughput": 3491.10631937354
+    },
+    {
+      "name": "classic-like, sim.step(1)",
+      "unit": "ticks",
+      "unitsPerCall": 20,
+      "iterations": 185,
+      "medianMs": 10.620171000000482,
+      "meanMs": 10.837781545945994,
+      "minMs": 9.130517999999938,
+      "throughput": 1883.2088485203385
+    }
+  ],
+  "classicEntities": 499
 }

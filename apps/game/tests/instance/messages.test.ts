@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { parseServerMessage } from "../../src/client/instance/messages.ts";
 import { MAX_CLIENT_FRAME, parseClientMessage } from "../../src/server/instance/messages.ts";
+import { parseVerifiedClientMessage } from "../../src/server/instance/verified-messages.ts";
+import { MAX_VERIFIED_CLIENT_FRAME } from "@gamez/protocol";
 
 const snapshot = {
   modeId: "m",
@@ -111,5 +113,25 @@ describe("parseServerMessage", () => {
       ),
     ).toBeNull();
     expect(parseServerMessage('{"t":"error","code":1}')).toBeNull();
+  });
+});
+
+describe("parseVerifiedClientMessage gzip64 import frames", () => {
+  const importFrame = (data: string) =>
+    JSON.stringify({ t: "import", savedAt: 1, snapshot: { enc: "gzip64", data } });
+
+  it("accepts a small gzip64 import", () => {
+    expect(parseVerifiedClientMessage(importFrame("H4sIAAAAAAAAA"))).toMatchObject({
+      t: "import",
+      snapshot: { enc: "gzip64" },
+    });
+  });
+
+  it("refuses gzip64 data longer than the frame cap", () => {
+    const data = "A".repeat(MAX_VERIFIED_CLIENT_FRAME + 4);
+    expect(parseVerifiedClientMessage(importFrame(data))).toBeNull();
+    expect(
+      parseVerifiedClientMessage(new TextEncoder().encode(importFrame(data)).buffer),
+    ).toBeNull();
   });
 });

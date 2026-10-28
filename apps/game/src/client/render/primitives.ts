@@ -10,17 +10,15 @@ export function diamondPoints(x: number, y: number): number[] {
   return [t.sx, t.sy, r.sx, r.sy, b.sx, b.sy, l.sx, l.sy];
 }
 
-/** Flat colour for a ground id when its sprite is missing. */
-export function groundFallbackColour(id: string): number {
-  if (id.includes("stone")) return 0x7d8491;
-  if (id.includes("grass")) return 0x4d7c3a;
-  return 0x6b5b4b;
-}
-
 export interface Primitives {
   tree: GraphicsContext;
   box: GraphicsContext;
   hero: { self: GraphicsContext; other: GraphicsContext };
+  monster: GraphicsContext;
+  npc: GraphicsContext;
+  loot: GraphicsContext;
+  projectile: GraphicsContext;
+  shadow: GraphicsContext;
 }
 
 /** Shared shapes for the fallback props and avatars. Origin is the feet/base. */
@@ -39,6 +37,20 @@ export function buildPrimitives(): Primitives {
       .rect(-10, -16, 20, 16)
       .fill(0x8a8f99),
     hero: { self: hero(0xffb020), other: hero(0x4f8cff) },
+    monster: new GraphicsContext()
+      .circle(0, -10, 9)
+      .fill(0xd0534a)
+      .stroke({ width: 2, color: 0x0b0d12 }),
+    npc: new GraphicsContext()
+      .circle(0, -12, 9)
+      .fill(0x5fbf6a)
+      .stroke({ width: 2, color: 0x0b0d12 }),
+    loot: new GraphicsContext()
+      .poly([0, -8, 6, -2, 0, 4, -6, -2])
+      .fill(0xffffff)
+      .stroke({ width: 1.5, color: 0x0b0d12 }),
+    projectile: new GraphicsContext().circle(0, 0, 4).fill(0xffffff),
+    shadow: shadowShape(),
   };
 }
 
@@ -48,6 +60,27 @@ export function destroyPrimitives(p: Primitives): void {
   p.box.destroy();
   p.hero.self.destroy();
   p.hero.other.destroy();
+  p.monster.destroy();
+  p.npc.destroy();
+  p.loot.destroy();
+  p.projectile.destroy();
+  p.shadow.destroy();
+}
+
+/** A tall box for a wall without art, tinted by its colour; origin at the base centre. */
+export function tallBox(colour: number): GraphicsContext {
+  return new GraphicsContext()
+    .ellipse(0, 0, 14, 6)
+    .fill({ color: 0x000000, alpha: 0.3 })
+    .rect(-14, -40, 28, 40)
+    .fill(colour)
+    .rect(-14, -40, 28, 6)
+    .fill({ color: 0xffffff, alpha: 0.12 })
+    .stroke({ width: 1, color: 0x0b0d12, alpha: 0.6 });
+}
+
+function shadowShape(): GraphicsContext {
+  return new GraphicsContext().ellipse(0, 0, 11, 5).fill({ color: 0x000000, alpha: 0.3 });
 }
 
 function hero(colour: number): GraphicsContext {

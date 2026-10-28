@@ -18,13 +18,24 @@ export interface Visuals {
   sprite(id: string): SpriteVisual | null;
   /** Animation for a logical id (with fallback), or null when no frames resolve. */
   animation(id: string): AnimVisual | null;
+  /** Like sprite() but only for an exact manifest key (no segment fallback). */
+  spriteExact(id: string): SpriteVisual | null;
+  /** Like animation() but only for an exact manifest key (no segment fallback). */
+  animationExact(id: string): AnimVisual | null;
+  /** True when the manifest has this exact animation key. */
+  hasExactAnimation(id: string): boolean;
 }
 
 /**
  * Loads every atlas in the manifest and returns id lookups. A failed atlas
  * leaves its ids unresolved, so the renderer falls back to primitives.
+ * `onMissing` (QA) hears each id, once, that resolves to "missing" or nothing.
  */
-export async function loadVisuals(manifest: AssetManifest, baseUrl: string): Promise<Visuals> {
+export async function loadVisuals(
+  manifest: AssetManifest,
+  baseUrl: string,
+  onMissing?: (id: string) => void,
+): Promise<Visuals> {
   const sheets = new Map<string, Spritesheet>();
   await Promise.all(
     manifest.atlases.map(async (atlas) => {
@@ -45,11 +56,14 @@ export async function loadVisuals(manifest: AssetManifest, baseUrl: string): Pro
     const cached = sprites.get(id);
     if (cached !== undefined) return cached;
     const key = resolveId(manifest.sprites, id);
-    const ref = key in manifest.sprites ? manifest.sprites[key] : undefined;
+    const ref = Object.prototype.hasOwnProperty.call(manifest.sprites, key)
+      ? manifest.sprites[key]
+      : undefined;
     const texture: Texture | undefined = ref
       ? sheets.get(ref.atlas)?.textures[ref.frame]
       : undefined;
     const v = ref && texture ? { texture, anchor: ref.anchor } : null;
+    if (onMissing && id !== "missing" && (v === null || key === "missing")) onMissing(id);
     sprites.set(id, v);
     return v;
   };
@@ -58,7 +72,9 @@ export async function loadVisuals(manifest: AssetManifest, baseUrl: string): Pro
     const cached = anims.get(id);
     if (cached !== undefined) return cached;
     const key = resolveId(manifest.animations, id);
-    const def = key in manifest.animations ? manifest.animations[key] : undefined;
+    const def = Object.prototype.hasOwnProperty.call(manifest.animations, key)
+      ? manifest.animations[key]
+      : undefined;
     let v: AnimVisual | null = null;
     if (def) {
       const frames: Texture[] = [];
@@ -75,5 +91,13 @@ export async function loadVisuals(manifest: AssetManifest, baseUrl: string): Pro
     return v;
   };
 
-  return { sprite, animation };
+  const has = (table: object, key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(table, key);
+  const spriteExact = (id: string): SpriteVisual | null =>
+    has(manifest.sprites, id) ? sprite(id) : null;
+  const animationExact = (id: string): AnimVisual | null =>
+    has(manifest.animations, id) ? animation(id) : null;
+
+  const hasExactAnimation = (id: string): boolean => has(manifest.animations, id);
+  return { sprite, animation, spriteExact, animationExact, hasExactAnimation };
 }

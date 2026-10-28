@@ -4,7 +4,7 @@
  * player's InstanceDO ("<mode>:<accountId>") near the client.
  */
 import type { ModeSpec } from "@gamez/kernel";
-import { GUEST_TOKEN_MAX_AGE_MS, verifyToken } from "../auth.ts";
+import { authenticateToken } from "../auth/session.ts";
 import { INSTANCE_HEADERS, type Env } from "../contracts.ts";
 import { relayLocation } from "../routing.ts";
 import { CLOSE_UNAUTHORIZED } from "../../shared/codec.ts";
@@ -15,7 +15,7 @@ export const INSTANCE_PATH = "/ws/instance";
 
 export async function connectInstance(
   request: Request,
-  env: Pick<Env, "AUTH_SECRET" | "INSTANCE">,
+  env: Pick<Env, "AUTH_SECRET" | "INSTANCE" | "ACCOUNT">,
   url: URL,
   modes: readonly ModeSpec[] = MODES,
 ): Promise<Response> {
@@ -24,11 +24,7 @@ export async function connectInstance(
   }
   const mode = findMode(url.searchParams.get("mode") ?? "", modes);
   if (!mode) return new Response("unknown mode", { status: 404 });
-  const identity = await verifyToken(
-    env.AUTH_SECRET,
-    url.searchParams.get("token") ?? "",
-    GUEST_TOKEN_MAX_AGE_MS,
-  );
+  const identity = await authenticateToken(env, url.searchParams.get("token") ?? "");
   if (!identity) return rejectSocket();
 
   const cf = request.cf as IncomingRequestCfProperties | undefined;

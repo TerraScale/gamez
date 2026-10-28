@@ -90,12 +90,63 @@ export function canonicalJson(value: unknown): string {
   return parts.join("");
 }
 
+/** Fast-path failure: the slow, path-tracking walk then reports the real error. */
+const INVALID: unique symbol = Symbol("invalid");
+/** Deeper than this, the fast path gives up (and a cycle is reported by the slow path). */
+const FAST_MAX_DEPTH = 64;
+
+/** Validating deep clone without path bookkeeping; returns INVALID on any problem. */
+function fastClone(v: unknown, depth: number): unknown {
+  switch (typeof v) {
+    case "string":
+    case "boolean":
+      return v;
+    case "number":
+      return Number.isFinite(v) ? v : INVALID;
+    case "object": {
+      if (v === null) return null;
+      if (depth > FAST_MAX_DEPTH) return INVALID;
+      if (Array.isArray(v)) {
+        const n = v.length;
+        const arr: unknown[] = Array.from({ length: n });
+        for (let i = 0; i < n; i++) {
+          const c = fastClone(v[i], depth + 1);
+          if (c === INVALID) return INVALID;
+          arr[i] = c;
+        }
+        return arr;
+      }
+      if (!isPlainObject(v)) return INVALID;
+      // Default sort compares UTF-16 code units, like compareStrings().
+      const keys = Object.keys(v).sort();
+      const obj: Record<string, unknown> = {};
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]!;
+        const field = (v as Record<string, unknown>)[k];
+        if (field === undefined) continue;
+        const c = fastClone(field, depth + 1);
+        if (c === INVALID) return INVALID;
+        obj[k] = c;
+      }
+      return obj;
+    }
+    default:
+      return INVALID;
+  }
+}
+
 /**
  * Deep-clones plain JSON data, validating it on the way. Object fields whose
  * value is undefined are dropped (as JSON.stringify does); every other
  * non-JSON value throws. Object keys of the clone are in sorted order.
+ *
+ * `path` names the value in error messages; pass a function to build it only
+ * when an error is thrown. Valid data takes a fast path with no path
+ * bookkeeping; anything else is re-walked to report the exact error.
  */
-export function cloneJson<T>(value: T, path = "$"): T {
+export function cloneJson<T>(value: T, path: string | (() => string) = "$"): T {
+  const fast = fastClone(value, 0);
+  if (fast !== INVALID) return fast as T;
   const stack = new Set<object>();
   const walk = (v: unknown, p: string): unknown => {
     switch (typeof v) {
@@ -130,7 +181,33 @@ export function cloneJson<T>(value: T, path = "$"): T {
         throw notJson(p, v);
     }
   };
-  return walk(value, path) as T;
+  // Only data deeper than FAST_MAX_DEPTH (without cycles) gets here valid.
+  return walk(value, typeof path === "function" ? path() : path) as T;
+}
+
+/**
+ * Deep copy of data that is already stored in the world, for the rollback
+ * log. Stored data is plain JSON (it was validated on the way in), so it is
+ * not validated again. Keys keep their order, so restoring the copy is exact.
+ * A for-in copy is used because it stays fast when one call site sees many
+ * object shapes (every component type goes through here).
+ */
+export function copyStored<T>(value: T): T {
+  if (typeof value !== "object" || value === null) return value;
+  if (Array.isArray(value)) {
+    const arr: unknown[] = value.slice();
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (typeof v === "object" && v !== null) arr[i] = copyStored(v);
+    }
+    return arr as T;
+  }
+  const obj: Record<string, unknown> = {};
+  for (const k in value) {
+    const v: unknown = value[k];
+    obj[k] = typeof v === "object" && v !== null ? copyStored(v) : v;
+  }
+  return obj as T;
 }
 
 /** Recursively freezes plain data in place and returns it. */

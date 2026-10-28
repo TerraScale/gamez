@@ -1,1 +1,33 @@
 AUTH_SECRET=dev-only-secret-change-me
+
+# ---- Optional (wave B, see docs/secrets.md). Leave commented to use the
+# local stub OAuth provider on localhost / *.ts.net hosts.
+# GOOGLE_CLIENT_ID=<your Google OAuth web client id>
+# GOOGLE_CLIENT_SECRET=<your Google OAuth client secret>
+# DISCORD_CLIENT_ID=<your Discord application id>
+# DISCORD_CLIENT_SECRET=<your Discord OAuth2 client secret>
+# Apple is stub-only in wave B; these are reserved for the real flow.
+# APPLE_CLIENT_ID=<Services ID>
+# APPLE_TEAM_ID=<team id>
+# APPLE_KEY_ID=<key id>
+# APPLE_PRIVATE_KEY=<contents of the .p8 key>
+# "1" = stub OAuth provider + /api/dev/* on any host (never in production), "0" = never.
+# OAUTH_STUB=
+# Comma-separated account ids allowed on /api/admin/*.
+# ADMIN_ACCOUNT_IDS=
+# Chat moderation: llama-guard (needs the AI binding) | stub | off.
+# MODERATION=stub
+
+# ---- Payments (wave C, see docs/secrets.md "Payments"). Placeholders only: never real keys.
+# Leave every line commented to use the local sandbox stub on dev hosts (PAYMENTS_STUB unset).
+# Note: undeclared keys do not reach env in local dev (verified, docs/secrets.md); declare them in
+# cloudflare.config.ts to test a real provider locally.
+# PAYMENTS_STUB=1
+# PUBLIC_ORIGIN=https://<your-public-host>
+# STRIPE_SECRET_KEY=sk_test_<placeholder>
+# STRIPE_WEBHOOK_SECRET=whsec_<placeholder>
+# ASAAS_API_KEY=<asaas-sandbox-api-key>
+# ASAAS_WEBHOOK_TOKEN=<token-you-choose-for-the-asaas-webhook>
+# ASAAS_ENV=sandbox
+# MERCADOPAGO_ACCESS_TOKEN=TEST-<placeholder>
+# MERCADOPAGO_WEBHOOK_SECRET=<mercadopago-webhook-secret>

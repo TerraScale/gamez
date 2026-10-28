@@ -1,0 +1,58 @@
+{
+  "name": "@gamez/native-electron",
+  "version": "0.0.0",
+  "private": true,
+  "description": "gamez desktop shell (Electron) for Windows, macOS, Linux and Steam. Not a pnpm workspace package: install with npm inside this folder. See README.md.",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "check": "node --check main.mjs && node --check preload.cjs"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "optionalDependencies": {
+    "steamworks.js": "^0.4.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "build": {
+    "appId": "dev.gamez.app",
+    "productName": "gamez",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.mjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "icon": "../../game/public/icons/icon-512.png",
+    "mac": {
+      "category": "public.app-category.games",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
+    }
+  }
+}

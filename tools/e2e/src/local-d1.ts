@@ -35,8 +35,17 @@ export class LocalD1 {
     return new LocalD1(baseUrl, db.uuid);
   }
 
-  /** Runs SQL and returns the rows of the last statement as objects. */
-  async query<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
+  /**
+   * Runs SQL and returns the rows of the last statement as objects.
+   *
+   * The explorer's `/raw` endpoint rejects non-string params ("Invalid input"),
+   * so numbers are sent as strings. Comparisons against INTEGER columns still
+   * work because SQLite applies the column's affinity to the bound text.
+   */
+  async query<T extends Row = Row>(sql: string, rawParams: unknown[] = []): Promise<T[]> {
+    const params = rawParams.map((p) =>
+      typeof p === "number" || typeof p === "bigint" ? String(p) : p,
+    );
     const res = await fetch(
       `${this.baseUrl}/cdn-cgi/local/explorer/api/d1/database/${encodeURIComponent(this.databaseId)}/raw`,
       {

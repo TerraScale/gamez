@@ -1,9 +1,16 @@
-import { townMap } from "@gamez/classic.town";
-import type { ClientMessage, EntityId, EntityState, ServerMessage } from "@gamez/protocol";
+import type {
+  ClientMessage,
+  EntityId,
+  EntityState,
+  PoseUpdate,
+  ServerMessage,
+} from "@gamez/protocol";
 import { DurableObject } from "cloudflare:workers";
-import { PHASE0_CHUNK, PHASE0_MODE, RELAY_HEADERS, type Env, type RelayApi } from "../contracts.ts";
+import { RELAY_HEADERS, type CharacterRecord, type Env, type RelayApi } from "../contracts.ts";
 import { codec } from "../../shared/codec.ts";
-import { SocketLimiter } from "../rate-limit.ts";
+import { presenceEntityId, presenceWorld, type PresenceWorldSpec } from "../../shared/worlds.ts";
+import { SocketLimiter, type LimitedKind } from "../rate-limit.ts";
+import { defaultWorld } from "../presence/world.ts";
 
 /** Per-socket state; survives hibernation via serializeAttachment. */
 interface SocketInfo {
@@ -15,9 +22,13 @@ interface SocketInfo {
 }
 
 /**
- * Holds client WebSockets for one region shard. Name: "relay:<continent>:<n>".
- * Uses the Hibernation API, so idle sockets cost nothing; the in-memory entity
- * cache is rebuilt from the chunk after a wake-up.
+ * Holds client WebSockets for one region, one presence world and one shard.
+ * Name: "relay:<continent>:0" (plaza) or "relay:<continent>:<world>:<shard>"
+ * (shared/worlds.ts relayName; shard = relayShard(accountId), so one account's
+ * sockets share a relay). World fixtures (shopkeepers) arrive like any other
+ * entity, in the chunk's subscribe() state and deltas; poses and moves only
+ * ever name the socket's own character, never a fixture. Uses the Hibernation API, so idle sockets cost
+ * nothing; the in-memory entity cache is rebuilt from the chunk after a wake-up.
  */
 export class RelayDO extends DurableObject<Env> implements RelayApi {
   /** Mirror of the chunk's entities; null until (re)built after a cold start. */
@@ -31,13 +42,31 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
    * harmless because a sleeping relay has no traffic to limit.
    */
   readonly #limits = new WeakMap<WebSocket, SocketLimiter>();
+  /** The world, read from storage once (a storage read per message showed up in the wave C profile). */
+  #world: PresenceWorldSpec | null = null;
+  #chunkStub: DurableObjectStub<import("./chunk.ts").ChunkDO> | null = null;
+  /**
+   * Poses waiting for the next batch RPC, latest per character (an older pose
+   * of the same character is superseded). One batch is in flight at a time, so
+   * a quiet relay forwards each pose at once and a busy one coalesces.
+   */
+  readonly #poseBatch = new Map<string, { ws: WebSocket; info: SocketInfo; pose: PoseUpdate }>();
+  #posesInFlight = false;
 
   get name(): string {
     return this.ctx.id.name ?? this.ctx.storage.kv.get<string>("name") ?? "relay:XX:0";
   }
 
+  /** The presence world this relay serves (stored at the first upgrade; plaza for older relays). */
+  get world(): PresenceWorldSpec {
+    this.#world ??=
+      presenceWorld(this.ctx.storage.kv.get<string>("world") ?? null) ?? defaultWorld();
+    return this.#world;
+  }
+
   #chunk() {
-    return this.env.CHUNK.getByName(PHASE0_CHUNK);
+    this.#chunkStub ??= this.env.CHUNK.getByName(this.world.chunk);
+    return this.#chunkStub;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -48,6 +77,13 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     const name = request.headers.get(RELAY_HEADERS.name);
     const relay = request.headers.get(RELAY_HEADERS.relay);
     if (!accountId || !name) return new Response("missing identity", { status: 400 });
+    const world = presenceWorld(request.headers.get(RELAY_HEADERS.world) ?? null);
+    if (!world) return new Response("unknown world", { status: 404 });
+    if (this.ctx.storage.kv.get("world") !== world.id) {
+      this.ctx.storage.kv.put("world", world.id);
+      this.#world = null;
+      this.#chunkStub = null;
+    }
     if (relay && !this.ctx.id.name && this.ctx.storage.kv.get("name") !== relay) {
       this.ctx.storage.kv.put("name", relay);
     }
@@ -56,7 +92,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     this.ctx.acceptWebSocket(server);
     const info: SocketInfo = {
       accountId,
-      characterId: `${accountId}:${PHASE0_MODE}`,
+      characterId: presenceEntityId(accountId, world),
       name,
       ready: false,
     };
@@ -69,14 +105,36 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  /** Character -> chunk subscription -> join -> welcome. */
-  async #onboard(ws: WebSocket, info: SocketInfo): Promise<void> {
-    const character = await this.env.CHARACTER.getByName(info.characterId).getOrCreate(
+  /**
+   * The character behind a socket in this world. Server-path worlds keep the
+   * persisted CharacterDO; client-pose worlds use a transient record (nothing is stored).
+   */
+  async #character(info: SocketInfo): Promise<CharacterRecord> {
+    const world = this.world;
+    if (world.characterMode === null) {
+      const now = Date.now();
+      return {
+        id: info.characterId,
+        accountId: info.accountId,
+        mode: world.id,
+        name: info.name,
+        appearance: "unit.hero",
+        pos: { ...world.spawn },
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+    return this.env.CHARACTER.getByName(info.characterId).getOrCreate(
       info.accountId,
-      PHASE0_MODE,
-      townMap.spawn,
+      world.characterMode,
+      world.spawn,
       info.name,
     );
+  }
+
+  /** Character -> chunk subscription -> join -> welcome. */
+  async #onboard(ws: WebSocket, info: SocketInfo): Promise<void> {
+    const character = await this.#character(info);
     await this.#ensureEntities();
     const self = await this.#chunk().join(character, this.name);
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -94,37 +152,98 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       this.#send(ws, { t: "error", code: "bad-message", message: "could not decode message" });
       return;
     }
-    if (msg.t === "moveTo" || msg.t === "ping") {
-      if (!this.#admit(ws, msg.t)) return;
+    if (typeof msg !== "object" || msg === null || typeof msg.t !== "string") {
+      this.#send(ws, { t: "error", code: "bad-message", message: "could not decode message" });
+      return;
     }
     switch (msg.t) {
       case "ping":
+        if (!this.#admit(ws, "ping")) return;
         this.#send(ws, { t: "pong", clientTime: msg.clientTime, serverTime: Date.now() });
         return;
-      case "moveTo": {
-        let res = await this.#chunk().moveTo(info.characterId, msg.target);
-        if (!res.ok && res.reason === "not-joined") {
-          // The chunk dropped us (e.g. after delivery failures): re-subscribe, rejoin, retry once.
-          await this.#rejoin(info);
-          res = await this.#chunk().moveTo(info.characterId, msg.target);
-        }
-        if (!res.ok) {
-          this.#send(ws, {
-            t: "error",
-            code: res.reason ?? "move-rejected",
-            message: "move rejected",
-          });
-        }
+      case "moveTo":
+        if (!this.#admit(ws, "moveTo")) return;
+        if (this.world.movement !== "server-path") return this.#wrongWorld(ws);
+        await this.#moveTo(ws, info, msg.target);
         return;
-      }
+      case "pose":
+        if (!this.#admit(ws, "pose")) return;
+        if (this.world.movement !== "client-pose") return this.#wrongWorld(ws);
+        this.#queuePose(ws, info, msg);
+        return;
       case "hello":
         // Identity comes from the verified token at upgrade time; nothing to do.
         return;
     }
   }
 
+  async #moveTo(ws: WebSocket, info: SocketInfo, target: { x: number; y: number }): Promise<void> {
+    let res = await this.#chunk().moveTo(info.characterId, target);
+    if (!res.ok && res.reason === "not-joined") {
+      // The chunk dropped us (e.g. after delivery failures): re-subscribe, rejoin, retry once.
+      await this.#rejoin(info);
+      res = await this.#chunk().moveTo(info.characterId, target);
+    }
+    if (!res.ok) {
+      this.#send(ws, { t: "error", code: res.reason ?? "move-rejected", message: "move rejected" });
+    }
+  }
+
+  /** Queues a client-reported pose for the chunk (which checks and sanitises it). */
+  #queuePose(ws: WebSocket, info: SocketInfo, msg: Extract<ClientMessage, { t: "pose" }>): void {
+    this.#poseBatch.set(info.characterId, { ws, info, pose: msg });
+    if (!this.#posesInFlight) void this.#sendPoses();
+  }
+
+  /** Sends queued poses, one batch RPC at a time, until the queue is empty. */
+  async #sendPoses(): Promise<void> {
+    this.#posesInFlight = true;
+    try {
+      while (this.#poseBatch.size > 0) {
+        const batch = [...this.#poseBatch.values()];
+        this.#poseBatch.clear();
+        try {
+          await this.#forwardPoses(batch);
+        } catch (err) {
+          console.error("pose batch failed", err);
+          for (const b of batch) {
+            this.#send(b.ws, { t: "error", code: "pose-failed", message: "pose not delivered" });
+          }
+        }
+      }
+    } finally {
+      this.#posesInFlight = false;
+    }
+  }
+
+  async #forwardPoses(batch: { ws: WebSocket; info: SocketInfo; pose: PoseUpdate }[]) {
+    const entries = (list: typeof batch) =>
+      list.map((b) => ({ id: b.info.characterId, pose: b.pose }));
+    const results = await this.#chunk().poses(entries(batch));
+    const retry = batch.filter((_, i) => results[i]?.reason === "not-joined");
+    const outcome = new Map(batch.map((b, i) => [b, results[i]]));
+    if (retry.length > 0) {
+      // The chunk dropped us (e.g. after delivery failures): re-subscribe, rejoin, retry once.
+      for (const b of retry) await this.#rejoin(b.info);
+      const again = await this.#chunk().poses(entries(retry));
+      retry.forEach((b, i) => outcome.set(b, again[i]));
+    }
+    for (const [b, res] of outcome) {
+      if (res?.ok) continue;
+      this.#send(b.ws, { t: "error", code: res?.reason ?? "bad-pose", message: "pose rejected" });
+    }
+  }
+
+  #wrongWorld(ws: WebSocket): void {
+    this.#send(ws, {
+      t: "error",
+      code: "wrong-world",
+      message: `not allowed in world ${this.world.id}`,
+    });
+  }
+
   /** Applies the per-socket rate limit; over-limit messages are dropped, with at most one notice a second. */
-  #admit(ws: WebSocket, kind: "moveTo" | "ping"): boolean {
+  #admit(ws: WebSocket, kind: LimitedKind): boolean {
     const now = Date.now();
     let limiter = this.#limits.get(ws);
     if (!limiter) {
@@ -214,12 +333,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   }
 
   async #rejoin(info: SocketInfo): Promise<void> {
-    const character = await this.env.CHARACTER.getByName(info.characterId).getOrCreate(
-      info.accountId,
-      PHASE0_MODE,
-      townMap.spawn,
-      info.name,
-    );
+    const character = await this.#character(info);
     this.#entities = null;
     await this.#ensureEntities();
     const self = await this.#chunk().join(character, this.name);
@@ -270,7 +384,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     return {
       t: "welcome",
       selfId: info.characterId,
-      chunkId: PHASE0_CHUNK,
+      chunkId: this.world.chunk,
       seq: this.#seq,
       serverTime: Date.now(),
       entities: [...(this.#entities?.values() ?? [])],

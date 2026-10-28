@@ -1,7 +1,8 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  fmt: {},
+  // .claude/ holds local agent tooling (workflows), not project source.
+  fmt: { ignorePatterns: [".claude/**"] },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
