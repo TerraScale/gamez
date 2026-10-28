@@ -1,5 +1,5 @@
 /**
- * Exploration and descending (§15.2 steps 10-11): bounded BFS to the
+ * Exploration and descending (§15.2 steps 10 and 11): bounded BFS to the
  * nearest frontier (explored walkable tile next to an unexplored walkable
  * tile) skipping ignored tiles, and the descend / under-levelled farming
  * rules. The BFS allocates its scratch arrays per call (no module state).
@@ -16,17 +16,20 @@ import {
   type DungeonState,
   type ExploreArea,
 } from "../resources.ts";
-import { isBossDepth, monsterLevel } from "../rules.ts";
+import { isBossDepth, isRiftDepth, MAIN_DUNGEON_DEPTH, monsterLevel } from "../rules.ts";
 import { walkableAt, type ClassicMap } from "../world/maps.ts";
 import {
   bfs,
+  bfsBest,
   BFS_MAX_NODES,
+  distanceField,
   freshMove,
   onRecentMove,
   tileDist,
   walkTo,
   type BfsOutcome,
 } from "./route.ts";
+import { leaveForRift, riftDungeonStep } from "./riftLoop.ts";
 import {
   addIgnore,
   currentIntent,
@@ -60,6 +63,11 @@ export function isFrontier(map: ClassicMap, ea: ExploreArea, x: number, y: numbe
  * Nearest frontier by BFS steps from (sx, sy), skipping `ignore`, preferring
  * one at least 3 steps away (a closer one is the fallback). `complete` tells
  * whether a null hit means "no reachable frontier".
+ *
+ * With a `toward` tile (the stairs down) every frontier also costs
+ * `biasPct` % of its walking distance to that tile, so exploration grows
+ * toward the stairs and the hero is near them once explorePct is reached
+ * (QA major #1: the stairs used to be ~100 tiles away in the farthest room).
  */
 export function findFrontier(
   map: ClassicMap,
@@ -68,18 +76,55 @@ export function findFrontier(
   sy: number,
   ignore: readonly TilePos[],
   maxNodes = BFS_MAX_NODES,
+  toward: TilePos | null = null,
+  biasPct = 0,
 ): BfsOutcome {
-  return bfs(
+  if (toward === null || biasPct <= 0) {
+    return bfs(
+      map,
+      sx,
+      sy,
+      (x, y, d) => {
+        if (!isFrontier(map, ea, x, y)) return 0;
+        for (const t of ignore) if (t.x === x && t.y === y) return 0;
+        return d >= 3 ? 2 : 1;
+      },
+      maxNodes,
+    );
+  }
+  // Walking distance to the goal (not straight-line: levels are mazes of rooms).
+  const field = distanceField(map, toward.x, toward.y);
+  const w = map.width;
+  return bfsBest(
     map,
     sx,
     sy,
     (x, y, d) => {
-      if (!isFrontier(map, ea, x, y)) return 0;
-      for (const t of ignore) if (t.x === x && t.y === y) return 0;
-      return d >= 3 ? 2 : 1;
+      if (!isFrontier(map, ea, x, y)) return -1;
+      for (const t of ignore) if (t.x === x && t.y === y) return -1;
+      const near = d < 3 ? NEAR_FRONTIER_PENALTY : 0;
+      const togo = field[y * w + x]!;
+      return d + near + Math.floor(((togo < 0 ? FAR_STEPS : togo) * biasPct) / 100);
     },
     maxNodes,
   );
+}
+
+/** Walking distance assumed for a frontier the goal cannot be reached from. */
+const FAR_STEPS = 512;
+/** Extra cost (steps) of a frontier closer than 3 steps (it is revealed on the way anyway). */
+const NEAR_FRONTIER_PENALTY = 6;
+/**
+ * Stairs bias of the frontier choice (% of the frontier's distance to the
+ * stairs added to its BFS steps) while exploring a level the hero will
+ * leave by the stairs down.
+ */
+export const STAIRS_BIAS_PCT = 300;
+
+/** The tile exploration grows toward: the stairs down of a main dungeon level the hero may descend from. */
+function exploreGoal(c: AutoCtx): TilePos | null {
+  if (!c.cfg.autoDescend) return null;
+  return c.map.stairsDown;
 }
 
 /**
@@ -102,7 +147,16 @@ export function exploreStep(c: AutoCtx): "moving" | "none" | "unknown" {
   ) {
     return "moving";
   }
-  const res = findFrontier(c.map, ea, c.tx, c.ty, st.ignore);
+  const res = findFrontier(
+    c.map,
+    ea,
+    c.tx,
+    c.ty,
+    st.ignore,
+    BFS_MAX_NODES,
+    exploreGoal(c),
+    STAIRS_BIAS_PCT,
+  );
   if (!res.hit) {
     st.frontierX = -1;
     st.frontierY = -1;
@@ -197,21 +251,14 @@ function huntBoss(c: AutoCtx): boolean {
  * stall the hero heads straight for the stairs (a fresh level).
  */
 export function dungeonStep(c: AutoCtx): boolean {
+  // Inside a rift: its own loop (riftLoop.ts).
+  if (isRiftDepth(c.depth)) return riftDungeonStep(c);
   const ea = exploreAreaOf(c.world, c.depth);
   // Just arrived: nothing revealed yet, so no frontier exists. Wait for the first reveal.
   if (ea !== undefined && ea.revealed === 0) return false;
   let explored: "moving" | "none" | "unknown" | null = null;
   const explore = (): "moving" | "none" | "unknown" => (explored ??= exploreStep(c));
   const stall = c.st.stallUntil > c.tick;
-
-  let finished = stall || (ea !== undefined && exploredPct(ea) >= c.cfg.explorePct);
-  if (!finished) {
-    const r = explore();
-    if (r === "moving") return true;
-    if (r === "unknown") return false;
-    finished = true;
-  }
-  if (!c.cfg.autoDescend && !stall) return explore() === "moving";
 
   const level = effectiveLevel(c.world.get(c.hero, Level)?.level ?? 1, c.st);
   const dungeon = c.world.getResource<DungeonState>(RES.dungeon);
@@ -220,10 +267,9 @@ export function dungeonStep(c: AutoCtx): boolean {
     dungeon !== undefined &&
     dungeon.liveBossAlive &&
     !dungeon.bossesKilled.includes(c.depth);
-  const ready = bossReady(level, c.depth);
-  if (bossAlive && ready && !stall && huntBoss(c)) return true;
-
-  const depthOk = c.cfg.maxDepth === 0 || c.depth < c.cfg.maxDepth;
+  // The main dungeon ends at MAIN_DUNGEON_DEPTH (no stairs down there).
+  const depthOk =
+    c.depth < MAIN_DUNGEON_DEPTH && (c.cfg.maxDepth === 0 || c.depth < c.cfg.maxDepth);
   const levelOk = level >= monsterLevel(c.depth + 1) - 2;
   // A living boss gates the way down until the hero is ready for it (or far past it), and
   // the hero only walks down to a boss depth it is ready for (no stairs ping-pong).
@@ -232,10 +278,27 @@ export function dungeonStep(c: AutoCtx): boolean {
     isBossDepth(c.depth + 1) &&
     !(dungeon?.bossesKilled.includes(c.depth + 1) ?? false) &&
     !bossReady(level, c.depth + 1);
-  if (depthOk && levelOk && bossOk && !nextBoss && goStairs(c, "stairsDown")) return true;
+  const canDescend = c.cfg.autoDescend && depthOk && levelOk && bossOk && !nextBoss;
+  // A level above the deepest one (after a death, a waypoint, farming) is only walked
+  // through when the hero may go on down: no second explorePct on the way back.
+  const passing = canDescend && dungeon !== undefined && dungeon.deepest > c.depth;
+
+  let finished = stall || passing || (ea !== undefined && exploredPct(ea) >= c.cfg.explorePct);
+  if (!finished) {
+    const r = explore();
+    if (r === "moving") return true;
+    if (r === "unknown") return false;
+    finished = true;
+  }
+  if (!c.cfg.autoDescend && !stall) return explore() === "moving";
+
+  if (bossAlive && bossReady(level, c.depth) && !stall && huntBoss(c)) return true;
+  // The main dungeon is done (wave A): off to town for a rift run.
+  if (!bossAlive && leaveForRift(c)) return true;
+  if (canDescend && goStairs(c, "stairsDown")) return true;
   // Under-levelled (or at maxDepth, or not ready for the boss): go up for a fresh population.
   if (c.depth >= 2 && goStairs(c, "stairsUp")) return true;
-  if (stall && goStairs(c, "stairsDown")) return true;
+  if (stall && depthOk && goStairs(c, "stairsDown")) return true;
   return explore() === "moving";
 }
 

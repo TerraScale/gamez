@@ -11,20 +11,36 @@
  * Timing: basic attacks (melee, range 0) use CombatStats.attackTicks with the
  * hit at half; other skills castTicks/hitTick. Both scale with attack or cast
  * speed, reduced by the strongest slow.
+ * Wave A: hero casts read their skill modifiers (bonus.ts skillModsOf):
+ * manaCostPct (rules.effectiveManaCost), cooldownPct (rules.effectiveCooldown)
+ * and speedPct (added to the speed stat). Units without HeroStats (monsters,
+ * summons) add their buff attackSpeed / castSpeed (enrage, rally) to the
+ * speed stat: hero buffs are already in CombatStats.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { ERR } from "../actions.ts";
-import { CastOrder, Casting, CombatStats, Dash, Dead, Mana, Mover, Pos } from "../components.ts";
+import {
+  CastOrder,
+  Casting,
+  CombatStats,
+  Dash,
+  Dead,
+  HeroStats,
+  Mana,
+  Mover,
+  Pos,
+} from "../components.ts";
 import { emit } from "../events.ts";
 import { facingOf } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { currentDepth } from "../resources.ts";
-import { scaledTicks, skillManaCost } from "../rules.ts";
+import { effectiveCooldown, effectiveManaCost, scaledTicks, skillManaCost } from "../rules.ts";
 import type { SkillProto } from "../types.ts";
-import { inArea, isStunned, slowPct } from "../core/units.ts";
+import { buffStat, inArea, isStunned, slowPct } from "../core/units.ts";
 import {
   baseRank,
   bodyRadius,
+  castMods,
   cooldownReadyAt,
   isBasic,
   isEnemyOf,
@@ -38,17 +54,23 @@ import {
 /** Range slack (sub) between the intent's check and the order's check. */
 const RANGE_SLACK = 32;
 
-/** Cast timing in ticks for a caster: [duration, hit offset], offsets in 1..duration-1. */
+/**
+ * Cast timing in ticks for a caster: [duration, hit offset], offsets in
+ * 1..duration-1. `speedBonus` (percent points) is added to the speed stat
+ * (skill modifier speedPct for heroes, buff speed for monsters).
+ */
 export function castTiming(
   skill: Readonly<SkillProto>,
   stats: { attackTicks: number; attackSpeed: number; castSpeed: number } | undefined,
   slow: number,
+  speedBonus = 0,
 ): [number, number] {
   const basic = isBasic(skill);
   const base = basic ? Math.max(2, stats?.attackTicks ?? skill.castTicks) : skill.castTicks;
   const hitBase = basic ? Math.floor(base / 2) : skill.hitTick;
   const speed0 =
-    skill.speedStat === "attack" ? (stats?.attackSpeed ?? 100) : (stats?.castSpeed ?? 100);
+    (skill.speedStat === "attack" ? (stats?.attackSpeed ?? 100) : (stats?.castSpeed ?? 100)) +
+    speedBonus;
   const speed = Math.floor((speed0 * (100 - Math.max(0, Math.min(90, slow)))) / 100);
   const dur = scaledTicks(base, speed);
   const hit = Math.ceil((Math.max(0, hitBase) * 100) / Math.max(10, speed));
@@ -92,8 +114,13 @@ function tryStart(
   if (baseRank(world, e, order.skill) < 1) return ERR.notKnown;
   const rank = rankFor(world, e, skill, order.skill);
   if (cooldownReadyAt(world, e, order.skill) > tick) return ERR.cooldown;
+  const mods = castMods(world, ctx.registry, e, order.skill);
   const mana = world.get(e, Mana);
-  const cost = mana ? skillManaCost(skill, rank) : 0;
+  const cost = mana
+    ? mods
+      ? effectiveManaCost(skill as SkillProto, rank, mods)
+      : skillManaCost(skill, rank)
+    : 0;
   if (mana && mana.mp < cost) return ERR.noMana;
 
   const p = world.read(e, Pos);
@@ -128,14 +155,26 @@ function tryStart(
     }
   }
 
-  const [dur, hit] = castTiming(skill, stats, slowPct(world, ctx.registry, e, tick));
+  const speedBonus = mods
+    ? mods.speedPct
+    : world.has(e, HeroStats)
+      ? 0
+      : buffStat(
+          world,
+          ctx.registry,
+          e,
+          skill.speedStat === "attack" ? "attackSpeed" : "castSpeed",
+          tick,
+        );
+  const [dur, hit] = castTiming(skill, stats, slowPct(world, ctx.registry, e, tick), speedBonus);
   let end = tick + dur;
   if (skill.shape === "pulse" && skill.pulse) {
     // Room for every pulse before the unit is free.
     end = Math.max(end, tick + hit + (skill.pulse.count - 1) * Math.max(1, skill.pulse.every) + 1);
   }
   if (mana && cost > 0) mana.mp -= cost;
-  if (skill.cooldown > 0) setCooldown(world, e, order.skill, tick + skill.cooldown, tick);
+  const cooldown = mods ? effectiveCooldown(skill as SkillProto, mods) : skill.cooldown;
+  if (cooldown > 0) setCooldown(world, e, order.skill, tick + cooldown, tick);
   const m = world.get(e, Mover);
   if (m && (tx !== p.x || ty !== p.y)) {
     const f = facingOf(tx - p.x, ty - p.y, m.facing);

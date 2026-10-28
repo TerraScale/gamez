@@ -10,7 +10,7 @@
  * Deterministic: only + - * / and floor.
  */
 import type { FrozenRegistry } from "@gamez/kernel";
-import { addItemStats, stat, type StatTotals } from "../rules.ts";
+import { addItemStats, isBroken, stat, type StatTotals } from "../rules.ts";
 import { ATTRS, KIND, type Attr, type ItemBaseProto, type ItemInstance } from "../types.ts";
 
 /** Reference attack duration (ticks) used to normalise weapon speed. */
@@ -70,7 +70,9 @@ function weaponScore(base: ItemBaseProto, t: StatTotals): number {
 /** Higher is better; comparable between items of the same slot for one class. */
 export function itemScore(registry: FrozenRegistry, item: ItemInstance, primary: Attr): number {
   const base = registry.get<ItemBaseProto>(KIND.itemBase, item.base);
-  if (!base || base.category === "potion") return 0;
+  if (!base || base.category === "potion" || base.category === "gem") return 0;
+  // Wave A: a broken item adds nothing until repaired (any working item beats it).
+  if (isBroken(item)) return 1;
   const t = addItemStats(registry, [item]);
   let s = modScore(t, primary);
   if (base.category === "weapon") {

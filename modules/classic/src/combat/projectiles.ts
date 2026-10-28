@@ -32,7 +32,14 @@ import { currentDepth } from "../resources.ts";
 import { gridOf, type SpatialGrid } from "../spatial.ts";
 import type { Damage, Team } from "../types.ts";
 import { getAreaMap, walkableSub } from "../world/maps.ts";
-import { enemiesInRadius, hitStatuses, makeHit, rollCrit, skillOf } from "./common.ts";
+import {
+  durationPctOf,
+  enemiesInRadius,
+  hitStatuses,
+  makeHit,
+  rollCrit,
+  skillOf,
+} from "./common.ts";
 
 export interface ProjectileSpec {
   speed: number;
@@ -136,7 +143,14 @@ function explode(
   depth: number,
 ): void {
   const skill = skillOf(ctx.registry, pr.skill);
-  const statuses = hitStatuses(world, ctx.registry, pr.owner, skill, pr.rank);
+  const statuses = hitStatuses(
+    world,
+    ctx.registry,
+    pr.owner,
+    skill,
+    pr.rank,
+    durationPctOf(world, ctx.registry, pr.owner, pr.skill),
+  );
   const crit = critFor(world, ctx, pr.owner);
   for (const t of enemiesInRadius(world, grid, x, y, pr.explodeRadius, pr.team, depth)) {
     pushHit(
@@ -252,6 +266,7 @@ function collide(
   };
   cands.sort((a, b) => dist(a) - dist(b) || a - b);
   const skill = skillOf(ctx.registry, pr.skill);
+  const durPct = durationPctOf(world, ctx.registry, pr.owner, pr.skill);
   for (const t of cands) {
     pushHit(
       world,
@@ -263,7 +278,7 @@ function collide(
         {
           canMiss: pr.canMiss,
           crit: critFor(world, ctx, pr.owner),
-          statuses: hitStatuses(world, ctx.registry, pr.owner, skill, pr.rank),
+          statuses: hitStatuses(world, ctx.registry, pr.owner, skill, pr.rank, durPct),
         },
       ),
     );

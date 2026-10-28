@@ -22,6 +22,8 @@ export interface Visuals {
   spriteExact(id: string): SpriteVisual | null;
   /** Like animation() but only for an exact manifest key (no segment fallback). */
   animationExact(id: string): AnimVisual | null;
+  /** True when the manifest has this exact animation key. */
+  hasExactAnimation(id: string): boolean;
 }
 
 /**
@@ -96,5 +98,6 @@ export async function loadVisuals(
   const animationExact = (id: string): AnimVisual | null =>
     has(manifest.animations, id) ? animation(id) : null;
 
-  return { sprite, animation, spriteExact, animationExact };
+  const hasExactAnimation = (id: string): boolean => has(manifest.animations, id);
+  return { sprite, animation, spriteExact, animationExact, hasExactAnimation };
 }

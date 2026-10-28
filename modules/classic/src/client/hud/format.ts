@@ -11,6 +11,7 @@ import {
 } from "../contract.ts";
 import type { Attr, EquipSlot, ItemCategory, ItemRarity, MonsterRarity } from "../../types.ts";
 import type { ControlMode, SimSpeed } from "../../resources.ts";
+import { isRiftDepth, riftLevelOf } from "../../rules.ts";
 
 export const TICKS_PER_SECOND = 20;
 export const SPEEDS: readonly SimSpeed[] = [1, 2, 4, 8];
@@ -21,6 +22,16 @@ export function clamp(n: number, lo: number, hi: number): number {
 
 function finite(n: number): number {
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Player-facing name of a depth: "Town", "Depth 7", or "Rift level 3" for the
+ * synthetic rift depths (>= 100 000, rules.riftDepth), which are never shown raw.
+ */
+export function depthLabel(depth: number): string {
+  if (depth === 0) return "Town";
+  if (isRiftDepth(depth)) return `Rift level ${fmtInt(riftLevelOf(depth))}`;
+  return `Depth ${fmtInt(depth)}`;
 }
 
 /** Integer with thousands separators ("12,430"); locale independent. */
@@ -147,6 +158,7 @@ export const RARITY_LABEL: Record<ItemRarity, string> = {
   normal: "Normal",
   magic: "Magic",
   rare: "Rare",
+  set: "Set",
   unique: "Unique",
 };
 
@@ -180,6 +192,7 @@ export const CATEGORY_LABEL: Record<ItemCategory, string> = {
   ring: "Ring",
   amulet: "Amulet",
   potion: "Potion",
+  gem: "Gem",
 };
 
 export function rarityHex(r: ItemRarity): string {
@@ -229,4 +242,19 @@ export const DOT_LABEL: Record<MinimapDotKind, string> = {
 
 export function dotColor(kind: MinimapDotKind): number {
   return DOT_COLOR[kind];
+}
+
+/** Casts per second, two decimals: "1.25/s". */
+export function fmtPerSecond(n: number): string {
+  return `${(Math.round(finite(n) * 100) / 100).toFixed(2)}/s`;
+}
+
+/** A rate with one decimal: "4.5/s" (mana per second). */
+export function fmtRate(n: number): string {
+  return `${(Math.round(finite(n) * 10) / 10).toFixed(1)}/s`;
+}
+
+/** Ticks as whole seconds with one decimal: "2.4 s". */
+export function fmtSeconds(ticks: number): string {
+  return `${(Math.round((finite(ticks) / TICKS_PER_SECOND) * 10) / 10).toFixed(1)} s`;
 }

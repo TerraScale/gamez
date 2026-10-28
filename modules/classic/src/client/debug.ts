@@ -26,8 +26,20 @@ import {
   Monster,
   Npc,
   Projectile,
+  Talents,
 } from "../components.ts";
-import { RES, type AreaState, type ControlState, type RunStats } from "../resources.ts";
+import { DEBUG_GRANT } from "../debug/index.ts";
+import type { InteractableKind } from "../components.ts";
+import {
+  achievementsOf,
+  heroOf,
+  lootFilterOf,
+  RES,
+  riftOf,
+  type AreaState,
+  type ControlState,
+  type RunStats,
+} from "../resources.ts";
 import { KIND, type NpcProto } from "../types.ts";
 import type { ClassicClientApi, PanelId, Settings } from "./contract.ts";
 import { heroOfWorld } from "./hudModel.ts";
@@ -44,6 +56,10 @@ export interface DebugParams {
   autostart: boolean;
   /** `?name=`: hero name for autostart (default "QA <Class>"). */
   name: string | null;
+  /** `?cheats=1` (with debug=1): load the QA cheat module (classic.debug) in its own save slot. */
+  cheats: boolean;
+  /** `?fresh=1`: skip the save carry-over (a stored save of another version starts a new game). */
+  fresh: boolean;
 }
 
 const MAX_EVENTS = 60;
@@ -71,6 +87,8 @@ export function readDebugParams(search: string): DebugParams {
     classId: cls ? normalizeClassId(cls) : null,
     autostart: flag(q.get("autostart")),
     name: q.get("name"),
+    cheats: flag(q.get("cheats")),
+    fresh: flag(q.get("fresh")),
   };
 }
 
@@ -91,10 +109,15 @@ export class EventProbe {
   heroDeaths = 0;
   /** Events pushed out of the ring (the cumulative `counts` above never drop anything). */
   ringDropped = 0;
+  /** Stairs-down area changes since the last new hero (classic.area.changed via stairsDown). */
+  descents = 0;
 
   push(events: readonly GameEvent[], tick: number): void {
     for (const ev of events) {
       this.counts[ev.type] = (this.counts[ev.type] ?? 0) + 1;
+      if (ev.type === "classic.area.changed" && ev.via === "stairsDown") {
+        this.descents++;
+      }
       if (ev.type === "classic.cast") {
         const skill = String(ev.skill);
         const effect = String(ev.effect);
@@ -121,6 +144,7 @@ export class EventProbe {
     this.slain = 0;
     this.heroDeaths = 0;
     this.ringDropped = 0;
+    this.descents = 0;
   }
 }
 
@@ -157,6 +181,8 @@ export interface CountersSummary {
   heroDeaths: number;
   /** Events the ring buffer of window.__gamez.sim has dropped since the last new hero. */
   ringDropped: number;
+  /** Stairs-down descents since the last new hero (never ring-dropped). */
+  descents: number;
 }
 
 export function countersSummary(
@@ -171,6 +197,7 @@ export function countersSummary(
     slain: probe.slain,
     heroDeaths: probe.heroDeaths,
     ringDropped: probe.ringDropped,
+    descents: probe.descents,
   };
 }
 
@@ -180,11 +207,22 @@ export type InteractTarget =
   | "alchemist"
   | "junk"
   | "quest"
+  | "gambler"
   | "stash"
   | "waypoint"
   | "stairsDown"
   | "stairsUp"
-  | "portal";
+  | "portal"
+  /** The Rift obelisk (town). */
+  | "obelisk"
+  /** The exit of a rift level (appears when the guardian dies). */
+  | "riftExit";
+
+/** Interact targets that are stations (Interactable.kind), not NPC roles. */
+const STATION_OF_TARGET: Readonly<Partial<Record<InteractTarget, InteractableKind>>> = {
+  obelisk: "riftObelisk",
+  riftExit: "riftExit",
+};
 
 export interface ClassicDebugControls {
   setMode(mode: "manual" | "auto" | "idle"): DispatchResult;
@@ -206,6 +244,12 @@ export interface ClassicDebugControls {
   drink(slot: number): void;
   respawn(): DispatchResult;
   updateSettings(patch: Partial<Settings>): void;
+  /**
+   * QA grant (classic.debug.grant, `?debug=1&cheats=1` only): gold, levels,
+   * items {count, rarity, ilvl, category?}, gems, unlockRift, bossesKilled,
+   * deepest, talentPoints. Strictly validated by the sim.
+   */
+  cheat(payload: Record<string, unknown>): DispatchResult;
 }
 
 function depthOf(world: World): number {
@@ -223,16 +267,57 @@ export function findInteractable(
   target: InteractTarget,
 ): Entity {
   const depth = depthOf(world);
-  for (const e of world.query(Npc)) {
-    if (!inArea(world, e, depth)) continue;
-    const proto = registry.get<NpcProto>(KIND.npc, world.read(e, Npc).proto);
-    if (proto?.role === target) return e;
+  const station = STATION_OF_TARGET[target];
+  if (station === undefined) {
+    for (const e of world.query(Npc)) {
+      if (!inArea(world, e, depth)) continue;
+      const proto = registry.get<NpcProto>(KIND.npc, world.read(e, Npc).proto);
+      if (proto?.role === target) return e;
+    }
   }
   for (const e of world.query(Interactable)) {
     if (!inArea(world, e, depth)) continue;
-    if (world.read(e, Interactable).kind === target) return e;
+    const kind = world.read(e, Interactable).kind;
+    if (station !== undefined ? kind === station : kind === target) return e;
   }
   return 0;
+}
+
+/** Wave A summaries for window.__gamez.sim: talents, rift, achievements, loot filter. */
+export function waveASummary(world: World): Record<string, unknown> {
+  const hero = heroOf(world);
+  const t = hero !== 0 ? world.get(hero, Talents) : undefined;
+  const rift = riftOf(world);
+  const ach = achievementsOf(world);
+  const filter = lootFilterOf(world);
+  return {
+    talents: t
+      ? {
+          points: t.points,
+          spent: t.spent,
+          ranks: t.ranks.map((r) => ({ node: r.node, rank: r.rank })),
+        }
+      : null,
+    rift: rift
+      ? {
+          unlocked: rift.unlocked,
+          maxCompleted: rift.maxCompleted,
+          best: rift.best ? { level: rift.best.level, score: rift.best.score } : null,
+          historyCount: rift.history.length,
+          active: rift.active
+            ? {
+                level: rift.active.level,
+                depth: rift.active.depth,
+                progress: rift.active.progress,
+                goal: rift.active.goal,
+                guardianSpawned: rift.active.guardianSpawned,
+              }
+            : null,
+        }
+      : null,
+    achievements: ach ? { unlocked: ach.unlocked.map((u) => u.id), title: ach.title } : null,
+    lootFilter: filter,
+  };
 }
 
 /** JSON-friendly sim summary for window.__gamez.sim. */
@@ -323,6 +408,7 @@ export function simSummary(
       heroDeaths: probe.heroDeaths,
     },
     runStats: stats ?? null,
+    ...waveASummary(world),
     control: control
       ? {
           mode: control.mode,
@@ -375,6 +461,7 @@ export function installClassicDebug(opts: InstallOptions): () => void {
     setClass(classId) {
       return controls.newHero(classId);
     },
+    cheat: (payload) => api.act(DEBUG_GRANT, payload),
     get seed() {
       return opts.seed();
     },

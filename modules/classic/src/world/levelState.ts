@@ -8,6 +8,7 @@ import type { SystemDef } from "@gamez/kernel";
 import { busOf } from "../bus.ts";
 import { emit } from "../events.ts";
 import { SYSTEM } from "../ids.ts";
+import { isRiftDepth } from "../rules.ts";
 import { dungeonOf } from "../resources.ts";
 
 export const levelStateSystem: SystemDef = {
@@ -22,7 +23,8 @@ export const levelStateSystem: SystemDef = {
       if (d.isHero || d.team !== "monster" || d.rarity === "summon" || d.depth !== live) continue;
       const before = dungeon.liveKilled;
       dungeon.liveKilled = before + 1;
-      if (d.rarity === "boss") {
+      // Rift guardians (wave A) are not main-dungeon bosses: no bossesKilled, no boss event.
+      if (d.rarity === "boss" && !isRiftDepth(live)) {
         if (!dungeon.bossesKilled.includes(live)) {
           dungeon.bossesKilled = [...dungeon.bossesKilled, live].sort((a, b) => a - b);
         }

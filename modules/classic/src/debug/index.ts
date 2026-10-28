@@ -1,0 +1,231 @@
+/**
+ * Module "classic.debug" (wave A, QA only) — OWNER: T-client.
+ * docs/design/wave-A.md §11.1.
+ *
+ * NEVER part of `modules` (the playable mode). The client loads it only with
+ * `?debug=1&cheats=1` through `debugModules` and a mode variant whose module
+ * list adds "classic.debug", so its contentHash differs and cheat saves never
+ * mix with real ones (their own storage key). Action "classic.debug.grant"
+ * takes a strictly validated payload (see parseGrant) and lets the QA harness
+ * reach late-game systems (Rift, sets, crafting, talents) quickly.
+ *
+ * Everything here is sim code: integers, ctx registry data, plain JSON. Grants
+ * that are queued (gold, levels, items, gems) run in their owners' command
+ * systems on the next step(); the rest is written at once.
+ */
+import {
+  ActionError,
+  defineModule,
+  type ActionDef,
+  type SimContext,
+  type World,
+} from "@gamez/kernel";
+import { pushCommand } from "../bus.ts";
+import { ERR } from "../actions.ts";
+import { Level, Talents } from "../components.ts";
+import { heroOf, RES, type DungeonState, type RiftState } from "../resources.ts";
+import { MAIN_DUNGEON_DEPTH, xpAtLevel } from "../rules.ts";
+import { MODULE } from "../ids.ts";
+import {
+  BALANCE_ID,
+  ITEM_CATEGORIES,
+  ITEM_RARITIES,
+  KIND,
+  RIFT_ID,
+  type BalanceProto,
+  type ItemCategory,
+  type ItemRarity,
+  type RiftProto,
+} from "../types.ts";
+
+/** Action name of the QA grant (not in ACTION: it does not exist in the playable mode). */
+export const DEBUG_GRANT = "classic.debug.grant";
+
+/** Sanitised grant payload (every field optional; at least one present). */
+export interface GrantPayload {
+  gold?: number;
+  levels?: number;
+  items?: { count: number; rarity: ItemRarity; ilvl: number; category?: ItemCategory };
+  gems?: number;
+  unlockRift?: boolean;
+  bossesKilled?: number[];
+  deepest?: number;
+  talentPoints?: number;
+}
+
+const FIELDS = [
+  "gold",
+  "levels",
+  "items",
+  "gems",
+  "unlockRift",
+  "bossesKilled",
+  "deepest",
+  "talentPoints",
+] as const;
+
+const MAX_DEPTH = 200;
+
+function bad(message: string): never {
+  throw new ActionError(ERR.badPayload, message);
+}
+
+function intIn(v: unknown, lo: number, hi: number, what: string): number {
+  if (typeof v !== "number" || !Number.isInteger(v) || v < lo || v > hi) {
+    bad(`${what} must be an integer ${lo}..${hi}`);
+  }
+  return v;
+}
+
+function plain(v: unknown, what: string): Record<string, unknown> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) bad(`${what} must be an object`);
+  return v as Record<string, unknown>;
+}
+
+/**
+ * Validates a grant payload strictly: unknown fields, wrong types, out of
+ * range numbers and unknown rarities or categories all throw ActionError.
+ */
+export function parseGrant(payload: unknown): GrantPayload {
+  const p = plain(payload, "payload");
+  for (const k of Object.keys(p)) {
+    if (!(FIELDS as readonly string[]).includes(k)) bad(`unexpected field "${k}"`);
+  }
+  const out: GrantPayload = {};
+  if (p.gold !== undefined) out.gold = intIn(p.gold, 1, 1_000_000_000, "gold");
+  if (p.levels !== undefined) out.levels = intIn(p.levels, 1, 200, "levels");
+  if (p.gems !== undefined) out.gems = intIn(p.gems, 1, 50, "gems");
+  if (p.talentPoints !== undefined)
+    out.talentPoints = intIn(p.talentPoints, 1, 100, "talentPoints");
+  if (p.deepest !== undefined) out.deepest = intIn(p.deepest, 0, MAX_DEPTH, "deepest");
+  if (p.unlockRift !== undefined) {
+    if (typeof p.unlockRift !== "boolean") bad("unlockRift must be a boolean");
+    out.unlockRift = p.unlockRift;
+  }
+  if (p.bossesKilled !== undefined) {
+    if (!Array.isArray(p.bossesKilled)) bad("bossesKilled must be an array of depths");
+    if (p.bossesKilled.length > 32) bad("bossesKilled has too many entries");
+    out.bossesKilled = p.bossesKilled.map((d) => intIn(d, 1, MAX_DEPTH, "bossesKilled depth"));
+  }
+  if (p.items !== undefined) {
+    const it = plain(p.items, "items");
+    for (const k of Object.keys(it)) {
+      if (!["count", "rarity", "ilvl", "category"].includes(k)) bad(`unexpected items.${k}`);
+    }
+    const rarity = it.rarity;
+    if (typeof rarity !== "string" || !(ITEM_RARITIES as readonly string[]).includes(rarity)) {
+      bad("items.rarity must be a known rarity");
+    }
+    const item: NonNullable<GrantPayload["items"]> = {
+      count: intIn(it.count, 1, 50, "items.count"),
+      rarity: rarity as ItemRarity,
+      ilvl: intIn(it.ilvl, 1, 200, "items.ilvl"),
+    };
+    if (it.category !== undefined) {
+      const cat = it.category;
+      if (typeof cat !== "string" || !(ITEM_CATEGORIES as readonly string[]).includes(cat)) {
+        bad("items.category must be a known category");
+      }
+      item.category = cat as ItemCategory;
+    }
+    out.items = item;
+  }
+  if (Object.keys(out).length === 0) bad("nothing to grant");
+  return out;
+}
+
+/** Adds the depths to DungeonState.bossesKilled (sorted, unique). */
+function addBossKills(world: World, depths: readonly number[]): void {
+  const dungeon = world.getResource<DungeonState>(RES.dungeon);
+  if (!dungeon) return;
+  const set = new Set(dungeon.bossesKilled);
+  for (const d of depths) set.add(d);
+  dungeon.bossesKilled = [...set].sort((a, b) => a - b);
+}
+
+/** Unlocks the rift: the boss depth counts as killed, the depth reaches it and RiftState unlocks. */
+function unlockRift(world: World, ctx: SimContext): void {
+  const unlockDepth =
+    ctx.registry.get<RiftProto>(KIND.rift, RIFT_ID)?.unlockBossDepth ?? MAIN_DUNGEON_DEPTH;
+  addBossKills(world, [unlockDepth]);
+  const dungeon = world.getResource<DungeonState>(RES.dungeon);
+  if (dungeon && dungeon.deepest < unlockDepth) dungeon.deepest = unlockDepth;
+  const rift = world.getResource<RiftState>(RES.rift);
+  if (rift) rift.unlocked = true;
+}
+
+/** Applies a validated grant to the sim (queued grants run on the next step). */
+export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void {
+  const hero = heroOf(world);
+  if (hero === 0 || !world.has(hero, Level)) throw new ActionError(ERR.noHero, "no hero");
+  const level = world.read(hero, Level);
+  if (g.gold !== undefined)
+    pushCommand(world, { op: "grantGold", amount: g.gold, reason: "debug" });
+  if (g.levels !== undefined) {
+    const bal = ctx.registry.get<BalanceProto>(KIND.balance, BALANCE_ID);
+    if (bal) {
+      const target = Math.min(bal.maxLevel, level.level + g.levels);
+      const need = xpAtLevel(bal, target) - level.xp;
+      if (need > 0) pushCommand(world, { op: "grantXp", amount: need, reason: "debug" });
+    }
+  }
+  if (g.items !== undefined) {
+    pushCommand(world, {
+      op: "grantItems",
+      count: g.items.count,
+      ilvl: g.items.ilvl,
+      minRarity: g.items.rarity,
+      ...(g.items.category !== undefined ? { category: g.items.category } : {}),
+      toStash: false,
+      reason: "debug",
+    });
+  }
+  if (g.gems !== undefined) {
+    pushCommand(world, {
+      op: "grantItems",
+      count: g.gems,
+      ilvl: Math.max(1, level.level),
+      minRarity: "normal",
+      category: "gem",
+      toStash: false,
+      reason: "debug",
+    });
+  }
+  if (g.bossesKilled !== undefined) addBossKills(world, g.bossesKilled);
+  if (g.deepest !== undefined) {
+    const dungeon = world.getResource<DungeonState>(RES.dungeon);
+    if (dungeon && g.deepest > dungeon.deepest) dungeon.deepest = g.deepest;
+  }
+  if (g.unlockRift) unlockRift(world, ctx);
+  if (g.talentPoints !== undefined) {
+    const t = world.get(hero, Talents);
+    if (t) world.update(hero, Talents, { points: t.points + g.talentPoints });
+    else {
+      world.add(hero, Talents, {
+        points: g.talentPoints,
+        spent: 0,
+        ranks: [],
+        levelSeen: level.level,
+      });
+    }
+  }
+}
+
+const grant: ActionDef<GrantPayload> = {
+  name: DEBUG_GRANT,
+  parse(_world, payload) {
+    return parseGrant(payload);
+  },
+  apply(world, p, ctx) {
+    applyGrant(world, ctx, p);
+  },
+};
+
+export const classicDebug = defineModule({
+  id: MODULE.debug,
+  version: "0.1.0",
+  deps: [MODULE.content, MODULE.core],
+  optionalDeps: [MODULE.items, MODULE.progression, MODULE.world, MODULE.rift, MODULE.talents],
+  systems: [],
+  actions: [grant],
+});

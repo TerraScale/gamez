@@ -40,7 +40,25 @@ export const KIND = {
   names: "classic.names",
   /** BalanceProto, single id BALANCE_ID. */
   balance: "classic.balance",
+  // ---- wave A (docs/design/wave-A.md)
+  /** TalentTreeProto, one per class. Ids: "classic.talents.<class>" (e.g. "classic.talents.warrior"). Owner content: talents.ts. */
+  talentTree: "classic.talentTree",
+  /** TalentNodeProto. Ids: "classic.talent.<class>.<name>". Owner content: talents.ts. */
+  talent: "classic.talent",
+  /** SetProto (item set with bonuses). Ids: "classic.set.<name>". Owner content: sets.ts. */
+  set: "classic.set",
+  /** SetItemProto (one piece of a set). Ids: "classic.setItem.<name>". Owner content: sets.ts. */
+  setItem: "classic.setItem",
+  /** EconomyProto, single id ECONOMY_ID: every gold-sink price (repair, crafting, gambling, resets, rift fees). */
+  economy: "classic.economy",
+  /** RiftProto, single id RIFT_ID. */
+  rift: "classic.rift",
+  /** AchievementProto. Ids: "classic.achievement.<name>". */
+  achievement: "classic.achievement",
 } as const;
+
+export const ECONOMY_ID = "classic.economy";
+export const RIFT_ID = "classic.rift";
 
 export const BALANCE_ID = "classic.balance";
 export const NAMES_UNIQUE_MONSTER = "classic.names.uniqueMonster";
@@ -61,8 +79,12 @@ export type Damage = Record<Element, number>;
 
 export type Team = "hero" | "monster";
 
-export type ItemRarity = "normal" | "magic" | "rare" | "unique";
-export const ITEM_RARITIES: readonly ItemRarity[] = ["normal", "magic", "rare", "unique"];
+/**
+ * "set" (wave A): a piece of an item set (SetItemProto); ranks between rare
+ * and unique (rules.rarityRank: normal 0, magic 1, rare 2, set 3, unique 4).
+ */
+export type ItemRarity = "normal" | "magic" | "rare" | "set" | "unique";
+export const ITEM_RARITIES: readonly ItemRarity[] = ["normal", "magic", "rare", "set", "unique"];
 
 /** "minion" = escort of a unique/boss; "summon" = raised or placed by a skill. */
 export type MonsterRarity = "normal" | "champion" | "unique" | "boss" | "minion" | "summon";
@@ -111,7 +133,22 @@ export type ItemCategory =
   | "boots"
   | "ring"
   | "amulet"
-  | "potion";
+  | "potion"
+  /** Socketable gem (wave A): ItemBaseProto.gem is set; never equipped. */
+  | "gem";
+
+export const ITEM_CATEGORIES: readonly ItemCategory[] = [
+  "weapon",
+  "shield",
+  "helm",
+  "armor",
+  "gloves",
+  "boots",
+  "ring",
+  "amulet",
+  "potion",
+  "gem",
+];
 
 export type WeaponClass = "sword" | "axe" | "mace" | "dagger" | "bow" | "staff" | "wand";
 
@@ -170,6 +207,44 @@ export interface StatMod {
   value: number;
 }
 
+/**
+ * Per-skill modifier (wave A: talents, later sets/runes). Applied by
+ * classic.combat to the matching skills of the unit that owns it (heroes
+ * only, through the BonusStats component; read with bonus.ts skillModsOf).
+ */
+export type SkillModField =
+  /** % more damage of the skill (all elements, weapon and flat parts). */
+  | "damagePct"
+  /** % mana cost change (negative = cheaper), floor 0. rules.effectiveManaCost. */
+  | "manaCostPct"
+  /** % cooldown change (negative = shorter), floor 0. rules.effectiveCooldown. */
+  | "cooldownPct"
+  /** % faster cast/attack of this skill (added to the speed stat it scales with). */
+  | "speedPct"
+  /** % larger radius (nova, aoeTarget, pulse, self radius) and arc reach. */
+  | "radiusPct"
+  /** + projectiles (count). */
+  | "extraProjectiles"
+  /** + pierce per projectile. */
+  | "extraPierce"
+  /** + chain bounces. */
+  | "extraBounces"
+  /** % longer status / buff / summon duration. */
+  | "durationPct"
+  /** + summons alive (max) and per cast (count). */
+  | "extraSummons";
+
+export interface SkillModifier {
+  /**
+   * Which skills: an exact skill id ("classic.skill.cleave"), "*" for every
+   * hero skill, or "tag:<SkillTag>" (e.g. "tag:aoe") for skills whose
+   * ai.tags contain that tag.
+   */
+  skill: string;
+  field: SkillModField;
+  value: number;
+}
+
 /** Plain-JSON item instance (inventory, equipment, stash, ground loot, vendor stock). */
 export interface ItemInstance {
   /** Unique per sim, from GameState.nextUid. */
@@ -188,6 +263,26 @@ export interface ItemInstance {
   unique?: string;
   /** Base gold value (see rules.itemValue); vendors sell at value, the junk buyer pays NpcProto.buyPct of it. */
   value: number;
+  // ---- wave A (all optional: items from older saves and fixtures have none) ----
+  /** SetItemProto id for rarity "set". */
+  set?: string;
+  /**
+   * Sockets: one entry per socket, the socketed gem's ItemBaseProto id or
+   * null when empty. Absent = no sockets. rules.addItemStats adds gem mods.
+   */
+  sockets?: (string | null)[];
+  /**
+   * Durability (equipment only; absent = full and never wears until
+   * classic.items gives it one). cur 0 = broken: rules.addItemStats and
+   * progression.stats ignore the item (no stats, no base damage/armor).
+   */
+  dur?: { cur: number; max: number };
+  /** Smith upgrade level 0..EconomyProto.upgrade.maxLevel (rules.upgradeMods adds its bonus). */
+  upgrade?: number;
+  /** Times the smith rerolled this item (reroll price scaling). */
+  rerolls?: number;
+  /** Stash tab index while the item lies in the stash (absent = 0). Removed when taken out. */
+  tab?: number;
 }
 
 export interface Rect {
@@ -330,6 +425,18 @@ export interface SkillProto {
   /** Status applied to the caster (and hero-team allies in radius when `radius` is set). */
   buff?: { status: string; duration: number; power: number; powerPerRank: number };
   pulse?: { count: number; every: number };
+  /**
+   * Wave A (monster/boss skills): the area does not hit when the cast fires;
+   * classic.combat places a telegraph (GroundEffect with `once`) that shows
+   * the danger zone for `ticks` and then hits every enemy still inside it.
+   * Shapes: circle (nova: around the caster; aoeTarget: at the target point;
+   * radius = skill radius), cone (arc: caster facing, half-width `arc`,
+   * length = range), line (dash: from caster to target, width `width` sub,
+   * length = dash.maxRange; the caster dashes when it fires).
+   * `count` (circle + aoeTarget only, default 1): that many circles, the first
+   * on the target point and the others at ctx.rng points within 3 tiles of it.
+   */
+  telegraph?: { ticks: number; shape: "circle" | "cone" | "line"; width?: number; count?: number };
   /** Visual effect id for EffectSpec / renderer ("fx.frost_ring"). */
   effect: string;
   /** Hints for the auto controller and monster AI. */
@@ -393,6 +500,22 @@ export interface MonsterProto {
   onDeathSkill?: string;
   /** Bosses only. */
   boss?: { depth: number; title: string; minions: string; minionCount: number };
+  /**
+   * Wave A boss encounters: phases entered once each, in order, when life
+   * falls to or below `atPct` of max. Entering a phase: emits
+   * classic.boss.phase (with `message`), optionally summons minions, applies
+   * the enrage status (StatusProto "classic.status.enrage", power = enragePct)
+   * and from then on the boss may use `skills` (added to its rotation).
+   */
+  phases?: {
+    atPct: number;
+    message: string;
+    skills: string[];
+    summon: boolean;
+    enragePct: number;
+  }[];
+  /** Rift guardians only (RiftProto.guardians): spawned when the rift progress bar fills. */
+  guardian?: boolean;
 }
 
 export interface MonsterModProto {
@@ -446,7 +569,31 @@ export interface ItemBaseProto {
   dropWeight: number;
   /** Potions only: instant restore (life/mana amount; rejuvenation uses pct of max). */
   potion?: { kind: "life" | "mana" | "rejuv"; amount: number; pct: number; tier: number };
+  // ---- wave A ----
+  /** Gems only (category "gem"): what a socketed gem adds, by the host item's group (rules.socketGroup). */
+  gem?: {
+    kind: GemKind;
+    /** 1 (chipped) .. 5 (radiant). Three of tier t combine into one of tier t+1 (smith). */
+    tier: number;
+    weapon: StatMod[];
+    armor: StatMod[];
+    jewelry: StatMod[];
+  };
+  /** Max sockets; absent = rules.maxSocketsOf default by category. */
+  maxSockets?: number;
+  /** Max durability; absent = rules.maxDurabilityOf default by category (0 = indestructible). */
+  durability?: number;
 }
+
+export type GemKind = "ruby" | "sapphire" | "topaz" | "emerald" | "amethyst" | "diamond";
+export const GEM_KINDS: readonly GemKind[] = [
+  "ruby",
+  "sapphire",
+  "topaz",
+  "emerald",
+  "amethyst",
+  "diamond",
+];
 
 export interface AffixProto {
   /** "Fiery" (prefix) or "of the Bear" (suffix). */
@@ -471,7 +618,8 @@ export interface UniqueProto {
   flavor: string;
 }
 
-export type NpcRole = "healer" | "smith" | "alchemist" | "junk" | "quest";
+/** "gambler" (wave A): sells unidentified items by category (classic.gamble). */
+export type NpcRole = "healer" | "smith" | "alchemist" | "junk" | "quest" | "gambler";
 
 export interface NpcProto {
   name: string;
@@ -485,6 +633,10 @@ export interface NpcProto {
   /** Junk buyer: % of item value paid. 0 = does not buy. */
   buyPct: number;
   greeting: string;
+  /** Gambler only: categories offered (prices: EconomyProto.gamble). */
+  gamble?: { categories: ItemCategory[] };
+  /** Smith only (wave A): offers the crafting services (repair, upgrade, reroll, sockets, gems). */
+  crafts?: boolean;
 }
 
 export type QuestKind = "killBoss" | "clearLevel" | "reachDepth" | "killMonsters";
@@ -585,4 +737,190 @@ export interface BalanceProto {
   offlineCapMs: number;
   /** Fraction of the online kill rate used offline (percent). */
   offlineEfficiencyPct: number;
+  // ---- wave A (optional: defaults in brackets; rules.balanceDefault reads them) ----
+  /** Talent points per level gained from level 2 [1]. */
+  talentPointsPerLevel?: number;
+  /** Stash tabs [1]; each holds stashSize items. */
+  stashTabs?: number;
+  /** Gem drop chance (percent) by monster rarity [all 0]. */
+  gemDrops?: Partial<Record<MonsterRarity, number>>;
+  /** Chance (percent) that a dropped normal/magic weapon or armor rolls 1..maxSockets sockets [0]. */
+  socketedDropPct?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Wave A prototypes (docs/design/wave-A.md)
+// ---------------------------------------------------------------------------
+
+/** One class's talent tree (KIND.talentTree, id "classic.talents.<class>"). */
+export interface TalentTreeProto {
+  name: string;
+  /** ClassProto id. */
+  classId: string;
+  /** A node of tier t needs t x tierPoints points spent in this tree. */
+  tierPoints: number;
+  /** Branch names, by TalentNodeProto.col (0..branches.length-1), for the panel headers. */
+  branches: string[];
+  /** Every node id of the tree (panel order). */
+  nodes: string[];
+  /**
+   * Auto/Idle allocation order (node ids, may repeat a node to give it more
+   * ranks): classic.talents spends each point on the first entry that is
+   * learnable now, scanning from the start.
+   */
+  autoOrder: string[];
+}
+
+/** A passive talent (KIND.talent). Effects are per rank: rank r gives r x perRank. */
+export interface TalentNodeProto {
+  name: string;
+  /** Player text; "{v}" is replaced by the per-rank total of the first effect. */
+  description: string;
+  /** Logical icon id "icon.talent.<name>" (HUD draws an inline glyph when missing). */
+  icon: string;
+  /** TalentTreeProto id. */
+  tree: string;
+  /** Row 0..4. */
+  tier: number;
+  /** Column (branch index). */
+  col: number;
+  maxRank: number;
+  /** Node that needs at least one rank first (same tree), or null. */
+  requires: string | null;
+  perRank: { stats: StatMod[]; skills: SkillModifier[] };
+}
+
+/** An item set (KIND.set). */
+export interface SetProto {
+  name: string;
+  /** ClassProto id the set is themed for (drops for anyone), or null. */
+  classId: string | null;
+  /** SetItemProto ids, in display order. */
+  pieces: string[];
+  /** Bonuses by number of DIFFERENT pieces equipped (count >= 2), ascending. */
+  bonuses: { count: number; mods: StatMod[] }[];
+}
+
+/** One set piece (KIND.setItem). Rolled like a unique: fixed base, ranged mods. */
+export interface SetItemProto {
+  name: string;
+  /** SetProto id. */
+  set: string;
+  /** ItemBaseProto id. */
+  base: string;
+  ilvl: number;
+  mods: { stat: StatId; min: number; max: number }[];
+  weight: number;
+}
+
+/**
+ * Every gold sink price (KIND.economy, id ECONOMY_ID). All prices are gold
+ * integers; "Pct" prices are percent of rules.itemValue / ItemInstance.value.
+ */
+export interface EconomyProto {
+  repair: {
+    /** Full repair of an item costs value x fullPct% (pro rata of missing durability), min 1. */
+    fullPct: number;
+    /** Every `everyKills` hero kills the weapon and one random worn armor piece lose 1 durability. */
+    everyKills: number;
+    /** Hero death: every equipped item loses this % of its max durability. */
+    deathLossPct: number;
+  };
+  upgrade: {
+    maxLevel: number;
+    /** Cost of upgrading level L -> L+1 = value x costPct[L]%. */
+    costPct: number[];
+    /** Success chance % of upgrading L -> L+1 (failure spends the gold, keeps the item). */
+    chancePct: number[];
+  };
+  reroll: {
+    /** value x basePct% x (1 + rerolls); magic and rare only. */
+    basePct: number;
+  };
+  sockets: {
+    /** Cost of adding socket n (index = current socket count). */
+    addCost: number[];
+    /** Removing all gems (they return to the bag): flat cost. */
+    unsocketCost: number;
+    /** Combining three gems of tier t: combineCost[t - 1]. */
+    combineCost: number[];
+  };
+  gamble: {
+    /** Price = base x (100 + perLevelPct x heroLevel)%, by category (missing category = not offered). */
+    base: Partial<Record<ItemCategory, number>>;
+    perLevelPct: number;
+    /** Rarity weights of gambled items. */
+    weights: Record<ItemRarity, number>;
+  };
+  /** Talent reset: perLevel x hero level. */
+  talentResetPerLevel: number;
+}
+
+/** The endless Rift (KIND.rift, id RIFT_ID). See docs/design/wave-A.md §Rift. */
+export interface RiftProto {
+  /** Unlocked once this boss depth is in DungeonState.bossesKilled (16 = the Hollow King). */
+  unlockBossDepth: number;
+  /** Square map size in tiles. */
+  size: number;
+  rooms: [number, number];
+  roomSize: [number, number];
+  packs: [number, number];
+  /** Progress points per kill by monster rarity; the guardian spawns at `goal`. */
+  progress: Record<MonsterRarity, number>;
+  goal: number;
+  /** Time limit (ticks); a run over it can still finish but scores no time bonus and gives half rewards. */
+  timeLimit: number;
+  /** Guardian monster ids, cycled by rift level (level % length). */
+  guardians: string[];
+  /** Entry fee = feeBase + feePerLevel x level (gold sink). */
+  feeBase: number;
+  feePerLevel: number;
+  reward: {
+    goldPerLevel: number;
+    /** Items granted on completion: items + floor(level / bonusEvery). */
+    items: number;
+    bonusEvery: number;
+    minRarity: ItemRarity;
+  };
+  /** Theme ids cycled by rift level. */
+  themes: string[];
+}
+
+/** What an achievement counts (classic.achievements reads it from the world, see wave-A.md §Achievements). */
+export type AchievementMetric =
+  | "kills"
+  | "championKills"
+  | "uniqueKills"
+  | "bossKills"
+  | "level"
+  | "deepest"
+  | "goldEarned"
+  | "goldSpent"
+  | "itemsFound"
+  | "uniquesFound"
+  | "setItemsFound"
+  | "setComplete"
+  | "questsCompleted"
+  | "potionsUsed"
+  | "itemsCrafted"
+  | "gemsSocketed"
+  | "gambles"
+  | "talentPoints"
+  | "riftLevel"
+  | "riftsCompleted"
+  | "playMinutes";
+
+export interface AchievementProto {
+  name: string;
+  description: string;
+  icon: string;
+  metric: AchievementMetric;
+  /** Unlocked when the metric reaches this value. */
+  target: number;
+  /** Gold granted on unlock (via grantGold) and an optional title shown in the character panel. */
+  reward: { gold: number; title: string | null };
+  /** Hidden until unlocked (name shows as "???"). */
+  hidden: boolean;
+  /** Panel sort order. */
+  order: number;
 }

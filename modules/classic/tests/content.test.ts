@@ -170,8 +170,8 @@ describe("classes", () => {
 describe("skills", () => {
   const hero = Object.entries(skills).filter(([, s]) => s.users === "hero");
 
-  it("has at least 15 hero skills, all classic.skill.*", () => {
-    expect(hero.length).toBeGreaterThanOrEqual(15);
+  it("has at least 24 hero skills (15 original + 9 wave A), all classic.skill.*", () => {
+    expect(hero.length).toBeGreaterThanOrEqual(24);
     for (const [id] of hero) expect(id.startsWith("classic.skill.")).toBe(true);
     for (const [id, s] of Object.entries(skills)) {
       if (s.users === "monster") expect(id.startsWith("classic.mskill.")).toBe(true);
@@ -240,13 +240,112 @@ describe("statuses", () => {
   it("covers slow, stun, dot and buff kinds", () => {
     const kinds = new Set(Object.values(statuses).map((s) => s.kind));
     expect(kinds).toEqual(new Set(["slow", "stun", "dot", "buff"]));
-    expect(Object.keys(statuses).sort()).toEqual([
-      "classic.status.burn",
-      "classic.status.chill",
-      "classic.status.poison",
-      "classic.status.rally",
-      "classic.status.stun",
+    // Other waves add statuses (enrage); the ones named here must exist.
+    expect(Object.keys(statuses)).toEqual(
+      expect.arrayContaining([
+        "classic.status.burn",
+        "classic.status.chill",
+        "classic.status.iron_skin",
+        "classic.status.poison",
+        "classic.status.rally",
+        "classic.status.stun",
+      ]),
+    );
+  });
+});
+
+/** The nine wave A hero skills (wave-A.md §4): class, level and shape. */
+const WAVE_A_SKILLS: [id: string, className: string, reqLevel: number, shape: SkillShape][] = [
+  ["classic.skill.quake_stomp", "classic.warrior", 12, "nova"],
+  ["classic.skill.iron_skin", "classic.warrior", 15, "self"],
+  ["classic.skill.sky_leap", "classic.warrior", 18, "dash"],
+  ["classic.skill.piercing_shot", "classic.rogue", 12, "projectile"],
+  ["classic.skill.caltrops", "classic.rogue", 15, "aoeTarget"],
+  ["classic.skill.night_volley", "classic.rogue", 18, "projectile"],
+  ["classic.skill.glacial_spike", "classic.sorcerer", 12, "projectile"],
+  ["classic.skill.storm_call", "classic.sorcerer", 15, "aoeTarget"],
+  ["classic.skill.falling_star", "classic.sorcerer", 18, "aoeTarget"],
+];
+
+describe("wave A hero skills", () => {
+  it("defines each new skill with its class level, shape and art ids", () => {
+    for (const [id, , reqLevel, shape] of WAVE_A_SKILLS) {
+      const s = skills[id];
+      expect(s, id).toBeDefined();
+      expect(s!.users, id).toBe("hero");
+      expect(s!.reqLevel, id).toBe(reqLevel);
+      expect(s!.shape, id).toBe(shape);
+      const key = id.slice("classic.skill.".length);
+      expect(s!.effect, id).toBe(`fx.${key}`);
+      expect(s!.icon, id).toBe(`icon.skill.${key}`);
+      expect(s!.description.length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it("lists each new skill on its class, in panel order by level", () => {
+    for (const [id, className] of WAVE_A_SKILLS) {
+      expect(classes[className]!.skills, className).toContain(id);
+    }
+    for (const [id, c] of Object.entries(classes)) {
+      const levels = c.skills.map((s) => skills[s]!.reqLevel);
+      expect(levels, id).toEqual([...levels].sort((a, b) => a - b));
+    }
+  });
+
+  it("gives the sorcerer's new spells magic scaling and the others weapon damage", () => {
+    expect(skills["classic.skill.glacial_spike"]!.scaling).toBe("mag");
+    expect(skills["classic.skill.storm_call"]!.scaling).toBe("mag");
+    expect(skills["classic.skill.falling_star"]!.scaling).toBe("mag");
+    for (const id of [
+      "classic.skill.quake_stomp",
+      "classic.skill.sky_leap",
+      "classic.skill.piercing_shot",
+      "classic.skill.caltrops",
+      "classic.skill.night_volley",
+    ]) {
+      expect(skills[id]!.scaling, id).toBeNull();
+      expect(skills[id]!.canMiss, id).toBe(true);
+    }
+  });
+
+  it("gives every hero projectile an fx sprite, and the new ones their own effect id", () => {
+    for (const [id, s] of Object.entries(skills)) {
+      if (s.users !== "hero" || s.shape !== "projectile" || !s.projectile) continue;
+      expect(s.projectile.sprite.startsWith("fx."), id).toBe(true);
+    }
+    for (const [id] of WAVE_A_SKILLS) {
+      const s = skills[id]!;
+      if (s.shape === "projectile") expect(s.projectile!.sprite, id).toBe(s.effect);
+    }
+    expect(skills["classic.skill.piercing_shot"]!.projectile!.sprite).toBe("fx.piercing_shot");
+    expect(skills["classic.skill.night_volley"]!.projectile!.sprite).toBe("fx.night_volley");
+    expect(skills["classic.skill.glacial_spike"]!.projectile!.sprite).toBe("fx.glacial_spike");
+  });
+
+  it("references existing statuses with the kinds the design asks for", () => {
+    expect(skills["classic.skill.quake_stomp"]!.status!.id).toBe("classic.status.stun");
+    expect(skills["classic.skill.iron_skin"]!.buff!.status).toBe("classic.status.iron_skin");
+    expect(skills["classic.skill.caltrops"]!.status!.id).toBe("classic.status.chill");
+    expect(skills["classic.skill.glacial_spike"]!.status!.id).toBe("classic.status.chill");
+    expect(skills["classic.skill.falling_star"]!.status!.id).toBe("classic.status.burn");
+    expect(statuses["classic.status.iron_skin"]!.kind).toBe("buff");
+    expect(statuses["classic.status.iron_skin"]!.mods!.map((m) => m.stat)).toEqual([
+      "armorPct",
+      "resAll",
     ]);
+  });
+
+  it("gives no hero skill a telegraph (those are for monsters)", () => {
+    for (const [id, s] of Object.entries(skills)) {
+      if (s.users === "hero") expect(s.telegraph, id).toBeUndefined();
+    }
+  });
+
+  it("keeps class skills hero skills and every auto order entry a skill of its class", () => {
+    for (const [id, c] of Object.entries(classes)) {
+      for (const s of c.skills) expect(skills[s]!.users, `${id}.${s}`).toBe("hero");
+      for (const s of c.autoSkillOrder) expect(c.skills, `${id}.${s}`).toContain(s);
+    }
   });
 });
 
@@ -498,11 +597,12 @@ describe("uniques, quests, npcs and themes", () => {
     expect(list.every(([, q]) => q.giver === "classic.npc.captain_hale")).toBe(true);
   });
 
-  it("has five town NPCs with the design roles", () => {
+  it("has six town NPCs with the design roles (wave A adds the gambler)", () => {
     expect(Object.keys(npcs).sort()).toEqual([
       "classic.npc.brannoc",
       "classic.npc.captain_hale",
       "classic.npc.maren",
+      "classic.npc.mirelle",
       "classic.npc.old_pell",
       "classic.npc.ysolde",
     ]);
@@ -550,6 +650,6 @@ describe("numbers", () => {
 describe("content hash", () => {
   it("is identical across two loads and pinned", () => {
     expect(reg.hash).toBe(loadMode(mode, [classicContent]).registry.hash);
-    expect(reg.hash).toBe("de2dd2f490cfb423");
+    expect(reg.hash).toBe("e4c38ef5d5b6f4c0");
   });
 });

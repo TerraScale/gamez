@@ -21,7 +21,8 @@ import {
   Summoned,
 } from "../components.ts";
 import { angleDiff, angleOf, angleVec, isqrt, pct, scaleTo } from "../fixed.ts";
-import { effectiveRank, skillManaCost } from "../rules.ts";
+import { skillModsOf } from "../bonus.ts";
+import { effectiveManaCost, effectiveRank } from "../rules.ts";
 import { gridOf } from "../spatial.ts";
 import {
   KIND,
@@ -225,7 +226,8 @@ export function barSkills(c: AutoCtx): SkillOption[] {
       id,
       proto,
       rank,
-      cost: skillManaCost(proto, rank),
+      // Wave A: talents change mana costs (skill modifiers).
+      cost: effectiveManaCost(proto, rank, skillModsOf(world, reg, c.hero, id)),
       range: proto.range === 0 ? (stats?.attackRange ?? 400) : proto.range,
       ready: !cd || cd.readyAt <= c.tick,
       basic: isBasic(proto),
@@ -247,7 +249,7 @@ function fallbackBasic(c: AutoCtx): SkillOption | null {
       id: r.skill,
       proto,
       rank: r.rank,
-      cost: skillManaCost(proto, r.rank),
+      cost: effectiveManaCost(proto, r.rank, skillModsOf(c.world, c.reg, c.hero, r.skill)),
       range: proto.range === 0 ? (stats?.attackRange ?? 400) : proto.range,
       ready: true,
       basic: true,

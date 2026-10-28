@@ -18,7 +18,17 @@ import {
 } from "@gamez/kernel";
 import type { ArpgWorldRenderer, FloatTextSpec, PointerInfo } from "@gamez/ui-host";
 import { ACTION } from "../actions.ts";
-import { Ai, AreaTag, CombatStats, Dead, Intent, Monster, Pos, SkillBar } from "../components.ts";
+import {
+  Ai,
+  AreaTag,
+  CombatStats,
+  Dead,
+  Faction,
+  Intent,
+  Monster,
+  Pos,
+  SkillBar,
+} from "../components.ts";
 import { dist, SUB } from "../fixed.ts";
 import { RES, type AreaState, type ControlState, type GameState } from "../resources.ts";
 import { KIND, type SkillProto } from "../types.ts";
@@ -46,6 +56,8 @@ import { FixedLoop, PerfWindow } from "./loop.ts";
 import { PointerInput, type PointerCommand } from "./input.ts";
 import { SceneSync } from "./scene.ts";
 import { sanitizeSettings, type SaveRecord, type SaveStore } from "./persist.ts";
+import { createAudio } from "./audio/index.ts";
+import type { GraphicsQuality } from "./contract.ts";
 
 export interface GameDeps {
   loaded: LoadedMode;
@@ -71,6 +83,8 @@ export interface ClassicGame {
   readonly api: ClassicClientApi;
   /** Writes the local save now (index.ts calls it every 10 s and on hide/unmount). */
   save(): boolean;
+  /** Shows a toast (index.ts: the save carry-over notice). */
+  notify(kind: Toast["kind"], title: string, body: string, ms?: number): void;
   /** Stops the frame work and pointer handling. The caller destroys the renderer. */
   destroy(): void;
   /** The current local sim (replaced by newGame). Read-only use: QA debug hooks. */
@@ -89,6 +103,8 @@ const ERROR_MS = 3000;
 const FAIL_BACKOFF_MS = 1000;
 /** The vendor panel closes when the hero is further than this (tiles) from the NPC. */
 const TOWN_CLOSE_RANGE = 4;
+/** Long toast (boss, rift and achievement news, carry-over notice). */
+const TOAST_LONG_MS = 7000;
 
 interface Cell<T> {
   store: Store<T>;
@@ -133,8 +149,15 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** A living hostile monster (hero-team summons such as the Spark Sentry are not). */
 function isLiveMonster(world: World, e: Entity): boolean {
-  return e !== 0 && world.exists(e) && world.has(e, Monster) && !world.has(e, Dead);
+  return (
+    e !== 0 &&
+    world.exists(e) &&
+    world.has(e, Monster) &&
+    !world.has(e, Dead) &&
+    world.get(e, Faction)?.team !== "hero"
+  );
 }
 
 function posOf(world: World, e: Entity): { x: number; y: number } {
@@ -181,6 +204,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   const perf = new PerfWindow();
   const scene = new SceneSync(renderer);
   let vendorNpc: Entity = 0;
+  /** The gambler NPC whose panel is open (closed when the hero walks away). */
+  let gamblerNpc: Entity = 0;
   let logId = 1;
   let toastId = 1;
   let lastHudAt = Number.NEGATIVE_INFINITY;
@@ -188,6 +213,25 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   let backoffUntil = Number.NEGATIVE_INFINITY;
   let appliedZoom = Number.NaN;
   let alpha = 0;
+  // Wave A: procedural audio (audio/index.ts) and renderer quality.
+  const audio = createAudio({ registry, settings });
+  let appliedQuality: GraphicsQuality | null = null;
+
+  /** "auto" -> medium on touch-first or narrow screens, else high. */
+  function resolveQuality(q: GraphicsQuality): "low" | "medium" | "high" {
+    if (q !== "auto") return q;
+    return coarsePointer || deps.viewportWidth() < COMPACT_WIDTH ? "medium" : "high";
+  }
+
+  function applyQuality(): void {
+    if (settings.quality === appliedQuality) return;
+    appliedQuality = settings.quality;
+    try {
+      renderer.setQuality?.(resolveQuality(settings.quality));
+    } catch (err) {
+      reportError(err);
+    }
+  }
 
   // ---- stores -----------------------------------------------------------------
 
@@ -239,6 +283,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       heroY: p ? p.y / SUB : 0,
       showDamageNumbers: settings.showDamageNumbers,
       manual: control === undefined || control.mode === "manual",
+      speed: control && control.mode === "idle" ? control.speed : 1,
     };
   }
 
@@ -271,6 +316,18 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
         return;
       case "vendor":
         vendorNpc = v.npc;
+        gamblerNpc = 0;
+        return;
+      case "gambler":
+        gamblerNpc = v.npc;
+        vendorNpc = 0;
+        return;
+      case "shake":
+        try {
+          renderer.shake?.(v.strength, v.ms);
+        } catch (err) {
+          reportError(err);
+        }
         return;
       case "error":
         setError(v.code, v.message);
@@ -288,6 +345,16 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     // Events carry no tick: they all belong to the batch that just ran, whose
     // last processed tick is sim.tick - 1 (the scene's render time base).
     const hitTick = sim.tick - 1;
+    try {
+      audio.onEvents(events, {
+        hero: env.hero,
+        heroX: env.heroX,
+        heroY: env.heroY,
+        speed: control && control.mode === "idle" ? control.speed : 1,
+      });
+    } catch (err) {
+      reportError(err);
+    }
     for (const ev of events) {
       if (ev.type === "classic.hit" && ev.dot !== true && typeof ev.target === "number") {
         scene.noteHit(ev.target, hitTick);
@@ -305,26 +372,33 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
 
   // ---- HUD --------------------------------------------------------------------
 
+  /** True when the hero is no longer within TOWN_CLOSE_RANGE of `npc` (or either is gone). */
+  function npcOutOfReach(npc: Entity): boolean {
+    const world = sim.world;
+    const hero = heroOfWorld(world);
+    const hp = hero ? world.get(hero, Pos) : undefined;
+    const np = world.exists(npc) ? world.get(npc, Pos) : undefined;
+    return (
+      !hp || !np || Math.max(Math.abs(hp.x - np.x), Math.abs(hp.y - np.y)) > TOWN_CLOSE_RANGE * SUB
+    );
+  }
+
   function refreshHud(): void {
     const world = sim.world;
-    if (vendorNpc !== 0) {
-      const hero = heroOfWorld(world);
-      const hp = hero ? world.get(hero, Pos) : undefined;
-      const np = world.exists(vendorNpc) ? world.get(vendorNpc, Pos) : undefined;
-      const far =
-        !hp ||
-        !np ||
-        Math.max(Math.abs(hp.x - np.x), Math.abs(hp.y - np.y)) > TOWN_CLOSE_RANGE * SUB;
-      if (far) {
-        vendorNpc = 0;
-        closePanel("vendor");
-      }
+    if (vendorNpc !== 0 && npcOutOfReach(vendorNpc)) {
+      vendorNpc = 0;
+      closePanel("vendor");
+    }
+    if (gamblerNpc !== 0 && npcOutOfReach(gamblerNpc)) {
+      gamblerNpc = 0;
+      closePanel("gamble");
     }
     hud.set(
       buildHud(world, registry, {
         tick: sim.tick,
         hovered: pointer.hovered,
-        vendor: vendorNpc,
+        // One trade NPC at a time: the gambler's view is built from the same slot.
+        vendor: vendorNpc !== 0 ? vendorNpc : gamblerNpc,
         prev: hud.get(),
       }),
     );
@@ -394,6 +468,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       let bestD = Number.POSITIVE_INFINITY;
       for (const e of world.query(Monster, Pos, AreaTag)) {
         if (world.read(e, AreaTag).depth !== depth || world.has(e, Dead)) continue;
+        // Hero-team units (the hero's own Spark Sentry) are never keyboard targets.
+        if (world.get(e, Faction)?.team === "hero") continue;
         if (world.get(e, Ai)?.state === "sleep") continue;
         const p = world.read(e, Pos);
         const d = dist(heroPos.x, heroPos.y, p.x, p.y);
@@ -463,7 +539,10 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       reportError(err);
       return;
     }
-    perf.addSteps(adv.ticks, deps.now() - t0, nowMs);
+    const spent = deps.now() - t0;
+    perf.addSteps(adv.ticks, spent, nowMs);
+    // Feeds the per-frame sim budget (loop.ts FRAME_BUDGET_MS).
+    loop.observe(adv.ticks, spent);
     fanOut(events);
   }
 
@@ -548,6 +627,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     loop.reset();
     backoffUntil = Number.NEGATIVE_INFINITY;
     vendorNpc = 0;
+    gamblerNpc = 0;
     pointer.cancel();
     appliedZoom = Number.NaN;
     setUi({ panels: [], toasts: [], error: null, hover: null });
@@ -558,13 +638,21 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
 
   function save(): boolean {
     try {
-      const record: SaveRecord = { v: 1, savedAt: deps.wall(), snapshot: sim.snapshot(), settings };
+      const record: SaveRecord = {
+        v: 1,
+        savedAt: deps.wall(),
+        snapshot: sim.snapshot(),
+        settings,
+        modules: moduleIds,
+      };
       return deps.save.save(record);
     } catch (err) {
       reportError(err);
       return false;
     }
   }
+
+  const moduleIds = loaded.modules.map((m) => m.id);
 
   const api: ClassicClientApi = {
     hud: hud.store,
@@ -579,6 +667,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     closePanel,
     closeAll() {
       vendorNpc = 0;
+      gamblerNpc = 0;
       setUi({ panels: [], hover: null });
     },
     setHover(h) {
@@ -587,6 +676,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     updateSettings(patch) {
       settings = sanitizeSettings({ ...settings, ...patch });
       setUi({ settings });
+      audio.applySettings(settings);
+      applyQuality();
     },
     dismissToast(id) {
       setUi({ toasts: ui.get().toasts.filter((t) => t.id !== id) });
@@ -632,13 +723,19 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   };
 
   refreshHud();
+  audio.applySettings(settings);
+  applyQuality();
 
   return {
     api,
     save,
+    notify(kind, title, body, ms = TOAST_LONG_MS) {
+      pushToast(kind, title, body, ms);
+    },
     destroy() {
       destroyed = true;
       pointer.cancel();
+      audio.destroy();
     },
     currentSim: () => sim,
   };

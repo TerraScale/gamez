@@ -1,6 +1,7 @@
 /**
  * Item actions (OWNER: T5): classic.equip, unequip, moveItem, dropItem,
- * drinkPotion, buy, sell, stashPut, stashTake. parse() validates the payload
+ * drinkPotion, buy, sell, stashPut, stashTake; wave A: gamble, stashMove,
+ * setLootFilter. parse() validates the payload
  * shape; apply() notes the manual command (auto pause) and runs the shared
  * execX operation, throwing ActionError when it fails (the kernel rolls back).
  */
@@ -14,11 +15,14 @@ import {
 import { ACTION, ERR, type ActionPayloads, type OpResult } from "../actions.ts";
 import { noteManual } from "../control.ts";
 import { heroOf } from "../resources.ts";
-import { EQUIP_SLOTS, type EquipSlot } from "../types.ts";
+import { EQUIP_SLOTS, ITEM_CATEGORIES, type EquipSlot, type ItemCategory } from "../types.ts";
 import { execDrink } from "./belt.ts";
 import { execEquip, execUnequip } from "./equip.ts";
 import { execDrop, execMoveItem } from "./ground.ts";
-import { execBuy, execSell, execStashPut, execStashTake } from "./vendor.ts";
+import { execBuy, execSell } from "./vendor.ts";
+import { execStashMove, execStashPut, execStashTake } from "./stash.ts";
+import { execGamble } from "./gamble.ts";
+import { execSetLootFilter, parseLootFilterPatch, type LootFilterPatch } from "./lootFilter.ts";
 
 const MAX_ID = 2_147_483_647;
 
@@ -168,10 +172,12 @@ export const stashPutAction: ActionDef<ActionPayloads["classic.stashPut"]> = {
   parse(world, payload) {
     const p = obj(payload, "stashPut");
     requireHero(world);
-    return { uid: int(p.uid, "uid", 1, MAX_ID) };
+    const uid = int(p.uid, "uid", 1, MAX_ID);
+    if (p.tab === undefined || p.tab === null) return { uid };
+    return { uid, tab: int(p.tab, "tab", 0, 63) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execStashPut(world, ctx, p.uid));
+    commit(world, ctx, execStashPut(world, ctx, p.uid, p.tab));
   },
 };
 
@@ -187,6 +193,56 @@ export const stashTakeAction: ActionDef<ActionPayloads["classic.stashTake"]> = {
   },
 };
 
+// ---- wave A
+
+function categoryOf(v: unknown): ItemCategory {
+  if (typeof v !== "string" || !(ITEM_CATEGORIES as readonly string[]).includes(v)) {
+    throw new ActionError(ERR.badPayload, "category must be an item category");
+  }
+  return v as ItemCategory;
+}
+
+export const gambleAction: ActionDef<ActionPayloads["classic.gamble"]> = {
+  name: ACTION.gamble,
+  parse(world, payload) {
+    const p = obj(payload, "gamble");
+    requireHero(world);
+    const npc = int(p.npc, "npc", 1, MAX_ID);
+    requireNpcLike(world, npc, "npc");
+    return { npc, category: categoryOf(p.category) };
+  },
+  apply(world, p, ctx) {
+    commit(world, ctx, execGamble(world, ctx, p.npc, p.category));
+  },
+};
+
+export const stashMoveAction: ActionDef<ActionPayloads["classic.stashMove"]> = {
+  name: ACTION.stashMove,
+  parse(world, payload) {
+    const p = obj(payload, "stashMove");
+    requireHero(world);
+    return { uid: int(p.uid, "uid", 1, MAX_ID), tab: int(p.tab, "tab", 0, 63) };
+  },
+  apply(world, p, ctx) {
+    commit(world, ctx, execStashMove(world, ctx, p.uid, p.tab));
+  },
+};
+
+/** Settings, not play: no hero needed and no manual override of auto/idle. */
+export const setLootFilterAction: ActionDef<{ filter: LootFilterPatch }> = {
+  name: ACTION.setLootFilter,
+  parse(_world, payload) {
+    const p = obj(payload, "setLootFilter");
+    for (const key of Object.keys(p)) {
+      if (key !== "filter") throw new ActionError(ERR.badPayload, `unknown key "${key}"`);
+    }
+    return { filter: parseLootFilterPatch(p.filter) };
+  },
+  apply(world, p, ctx) {
+    execSetLootFilter(world, ctx, p.filter);
+  },
+};
+
 export const itemActions: ActionDef<any>[] = [
   equipAction,
   unequipAction,
@@ -197,4 +253,7 @@ export const itemActions: ActionDef<any>[] = [
   sellAction,
   stashPutAction,
   stashTakeAction,
+  gambleAction,
+  stashMoveAction,
+  setLootFilterAction,
 ];

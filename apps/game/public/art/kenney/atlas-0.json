@@ -1,9 +1,429 @@
 {
   "frames": {
-    "unit.monster.boss_hollow_king.attack.e.0": {
+    "fx.bite.burst.0": {
+      "frame": {
+        "x": 0,
+        "y": 283,
+        "w": 90,
+        "h": 128
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 0,
+        "w": 90,
+        "h": 128
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.bite.burst.1": {
+      "frame": {
+        "x": 430,
+        "y": 283,
+        "w": 90,
+        "h": 128
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 0,
+        "w": 90,
+        "h": 128
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.bite.burst.2": {
+      "frame": {
+        "x": 378,
+        "y": 1503,
+        "w": 90,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 7,
+        "w": 90,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.boss_cleave.burst.6": {
+      "frame": {
+        "x": 1074,
+        "y": 1618,
+        "w": 106,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 3,
+        "w": 106,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.boss_frost_nova.burst.7": {
+      "frame": {
+        "x": 405,
+        "y": 1618,
+        "w": 114,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 6,
+        "y": 8,
+        "w": 114,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.boss_frost_nova.burst.8": {
+      "frame": {
+        "x": 1113,
+        "y": 539,
+        "w": 126,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 2,
+        "w": 126,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.boss_nova.burst.7": {
+      "frame": {
+        "x": 798,
+        "y": 1618,
+        "w": 112,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 8,
+        "y": 8,
+        "w": 112,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.boss_nova.burst.8": {
+      "frame": {
+        "x": 1680,
+        "y": 412,
+        "w": 124,
+        "h": 125
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 1,
+        "w": 124,
+        "h": 125
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.ember_burst.burst.6": {
+      "frame": {
+        "x": 356,
+        "y": 1732,
+        "w": 115,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 6,
+        "y": 8,
+        "w": 115,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.ember_burst.burst.7": {
+      "frame": {
+        "x": 1240,
+        "y": 539,
+        "w": 126,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 2,
+        "w": 126,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.frost_ring.burst.6": {
+      "frame": {
+        "x": 1538,
+        "y": 1503,
+        "w": 114,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 8,
+        "y": 8,
+        "w": 114,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.frost_ring.burst.7": {
+      "frame": {
+        "x": 267,
+        "y": 539,
+        "w": 124,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 2,
+        "w": 124,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.iron_skin.burst.6": {
+      "frame": {
+        "x": 743,
+        "y": 539,
+        "w": 124,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 2,
+        "w": 124,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.rally.burst.6": {
+      "frame": {
+        "x": 1020,
+        "y": 1270,
+        "w": 117,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 5,
+        "y": 7,
+        "w": 117,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.storm_call.burst.5": {
+      "frame": {
+        "x": 413,
+        "y": 1270,
+        "w": 99,
+        "h": 116
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 13,
+        "y": 6,
+        "w": 99,
+        "h": 116
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.storm_call.burst.7": {
+      "frame": {
+        "x": 384,
+        "y": 1032,
+        "w": 117,
+        "h": 118
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 10,
+        "y": 1,
+        "w": 117,
+        "h": 118
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.whirl.burst.3": {
+      "frame": {
+        "x": 543,
+        "y": 1152,
+        "w": 116,
+        "h": 117
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 6,
+        "y": 6,
+        "w": 116,
+        "h": 117
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.whirl.burst.4": {
+      "frame": {
+        "x": 1330,
+        "y": 788,
+        "w": 122,
+        "h": 121
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 3,
+        "y": 4,
+        "w": 122,
+        "h": 121
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.whirl.burst.5": {
+      "frame": {
+        "x": 0,
+        "y": 788,
+        "w": 122,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 3,
+        "y": 3,
+        "w": 122,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.whirl.burst.6": {
       "frame": {
         "x": 222,
-        "y": 664,
+        "y": 788,
+        "w": 122,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 3,
+        "y": 3,
+        "w": 122,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "fx.whirl.burst.7": {
+      "frame": {
+        "x": 634,
+        "y": 788,
+        "w": 122,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 3,
+        "y": 3,
+        "w": 122,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 128,
+        "h": 128
+      }
+    },
+    "unit.monster.boss_hollow_king.attack.e.0": {
+      "frame": {
+        "x": 1232,
+        "y": 788,
         "w": 38,
         "h": 121
       },
@@ -22,8 +442,8 @@
     },
     "unit.monster.boss_hollow_king.attack.e.1": {
       "frame": {
-        "x": 2006,
-        "y": 786,
+        "x": 1998,
+        "y": 1032,
         "w": 36,
         "h": 117
       },
@@ -42,8 +462,8 @@
     },
     "unit.monster.boss_hollow_king.attack.e.2": {
       "frame": {
-        "x": 1037,
-        "y": 1256,
+        "x": 1276,
+        "y": 1618,
         "w": 47,
         "h": 112
       },
@@ -62,8 +482,8 @@
     },
     "unit.monster.boss_hollow_king.attack.e.3": {
       "frame": {
-        "x": 391,
-        "y": 906,
+        "x": 175,
+        "y": 1152,
         "w": 34,
         "h": 117
       },
@@ -82,7 +502,7 @@
     },
     "unit.monster.boss_hollow_king.attack.n.0": {
       "frame": {
-        "x": 83,
+        "x": 719,
         "y": 412,
         "w": 60,
         "h": 126
@@ -102,8 +522,8 @@
     },
     "unit.monster.boss_hollow_king.attack.n.1": {
       "frame": {
-        "x": 1379,
-        "y": 906,
+        "x": 1852,
+        "y": 1152,
         "w": 58,
         "h": 116
       },
@@ -120,30 +540,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.attack.n.2": {
-      "frame": {
-        "x": 1901,
-        "y": 1702,
-        "w": 58,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 28,
-        "w": 58,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.attack.n.3": {
       "frame": {
-        "x": 1757,
-        "y": 906,
+        "x": 1635,
+        "y": 1152,
         "w": 58,
         "h": 116
       },
@@ -162,7 +562,7 @@
     },
     "unit.monster.boss_hollow_king.attack.ne.0": {
       "frame": {
-        "x": 579,
+        "x": 1873,
         "y": 539,
         "w": 56,
         "h": 123
@@ -182,8 +582,8 @@
     },
     "unit.monster.boss_hollow_king.attack.ne.1": {
       "frame": {
-        "x": 649,
-        "y": 1024,
+        "x": 1695,
+        "y": 1270,
         "w": 49,
         "h": 115
       },
@@ -200,30 +600,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.attack.ne.2": {
-      "frame": {
-        "x": 228,
-        "y": 1702,
-        "w": 47,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 105,
-        "y": 28,
-        "w": 47,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.attack.ne.3": {
       "frame": {
-        "x": 917,
-        "y": 906,
+        "x": 1188,
+        "y": 1152,
         "w": 50,
         "h": 117
       },
@@ -242,8 +622,8 @@
     },
     "unit.monster.boss_hollow_king.attack.nw.0": {
       "frame": {
-        "x": 444,
-        "y": 539,
+        "x": 459,
+        "y": 664,
         "w": 54,
         "h": 123
       },
@@ -262,8 +642,8 @@
     },
     "unit.monster.boss_hollow_king.attack.nw.1": {
       "frame": {
-        "x": 699,
-        "y": 1024,
+        "x": 216,
+        "y": 1387,
         "w": 47,
         "h": 115
       },
@@ -280,30 +660,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.attack.nw.2": {
-      "frame": {
-        "x": 1924,
-        "y": 1593,
-        "w": 47,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 91,
-        "y": 28,
-        "w": 47,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.attack.nw.3": {
       "frame": {
-        "x": 426,
-        "y": 906,
+        "x": 1950,
+        "y": 1032,
         "w": 47,
         "h": 117
       },
@@ -322,8 +682,8 @@
     },
     "unit.monster.boss_hollow_king.attack.s.0": {
       "frame": {
-        "x": 1311,
-        "y": 786,
+        "x": 846,
+        "y": 1032,
         "w": 58,
         "h": 118
       },
@@ -342,8 +702,8 @@
     },
     "unit.monster.boss_hollow_king.attack.s.1": {
       "frame": {
-        "x": 1377,
-        "y": 664,
+        "x": 1971,
+        "y": 788,
         "w": 60,
         "h": 120
       },
@@ -362,8 +722,8 @@
     },
     "unit.monster.boss_hollow_king.attack.s.2": {
       "frame": {
-        "x": 960,
-        "y": 786,
+        "x": 144,
+        "y": 1032,
         "w": 66,
         "h": 118
       },
@@ -382,8 +742,8 @@
     },
     "unit.monster.boss_hollow_king.attack.s.3": {
       "frame": {
-        "x": 1316,
-        "y": 664,
+        "x": 340,
+        "y": 911,
         "w": 60,
         "h": 120
       },
@@ -402,8 +762,8 @@
     },
     "unit.monster.boss_hollow_king.attack.se.0": {
       "frame": {
-        "x": 1027,
-        "y": 786,
+        "x": 1529,
+        "y": 1032,
         "w": 49,
         "h": 118
       },
@@ -422,8 +782,8 @@
     },
     "unit.monster.boss_hollow_king.attack.se.1": {
       "frame": {
-        "x": 1815,
-        "y": 664,
+        "x": 0,
+        "y": 911,
         "w": 50,
         "h": 120
       },
@@ -442,8 +802,8 @@
     },
     "unit.monster.boss_hollow_king.attack.se.2": {
       "frame": {
-        "x": 104,
-        "y": 1024,
+        "x": 0,
+        "y": 1270,
         "w": 58,
         "h": 116
       },
@@ -462,8 +822,8 @@
     },
     "unit.monster.boss_hollow_king.attack.se.3": {
       "frame": {
-        "x": 851,
-        "y": 786,
+        "x": 1290,
+        "y": 1032,
         "w": 49,
         "h": 118
       },
@@ -482,8 +842,8 @@
     },
     "unit.monster.boss_hollow_king.attack.sw.0": {
       "frame": {
-        "x": 1546,
-        "y": 786,
+        "x": 1169,
+        "y": 1032,
         "w": 46,
         "h": 118
       },
@@ -502,8 +862,8 @@
     },
     "unit.monster.boss_hollow_king.attack.sw.1": {
       "frame": {
-        "x": 1703,
-        "y": 664,
+        "x": 51,
+        "y": 911,
         "w": 52,
         "h": 120
       },
@@ -522,8 +882,8 @@
     },
     "unit.monster.boss_hollow_king.attack.sw.2": {
       "frame": {
-        "x": 1317,
-        "y": 906,
+        "x": 1732,
+        "y": 1152,
         "w": 61,
         "h": 116
       },
@@ -542,8 +902,8 @@
     },
     "unit.monster.boss_hollow_king.attack.sw.3": {
       "frame": {
-        "x": 1077,
-        "y": 786,
+        "x": 1009,
+        "y": 1032,
         "w": 51,
         "h": 118
       },
@@ -562,8 +922,8 @@
     },
     "unit.monster.boss_hollow_king.attack.w.0": {
       "frame": {
-        "x": 185,
-        "y": 664,
+        "x": 1595,
+        "y": 788,
         "w": 36,
         "h": 121
       },
@@ -582,8 +942,8 @@
     },
     "unit.monster.boss_hollow_king.attack.w.1": {
       "frame": {
-        "x": 1169,
-        "y": 906,
+        "x": 844,
+        "y": 1152,
         "w": 39,
         "h": 117
       },
@@ -602,8 +962,8 @@
     },
     "unit.monster.boss_hollow_king.attack.w.2": {
       "frame": {
-        "x": 890,
-        "y": 1256,
+        "x": 1807,
+        "y": 1618,
         "w": 49,
         "h": 112
       },
@@ -622,8 +982,8 @@
     },
     "unit.monster.boss_hollow_king.attack.w.3": {
       "frame": {
-        "x": 107,
-        "y": 906,
+        "x": 327,
+        "y": 1152,
         "w": 37,
         "h": 117
       },
@@ -640,29 +1000,9 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.cast.e.0": {
-      "frame": {
-        "x": 1064,
-        "y": 1482,
-        "w": 41,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 101,
-        "y": 30,
-        "w": 41,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.cast.e.1": {
       "frame": {
-        "x": 353,
+        "x": 1030,
         "y": 151,
         "w": 42,
         "h": 130
@@ -682,7 +1022,7 @@
     },
     "unit.monster.boss_hollow_king.cast.e.2": {
       "frame": {
-        "x": 1949,
+        "x": 1753,
         "y": 0,
         "w": 45,
         "h": 132
@@ -702,8 +1042,8 @@
     },
     "unit.monster.boss_hollow_king.cast.e.3": {
       "frame": {
-        "x": 1875,
-        "y": 906,
+        "x": 195,
+        "y": 1270,
         "w": 34,
         "h": 116
       },
@@ -722,8 +1062,8 @@
     },
     "unit.monster.boss_hollow_king.cast.n.0": {
       "frame": {
-        "x": 1777,
-        "y": 1141,
+        "x": 1389,
+        "y": 1503,
         "w": 64,
         "h": 113
       },
@@ -762,7 +1102,7 @@
     },
     "unit.monster.boss_hollow_king.cast.n.2": {
       "frame": {
-        "x": 1222,
+        "x": 1315,
         "y": 412,
         "w": 50,
         "h": 125
@@ -782,8 +1122,8 @@
     },
     "unit.monster.boss_hollow_king.cast.n.3": {
       "frame": {
-        "x": 1767,
-        "y": 1024,
+        "x": 319,
+        "y": 1503,
         "w": 58,
         "h": 114
       },
@@ -802,8 +1142,8 @@
     },
     "unit.monster.boss_hollow_king.cast.ne.0": {
       "frame": {
-        "x": 1551,
-        "y": 1256,
+        "x": 1418,
+        "y": 1732,
         "w": 60,
         "h": 111
       },
@@ -842,8 +1182,8 @@
     },
     "unit.monster.boss_hollow_king.cast.ne.2": {
       "frame": {
-        "x": 1583,
-        "y": 283,
+        "x": 115,
+        "y": 412,
         "w": 39,
         "h": 126
       },
@@ -862,8 +1202,8 @@
     },
     "unit.monster.boss_hollow_king.cast.ne.3": {
       "frame": {
-        "x": 1412,
-        "y": 1024,
+        "x": 1322,
+        "y": 1387,
         "w": 50,
         "h": 114
       },
@@ -882,8 +1222,8 @@
     },
     "unit.monster.boss_hollow_king.cast.nw.0": {
       "frame": {
-        "x": 960,
-        "y": 1370,
+        "x": 264,
+        "y": 1845,
         "w": 58,
         "h": 111
       },
@@ -902,7 +1242,7 @@
     },
     "unit.monster.boss_hollow_king.cast.nw.1": {
       "frame": {
-        "x": 1303,
+        "x": 1373,
         "y": 0,
         "w": 55,
         "h": 134
@@ -922,8 +1262,8 @@
     },
     "unit.monster.boss_hollow_king.cast.nw.2": {
       "frame": {
-        "x": 1972,
-        "y": 283,
+        "x": 73,
+        "y": 412,
         "w": 41,
         "h": 126
       },
@@ -942,8 +1282,8 @@
     },
     "unit.monster.boss_hollow_king.cast.nw.3": {
       "frame": {
-        "x": 0,
-        "y": 1141,
+        "x": 1707,
+        "y": 1387,
         "w": 47,
         "h": 114
       },
@@ -960,30 +1300,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.cast.s.0": {
-      "frame": {
-        "x": 325,
-        "y": 1810,
-        "w": 60,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 32,
-        "w": 60,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.cast.s.1": {
       "frame": {
-        "x": 1491,
-        "y": 539,
+        "x": 885,
+        "y": 788,
         "w": 52,
         "h": 122
       },
@@ -1022,8 +1342,8 @@
     },
     "unit.monster.boss_hollow_king.cast.s.3": {
       "frame": {
-        "x": 177,
-        "y": 906,
+        "x": 449,
+        "y": 1152,
         "w": 60,
         "h": 117
       },
@@ -1040,29 +1360,9 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.cast.se.0": {
-      "frame": {
-        "x": 165,
-        "y": 1810,
-        "w": 52,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 32,
-        "w": 52,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.cast.se.1": {
       "frame": {
-        "x": 107,
+        "x": 696,
         "y": 539,
         "w": 46,
         "h": 124
@@ -1082,7 +1382,7 @@
     },
     "unit.monster.boss_hollow_king.cast.se.2": {
       "frame": {
-        "x": 795,
+        "x": 864,
         "y": 0,
         "w": 51,
         "h": 137
@@ -1102,8 +1402,8 @@
     },
     "unit.monster.boss_hollow_king.cast.se.3": {
       "frame": {
-        "x": 1209,
-        "y": 906,
+        "x": 0,
+        "y": 1152,
         "w": 49,
         "h": 117
       },
@@ -1120,30 +1420,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.cast.sw.0": {
-      "frame": {
-        "x": 974,
-        "y": 1810,
-        "w": 49,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 100,
-        "y": 32,
-        "w": 49,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.cast.sw.1": {
       "frame": {
-        "x": 2000,
-        "y": 412,
+        "x": 223,
+        "y": 539,
         "w": 43,
         "h": 124
       },
@@ -1162,7 +1442,7 @@
     },
     "unit.monster.boss_hollow_king.cast.sw.2": {
       "frame": {
-        "x": 847,
+        "x": 916,
         "y": 0,
         "w": 53,
         "h": 137
@@ -1182,8 +1462,8 @@
     },
     "unit.monster.boss_hollow_king.cast.sw.3": {
       "frame": {
-        "x": 306,
-        "y": 906,
+        "x": 275,
+        "y": 1152,
         "w": 51,
         "h": 117
       },
@@ -1200,29 +1480,9 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.cast.w.0": {
-      "frame": {
-        "x": 707,
-        "y": 1482,
-        "w": 38,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 105,
-        "y": 30,
-        "w": 38,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.cast.w.1": {
       "frame": {
-        "x": 1110,
+        "x": 779,
         "y": 151,
         "w": 40,
         "h": 130
@@ -1242,7 +1502,7 @@
     },
     "unit.monster.boss_hollow_king.cast.w.2": {
       "frame": {
-        "x": 1770,
+        "x": 1869,
         "y": 0,
         "w": 47,
         "h": 132
@@ -1262,8 +1522,8 @@
     },
     "unit.monster.boss_hollow_king.cast.w.3": {
       "frame": {
-        "x": 0,
-        "y": 1024,
+        "x": 1694,
+        "y": 1152,
         "w": 37,
         "h": 116
       },
@@ -1282,8 +1542,8 @@
     },
     "unit.monster.boss_hollow_king.death.e.0": {
       "frame": {
-        "x": 0,
-        "y": 906,
+        "x": 728,
+        "y": 1152,
         "w": 40,
         "h": 117
       },
@@ -1302,8 +1562,8 @@
     },
     "unit.monster.boss_hollow_king.death.e.1": {
       "frame": {
-        "x": 1910,
-        "y": 1370,
+        "x": 1502,
+        "y": 1845,
         "w": 84,
         "h": 110
       },
@@ -1322,8 +1582,8 @@
     },
     "unit.monster.boss_hollow_king.death.n.0": {
       "frame": {
-        "x": 636,
-        "y": 539,
+        "x": 700,
+        "y": 664,
         "w": 62,
         "h": 123
       },
@@ -1342,8 +1602,8 @@
     },
     "unit.monster.boss_hollow_king.death.n.1": {
       "frame": {
-        "x": 657,
-        "y": 1141,
+        "x": 1616,
+        "y": 1387,
         "w": 90,
         "h": 114
       },
@@ -1362,8 +1622,8 @@
     },
     "unit.monster.boss_hollow_king.death.ne.0": {
       "frame": {
-        "x": 77,
-        "y": 664,
+        "x": 1271,
+        "y": 788,
         "w": 58,
         "h": 121
       },
@@ -1380,30 +1640,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.death.ne.1": {
-      "frame": {
-        "x": 988,
-        "y": 1593,
-        "w": 95,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 43,
-        "y": 38,
-        "w": 95,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.death.nw.0": {
       "frame": {
-        "x": 261,
-        "y": 664,
+        "x": 1632,
+        "y": 788,
         "w": 56,
         "h": 121
       },
@@ -1422,8 +1662,8 @@
     },
     "unit.monster.boss_hollow_king.death.nw.1": {
       "frame": {
-        "x": 0,
-        "y": 1370,
+        "x": 1598,
+        "y": 1732,
         "w": 92,
         "h": 111
       },
@@ -1442,8 +1682,8 @@
     },
     "unit.monster.boss_hollow_king.death.s.0": {
       "frame": {
-        "x": 1273,
-        "y": 1141,
+        "x": 1111,
+        "y": 1503,
         "w": 56,
         "h": 113
       },
@@ -1462,8 +1702,8 @@
     },
     "unit.monster.boss_hollow_king.death.s.1": {
       "frame": {
-        "x": 0,
-        "y": 1256,
+        "x": 552,
+        "y": 1503,
         "w": 85,
         "h": 113
       },
@@ -1482,8 +1722,8 @@
     },
     "unit.monster.boss_hollow_king.death.se.0": {
       "frame": {
-        "x": 1939,
-        "y": 1024,
+        "x": 1373,
+        "y": 1387,
         "w": 49,
         "h": 114
       },
@@ -1502,8 +1742,8 @@
     },
     "unit.monster.boss_hollow_king.death.se.1": {
       "frame": {
-        "x": 324,
-        "y": 1141,
+        "x": 469,
+        "y": 1503,
         "w": 82,
         "h": 114
       },
@@ -1522,8 +1762,8 @@
     },
     "unit.monster.boss_hollow_king.death.sw.0": {
       "frame": {
-        "x": 126,
-        "y": 1141,
+        "x": 1755,
+        "y": 1387,
         "w": 46,
         "h": 114
       },
@@ -1542,8 +1782,8 @@
     },
     "unit.monster.boss_hollow_king.death.sw.1": {
       "frame": {
-        "x": 1626,
-        "y": 906,
+        "x": 1503,
+        "y": 1152,
         "w": 81,
         "h": 116
       },
@@ -1562,8 +1802,8 @@
     },
     "unit.monster.boss_hollow_king.death.w.0": {
       "frame": {
-        "x": 815,
-        "y": 906,
+        "x": 1878,
+        "y": 1032,
         "w": 38,
         "h": 117
       },
@@ -1580,40 +1820,20 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.death.w.1": {
-      "frame": {
-        "x": 1740,
-        "y": 1370,
-        "w": 82,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 115,
-        "y": 37,
-        "w": 82,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.hit.e.0": {
       "frame": {
-        "x": 1426,
-        "y": 1141,
-        "w": 42,
-        "h": 113
+        "x": 1174,
+        "y": 1732,
+        "w": 43,
+        "h": 111
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 98,
-        "y": 25,
-        "w": 42,
-        "h": 113
+        "y": 27,
+        "w": 43,
+        "h": 111
       },
       "sourceSize": {
         "w": 241,
@@ -1622,17 +1842,37 @@
     },
     "unit.monster.boss_hollow_king.hit.e.1": {
       "frame": {
-        "x": 668,
-        "y": 906,
-        "w": 36,
+        "x": 920,
+        "y": 1270,
+        "w": 38,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 103,
+        "y": 23,
+        "w": 38,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 241,
+        "h": 156
+      }
+    },
+    "unit.monster.boss_hollow_king.hit.e.2": {
+      "frame": {
+        "x": 1686,
+        "y": 1032,
+        "w": 34,
         "h": 117
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 105,
+        "x": 107,
         "y": 20,
-        "w": 36,
+        "w": 34,
         "h": 117
       },
       "sourceSize": {
@@ -1642,18 +1882,18 @@
     },
     "unit.monster.boss_hollow_king.hit.n.0": {
       "frame": {
-        "x": 611,
-        "y": 786,
-        "w": 62,
-        "h": 119
+        "x": 210,
+        "y": 1152,
+        "w": 64,
+        "h": 117
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 90,
-        "y": 22,
-        "w": 62,
-        "h": 119
+        "x": 89,
+        "y": 24,
+        "w": 64,
+        "h": 117
       },
       "sourceSize": {
         "w": 241,
@@ -1662,18 +1902,38 @@
     },
     "unit.monster.boss_hollow_king.hit.n.1": {
       "frame": {
-        "x": 1841,
-        "y": 539,
+        "x": 660,
+        "y": 1032,
+        "w": 62,
+        "h": 118
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 90,
+        "y": 21,
+        "w": 62,
+        "h": 118
+      },
+      "sourceSize": {
+        "w": 241,
+        "h": 156
+      }
+    },
+    "unit.monster.boss_hollow_king.hit.n.2": {
+      "frame": {
+        "x": 476,
+        "y": 911,
         "w": 60,
-        "h": 122
+        "h": 120
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 91,
-        "y": 17,
+        "y": 18,
         "w": 60,
-        "h": 122
+        "h": 120
       },
       "sourceSize": {
         "w": 241,
@@ -1682,18 +1942,18 @@
     },
     "unit.monster.boss_hollow_king.hit.ne.0": {
       "frame": {
-        "x": 968,
-        "y": 906,
-        "w": 59,
-        "h": 117
+        "x": 1924,
+        "y": 1387,
+        "w": 62,
+        "h": 114
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 91,
-        "y": 23,
-        "w": 59,
-        "h": 117
+        "x": 90,
+        "y": 26,
+        "w": 62,
+        "h": 114
       },
       "sourceSize": {
         "w": 241,
@@ -1702,17 +1962,37 @@
     },
     "unit.monster.boss_hollow_king.hit.ne.1": {
       "frame": {
-        "x": 356,
-        "y": 786,
-        "w": 55,
+        "x": 562,
+        "y": 1270,
+        "w": 57,
+        "h": 116
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 94,
+        "y": 23,
+        "w": 57,
+        "h": 116
+      },
+      "sourceSize": {
+        "w": 241,
+        "h": 156
+      }
+    },
+    "unit.monster.boss_hollow_king.hit.ne.2": {
+      "frame": {
+        "x": 1301,
+        "y": 911,
+        "w": 53,
         "h": 119
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 95,
+        "x": 97,
         "y": 19,
-        "w": 55,
+        "w": 53,
         "h": 119
       },
       "sourceSize": {
@@ -1722,18 +2002,18 @@
     },
     "unit.monster.boss_hollow_king.hit.nw.0": {
       "frame": {
-        "x": 610,
-        "y": 906,
-        "w": 57,
-        "h": 117
+        "x": 1182,
+        "y": 1387,
+        "w": 59,
+        "h": 114
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 96,
-        "y": 23,
-        "w": 57,
-        "h": 117
+        "x": 95,
+        "y": 26,
+        "w": 59,
+        "h": 114
       },
       "sourceSize": {
         "w": 241,
@@ -1742,9 +2022,29 @@
     },
     "unit.monster.boss_hollow_king.hit.nw.1": {
       "frame": {
-        "x": 1866,
-        "y": 664,
-        "w": 53,
+        "x": 1911,
+        "y": 1152,
+        "w": 55,
+        "h": 116
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 95,
+        "y": 23,
+        "w": 55,
+        "h": 116
+      },
+      "sourceSize": {
+        "w": 241,
+        "h": 156
+      }
+    },
+    "unit.monster.boss_hollow_king.hit.nw.2": {
+      "frame": {
+        "x": 1797,
+        "y": 911,
+        "w": 51,
         "h": 119
       },
       "rotated": false,
@@ -1752,7 +2052,7 @@
       "spriteSourceSize": {
         "x": 96,
         "y": 19,
-        "w": 53,
+        "w": 51,
         "h": 119
       },
       "sourceSize": {
@@ -1760,60 +2060,20 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.hit.s.0": {
+    "unit.monster.boss_hollow_king.hit.s.2": {
       "frame": {
-        "x": 1972,
-        "y": 1593,
-        "w": 56,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 94,
-        "y": 28,
-        "w": 56,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.hit.s.1": {
-      "frame": {
-        "x": 1989,
-        "y": 1024,
+        "x": 1394,
+        "y": 1152,
         "w": 58,
-        "h": 114
+        "h": 116
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 93,
-        "y": 22,
+        "y": 21,
         "w": 58,
-        "h": 114
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.hit.se.0": {
-      "frame": {
-        "x": 746,
-        "y": 1482,
-        "w": 49,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 27,
-        "w": 49,
-        "h": 109
+        "h": 116
       },
       "sourceSize": {
         "w": 241,
@@ -1822,38 +2082,38 @@
     },
     "unit.monster.boss_hollow_king.hit.se.1": {
       "frame": {
-        "x": 1438,
-        "y": 906,
-        "w": 49,
-        "h": 116
+        "x": 786,
+        "y": 1732,
+        "w": 50,
+        "h": 112
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 95,
-        "y": 21,
-        "w": 49,
-        "h": 116
+        "x": 94,
+        "y": 25,
+        "w": 50,
+        "h": 112
       },
       "sourceSize": {
         "w": 241,
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.hit.sw.0": {
+    "unit.monster.boss_hollow_king.hit.se.2": {
       "frame": {
-        "x": 1379,
-        "y": 1482,
-        "w": 46,
-        "h": 109
+        "x": 1585,
+        "y": 1152,
+        "w": 49,
+        "h": 116
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 103,
-        "y": 27,
-        "w": 46,
-        "h": 109
+        "x": 96,
+        "y": 21,
+        "w": 49,
+        "h": 116
       },
       "sourceSize": {
         "w": 241,
@@ -1862,17 +2122,37 @@
     },
     "unit.monster.boss_hollow_king.hit.sw.1": {
       "frame": {
-        "x": 1910,
-        "y": 906,
+        "x": 239,
+        "y": 1732,
         "w": 47,
-        "h": 116
+        "h": 112
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 100,
-        "y": 21,
+        "y": 25,
         "w": 47,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 241,
+        "h": 156
+      }
+    },
+    "unit.monster.boss_hollow_king.hit.sw.2": {
+      "frame": {
+        "x": 513,
+        "y": 1270,
+        "w": 48,
+        "h": 116
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 99,
+        "y": 21,
+        "w": 48,
         "h": 116
       },
       "sourceSize": {
@@ -1882,18 +2162,18 @@
     },
     "unit.monster.boss_hollow_king.hit.w.0": {
       "frame": {
-        "x": 1842,
-        "y": 1141,
-        "w": 40,
-        "h": 113
+        "x": 1043,
+        "y": 1732,
+        "w": 41,
+        "h": 111
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 106,
-        "y": 25,
-        "w": 40,
-        "h": 113
+        "x": 105,
+        "y": 27,
+        "w": 41,
+        "h": 111
       },
       "sourceSize": {
         "w": 241,
@@ -1902,9 +2182,29 @@
     },
     "unit.monster.boss_hollow_king.hit.w.1": {
       "frame": {
-        "x": 1134,
-        "y": 906,
-        "w": 34,
+        "x": 1414,
+        "y": 1270,
+        "w": 35,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 105,
+        "y": 23,
+        "w": 35,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 241,
+        "h": 156
+      }
+    },
+    "unit.monster.boss_hollow_king.hit.w.2": {
+      "frame": {
+        "x": 510,
+        "y": 1152,
+        "w": 32,
         "h": 117
       },
       "rotated": false,
@@ -1912,7 +2212,7 @@
       "spriteSourceSize": {
         "x": 105,
         "y": 20,
-        "w": 34,
+        "w": 32,
         "h": 117
       },
       "sourceSize": {
@@ -1922,8 +2222,8 @@
     },
     "unit.monster.boss_hollow_king.idle.e.0": {
       "frame": {
-        "x": 358,
-        "y": 906,
+        "x": 1917,
+        "y": 1032,
         "w": 32,
         "h": 117
       },
@@ -1942,8 +2242,8 @@
     },
     "unit.monster.boss_hollow_king.idle.e.1": {
       "frame": {
-        "x": 818,
-        "y": 786,
+        "x": 1268,
+        "y": 911,
         "w": 32,
         "h": 119
       },
@@ -1962,8 +2262,8 @@
     },
     "unit.monster.boss_hollow_king.idle.e.2": {
       "frame": {
-        "x": 594,
-        "y": 664,
+        "x": 1562,
+        "y": 788,
         "w": 32,
         "h": 121
       },
@@ -1982,8 +2282,8 @@
     },
     "unit.monster.boss_hollow_king.idle.e.3": {
       "frame": {
-        "x": 818,
-        "y": 786,
+        "x": 1268,
+        "y": 911,
         "w": 32,
         "h": 119
       },
@@ -2002,8 +2302,8 @@
     },
     "unit.monster.boss_hollow_king.idle.n.0": {
       "frame": {
-        "x": 1129,
-        "y": 786,
+        "x": 278,
+        "y": 1032,
         "w": 58,
         "h": 118
       },
@@ -2022,8 +2322,8 @@
     },
     "unit.monster.boss_hollow_king.idle.n.1": {
       "frame": {
-        "x": 1756,
-        "y": 664,
+        "x": 1160,
+        "y": 911,
         "w": 58,
         "h": 120
       },
@@ -2042,8 +2342,8 @@
     },
     "unit.monster.boss_hollow_king.idle.n.2": {
       "frame": {
-        "x": 1088,
-        "y": 539,
+        "x": 1487,
+        "y": 664,
         "w": 58,
         "h": 122
       },
@@ -2062,8 +2362,8 @@
     },
     "unit.monster.boss_hollow_king.idle.n.3": {
       "frame": {
-        "x": 1756,
-        "y": 664,
+        "x": 1160,
+        "y": 911,
         "w": 58,
         "h": 120
       },
@@ -2082,8 +2382,8 @@
     },
     "unit.monster.boss_hollow_king.idle.ne.0": {
       "frame": {
-        "x": 763,
-        "y": 906,
+        "x": 365,
+        "y": 1152,
         "w": 51,
         "h": 117
       },
@@ -2102,8 +2402,8 @@
     },
     "unit.monster.boss_hollow_king.idle.ne.1": {
       "frame": {
-        "x": 412,
-        "y": 786,
+        "x": 1956,
+        "y": 911,
         "w": 51,
         "h": 119
       },
@@ -2122,8 +2422,8 @@
     },
     "unit.monster.boss_hollow_king.idle.ne.2": {
       "frame": {
-        "x": 702,
-        "y": 664,
+        "x": 1689,
+        "y": 788,
         "w": 51,
         "h": 121
       },
@@ -2142,8 +2442,8 @@
     },
     "unit.monster.boss_hollow_king.idle.ne.3": {
       "frame": {
-        "x": 412,
-        "y": 786,
+        "x": 1956,
+        "y": 911,
         "w": 51,
         "h": 119
       },
@@ -2162,8 +2462,8 @@
     },
     "unit.monster.boss_hollow_king.idle.nw.0": {
       "frame": {
-        "x": 1956,
-        "y": 786,
+        "x": 1721,
+        "y": 1032,
         "w": 49,
         "h": 117
       },
@@ -2182,8 +2482,8 @@
     },
     "unit.monster.boss_hollow_king.idle.nw.1": {
       "frame": {
-        "x": 1920,
-        "y": 664,
+        "x": 1584,
+        "y": 911,
         "w": 49,
         "h": 119
       },
@@ -2202,8 +2502,8 @@
     },
     "unit.monster.boss_hollow_king.idle.nw.2": {
       "frame": {
-        "x": 377,
-        "y": 664,
+        "x": 1104,
+        "y": 788,
         "w": 49,
         "h": 121
       },
@@ -2222,8 +2522,8 @@
     },
     "unit.monster.boss_hollow_king.idle.nw.3": {
       "frame": {
-        "x": 1920,
-        "y": 664,
+        "x": 1584,
+        "y": 911,
         "w": 49,
         "h": 119
       },
@@ -2242,8 +2542,8 @@
     },
     "unit.monster.boss_hollow_king.idle.s.0": {
       "frame": {
-        "x": 1816,
-        "y": 906,
+        "x": 279,
+        "y": 1270,
         "w": 58,
         "h": 116
       },
@@ -2262,8 +2562,8 @@
     },
     "unit.monster.boss_hollow_king.idle.s.1": {
       "frame": {
-        "x": 901,
-        "y": 786,
+        "x": 723,
+        "y": 1032,
         "w": 58,
         "h": 118
       },
@@ -2282,8 +2582,8 @@
     },
     "unit.monster.boss_hollow_king.idle.s.2": {
       "frame": {
-        "x": 754,
-        "y": 664,
+        "x": 104,
+        "y": 911,
         "w": 58,
         "h": 120
       },
@@ -2302,8 +2602,8 @@
     },
     "unit.monster.boss_hollow_king.idle.s.3": {
       "frame": {
-        "x": 901,
-        "y": 786,
+        "x": 723,
+        "y": 1032,
         "w": 58,
         "h": 118
       },
@@ -2322,8 +2622,8 @@
     },
     "unit.monster.boss_hollow_king.idle.se.0": {
       "frame": {
-        "x": 269,
-        "y": 1024,
+        "x": 1345,
+        "y": 1152,
         "w": 48,
         "h": 116
       },
@@ -2342,8 +2642,8 @@
     },
     "unit.monster.boss_hollow_king.idle.se.1": {
       "frame": {
-        "x": 1188,
-        "y": 786,
+        "x": 611,
+        "y": 1032,
         "w": 48,
         "h": 118
       },
@@ -2362,8 +2662,8 @@
     },
     "unit.monster.boss_hollow_king.idle.se.2": {
       "frame": {
-        "x": 813,
-        "y": 664,
+        "x": 634,
+        "y": 911,
         "w": 48,
         "h": 120
       },
@@ -2382,8 +2682,8 @@
     },
     "unit.monster.boss_hollow_king.idle.se.3": {
       "frame": {
-        "x": 1188,
-        "y": 786,
+        "x": 611,
+        "y": 1032,
         "w": 48,
         "h": 118
       },
@@ -2402,8 +2702,8 @@
     },
     "unit.monster.boss_hollow_king.idle.sw.0": {
       "frame": {
-        "x": 1708,
-        "y": 906,
+        "x": 230,
+        "y": 1270,
         "w": 48,
         "h": 116
       },
@@ -2422,8 +2722,8 @@
     },
     "unit.monster.boss_hollow_king.idle.sw.1": {
       "frame": {
-        "x": 1668,
-        "y": 786,
+        "x": 1340,
+        "y": 1032,
         "w": 48,
         "h": 118
       },
@@ -2442,8 +2742,8 @@
     },
     "unit.monster.boss_hollow_king.idle.sw.2": {
       "frame": {
-        "x": 1143,
-        "y": 664,
+        "x": 1219,
+        "y": 911,
         "w": 48,
         "h": 120
       },
@@ -2462,8 +2762,8 @@
     },
     "unit.monster.boss_hollow_king.idle.sw.3": {
       "frame": {
-        "x": 1668,
-        "y": 786,
+        "x": 1340,
+        "y": 1032,
         "w": 48,
         "h": 118
       },
@@ -2482,8 +2782,8 @@
     },
     "unit.monster.boss_hollow_king.idle.w.0": {
       "frame": {
-        "x": 145,
-        "y": 906,
+        "x": 417,
+        "y": 1152,
         "w": 31,
         "h": 117
       },
@@ -2502,8 +2802,8 @@
     },
     "unit.monster.boss_hollow_king.idle.w.1": {
       "frame": {
-        "x": 324,
-        "y": 786,
+        "x": 1924,
+        "y": 911,
         "w": 31,
         "h": 119
       },
@@ -2522,8 +2822,8 @@
     },
     "unit.monster.boss_hollow_king.idle.w.2": {
       "frame": {
-        "x": 484,
-        "y": 664,
+        "x": 1453,
+        "y": 788,
         "w": 31,
         "h": 121
       },
@@ -2542,8 +2842,8 @@
     },
     "unit.monster.boss_hollow_king.idle.w.3": {
       "frame": {
-        "x": 324,
-        "y": 786,
+        "x": 1924,
+        "y": 911,
         "w": 31,
         "h": 119
       },
@@ -2560,30 +2860,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.walk.e.0": {
-      "frame": {
-        "x": 1271,
-        "y": 1593,
-        "w": 75,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 88,
-        "y": 30,
-        "w": 75,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.walk.e.1": {
       "frame": {
-        "x": 163,
-        "y": 1024,
+        "x": 1239,
+        "y": 1152,
         "w": 105,
         "h": 116
       },
@@ -2602,8 +2882,8 @@
     },
     "unit.monster.boss_hollow_king.walk.e.2": {
       "frame": {
-        "x": 1330,
-        "y": 1141,
+        "x": 683,
+        "y": 1503,
         "w": 95,
         "h": 113
       },
@@ -2620,30 +2900,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.walk.e.3": {
-      "frame": {
-        "x": 1047,
-        "y": 1702,
-        "w": 71,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 91,
-        "y": 33,
-        "w": 71,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.walk.e.4": {
       "frame": {
-        "x": 352,
-        "y": 1370,
+        "x": 1479,
+        "y": 1732,
         "w": 76,
         "h": 111
       },
@@ -2662,8 +2922,8 @@
     },
     "unit.monster.boss_hollow_king.walk.e.5": {
       "frame": {
-        "x": 1717,
-        "y": 786,
+        "x": 905,
+        "y": 1032,
         "w": 103,
         "h": 118
       },
@@ -2682,8 +2942,8 @@
     },
     "unit.monster.boss_hollow_king.walk.e.6": {
       "frame": {
-        "x": 790,
-        "y": 1141,
+        "x": 921,
+        "y": 1503,
         "w": 89,
         "h": 113
       },
@@ -2700,30 +2960,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.walk.e.7": {
-      "frame": {
-        "x": 1419,
-        "y": 1702,
-        "w": 69,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 89,
-        "y": 33,
-        "w": 69,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.walk.n.0": {
       "frame": {
-        "x": 1192,
-        "y": 664,
+        "x": 1847,
+        "y": 788,
         "w": 54,
         "h": 120
       },
@@ -2742,8 +2982,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.1": {
       "frame": {
-        "x": 1918,
-        "y": 283,
+        "x": 295,
+        "y": 412,
         "w": 53,
         "h": 126
       },
@@ -2762,8 +3002,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.2": {
       "frame": {
-        "x": 1785,
-        "y": 539,
+        "x": 1126,
+        "y": 664,
         "w": 55,
         "h": 122
       },
@@ -2782,8 +3022,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.3": {
       "frame": {
-        "x": 318,
-        "y": 1024,
+        "x": 1938,
+        "y": 1270,
         "w": 58,
         "h": 115
       },
@@ -2802,8 +3042,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.4": {
       "frame": {
-        "x": 427,
-        "y": 664,
+        "x": 1741,
+        "y": 788,
         "w": 56,
         "h": 121
       },
@@ -2822,8 +3062,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.5": {
       "frame": {
-        "x": 1642,
-        "y": 151,
+        "x": 304,
+        "y": 283,
         "w": 57,
         "h": 128
       },
@@ -2842,8 +3082,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.6": {
       "frame": {
-        "x": 1678,
-        "y": 539,
+        "x": 1311,
+        "y": 664,
         "w": 61,
         "h": 122
       },
@@ -2862,8 +3102,8 @@
     },
     "unit.monster.boss_hollow_king.walk.n.7": {
       "frame": {
-        "x": 901,
-        "y": 1024,
+        "x": 959,
+        "y": 1270,
         "w": 60,
         "h": 115
       },
@@ -2882,8 +3122,8 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.0": {
       "frame": {
-        "x": 1259,
-        "y": 906,
+        "x": 1794,
+        "y": 1152,
         "w": 57,
         "h": 116
       },
@@ -2902,7 +3142,7 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.1": {
       "frame": {
-        "x": 154,
+        "x": 1497,
         "y": 539,
         "w": 78,
         "h": 124
@@ -2922,8 +3162,8 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.2": {
       "frame": {
-        "x": 539,
-        "y": 786,
+        "x": 1355,
+        "y": 911,
         "w": 71,
         "h": 119
       },
@@ -2942,8 +3182,8 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.3": {
       "frame": {
-        "x": 1085,
-        "y": 1256,
+        "x": 1324,
+        "y": 1618,
         "w": 65,
         "h": 112
       },
@@ -2962,8 +3202,8 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.4": {
       "frame": {
-        "x": 1482,
-        "y": 786,
+        "x": 782,
+        "y": 1032,
         "w": 63,
         "h": 118
       },
@@ -2982,7 +3222,7 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.5": {
       "frame": {
-        "x": 288,
+        "x": 566,
         "y": 412,
         "w": 75,
         "h": 126
@@ -3002,8 +3242,8 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.6": {
       "frame": {
-        "x": 750,
-        "y": 786,
+        "x": 0,
+        "y": 1032,
         "w": 67,
         "h": 119
       },
@@ -3022,8 +3262,8 @@
     },
     "unit.monster.boss_hollow_king.walk.ne.7": {
       "frame": {
-        "x": 1550,
-        "y": 1141,
+        "x": 779,
+        "y": 1503,
         "w": 57,
         "h": 113
       },
@@ -3042,8 +3282,8 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.0": {
       "frame": {
-        "x": 854,
-        "y": 906,
+        "x": 112,
+        "y": 1152,
         "w": 62,
         "h": 117
       },
@@ -3062,7 +3302,7 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.1": {
       "frame": {
-        "x": 1072,
+        "x": 1416,
         "y": 412,
         "w": 75,
         "h": 125
@@ -3082,8 +3322,8 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.2": {
       "frame": {
-        "x": 1237,
-        "y": 786,
+        "x": 1216,
+        "y": 1032,
         "w": 73,
         "h": 118
       },
@@ -3102,8 +3342,8 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.3": {
       "frame": {
-        "x": 657,
-        "y": 1256,
+        "x": 837,
+        "y": 1732,
         "w": 63,
         "h": 112
       },
@@ -3122,8 +3362,8 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.4": {
       "frame": {
-        "x": 705,
-        "y": 906,
+        "x": 884,
+        "y": 1152,
         "w": 57,
         "h": 117
       },
@@ -3142,7 +3382,7 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.5": {
       "frame": {
-        "x": 499,
+        "x": 1930,
         "y": 539,
         "w": 79,
         "h": 123
@@ -3162,8 +3402,8 @@
     },
     "unit.monster.boss_hollow_king.walk.nw.6": {
       "frame": {
-        "x": 1593,
-        "y": 786,
+        "x": 1454,
+        "y": 1032,
         "w": 74,
         "h": 118
       },
@@ -3180,330 +3420,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.walk.nw.7": {
-      "frame": {
-        "x": 1590,
-        "y": 1370,
-        "w": 65,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 86,
-        "y": 28,
-        "w": 65,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.s.1": {
-      "frame": {
-        "x": 1365,
-        "y": 1702,
-        "w": 53,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 95,
-        "y": 32,
-        "w": 53,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.s.5": {
-      "frame": {
-        "x": 0,
-        "y": 1810,
-        "w": 57,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 94,
-        "y": 33,
-        "w": 57,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.s.6": {
-      "frame": {
-        "x": 1224,
-        "y": 1917,
-        "w": 61,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 91,
-        "y": 38,
-        "w": 61,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.se.0": {
-      "frame": {
-        "x": 581,
-        "y": 1917,
-        "w": 62,
-        "h": 102
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 96,
-        "y": 37,
-        "w": 62,
-        "h": 102
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.se.1": {
-      "frame": {
-        "x": 1505,
-        "y": 1482,
-        "w": 77,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 84,
-        "y": 29,
-        "w": 77,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.se.2": {
-      "frame": {
-        "x": 1269,
-        "y": 1810,
-        "w": 73,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 90,
-        "y": 35,
-        "w": 73,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.se.4": {
-      "frame": {
-        "x": 1779,
-        "y": 1810,
-        "w": 61,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 94,
-        "y": 35,
-        "w": 61,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.se.5": {
-      "frame": {
-        "x": 1510,
-        "y": 1370,
-        "w": 79,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 77,
-        "y": 28,
-        "w": 79,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.se.6": {
-      "frame": {
-        "x": 555,
-        "y": 1810,
-        "w": 69,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 83,
-        "y": 34,
-        "w": 69,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.sw.0": {
-      "frame": {
-        "x": 369,
-        "y": 1917,
-        "w": 60,
-        "h": 103
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 36,
-        "w": 60,
-        "h": 103
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.sw.1": {
-      "frame": {
-        "x": 1426,
-        "y": 1482,
-        "w": 78,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 88,
-        "y": 29,
-        "w": 78,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.sw.2": {
-      "frame": {
-        "x": 1889,
-        "y": 1810,
-        "w": 67,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 91,
-        "y": 35,
-        "w": 67,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.sw.4": {
-      "frame": {
-        "x": 729,
-        "y": 1917,
-        "w": 63,
-        "h": 102
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 82,
-        "y": 37,
-        "w": 63,
-        "h": 102
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.sw.5": {
-      "frame": {
-        "x": 1849,
-        "y": 1593,
-        "w": 74,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 84,
-        "y": 31,
-        "w": 74,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.sw.6": {
-      "frame": {
-        "x": 1202,
-        "y": 1810,
-        "w": 66,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 86,
-        "y": 35,
-        "w": 66,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.walk.w.0": {
       "frame": {
-        "x": 665,
-        "y": 1370,
+        "x": 508,
+        "y": 1845,
         "w": 72,
         "h": 111
       },
@@ -3522,8 +3442,8 @@
     },
     "unit.monster.boss_hollow_king.walk.w.1": {
       "frame": {
-        "x": 1028,
-        "y": 906,
+        "x": 1016,
+        "y": 1152,
         "w": 105,
         "h": 117
       },
@@ -3542,8 +3462,8 @@
     },
     "unit.monster.boss_hollow_king.walk.w.2": {
       "frame": {
-        "x": 562,
-        "y": 1256,
+        "x": 1454,
+        "y": 1618,
         "w": 94,
         "h": 112
       },
@@ -3560,50 +3480,10 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.walk.w.3": {
-      "frame": {
-        "x": 1722,
-        "y": 1702,
-        "w": 71,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 33,
-        "w": 71,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
-    "unit.monster.boss_hollow_king.walk.w.4": {
-      "frame": {
-        "x": 334,
-        "y": 1482,
-        "w": 77,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 76,
-        "y": 29,
-        "w": 77,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_hollow_king.walk.w.5": {
       "frame": {
-        "x": 545,
-        "y": 1024,
+        "x": 489,
+        "y": 1387,
         "w": 103,
         "h": 115
       },
@@ -3622,8 +3502,8 @@
     },
     "unit.monster.boss_hollow_king.walk.w.6": {
       "frame": {
-        "x": 1918,
-        "y": 1256,
+        "x": 1085,
+        "y": 1732,
         "w": 88,
         "h": 111
       },
@@ -3640,29 +3520,9 @@
         "h": 156
       }
     },
-    "unit.monster.boss_hollow_king.walk.w.7": {
-      "frame": {
-        "x": 1423,
-        "y": 1810,
-        "w": 69,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 85,
-        "y": 35,
-        "w": 69,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 241,
-        "h": 156
-      }
-    },
     "unit.monster.boss_ninth_flame.attack.e.0": {
       "frame": {
-        "x": 1888,
+        "x": 1692,
         "y": 0,
         "w": 60,
         "h": 132
@@ -3682,7 +3542,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.e.1": {
       "frame": {
-        "x": 510,
+        "x": 975,
         "y": 283,
         "w": 68,
         "h": 127
@@ -3702,8 +3562,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.e.2": {
       "frame": {
-        "x": 0,
-        "y": 664,
+        "x": 1485,
+        "y": 788,
         "w": 76,
         "h": 121
       },
@@ -3722,7 +3582,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.e.3": {
       "frame": {
-        "x": 947,
+        "x": 908,
         "y": 283,
         "w": 66,
         "h": 127
@@ -3742,7 +3602,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.n.0": {
       "frame": {
-        "x": 1628,
+        "x": 1917,
         "y": 0,
         "w": 77,
         "h": 132
@@ -3762,8 +3622,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.n.1": {
       "frame": {
-        "x": 1245,
-        "y": 539,
+        "x": 420,
+        "y": 788,
         "w": 73,
         "h": 122
       },
@@ -3782,8 +3642,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.n.2": {
       "frame": {
-        "x": 1763,
-        "y": 1256,
+        "x": 1012,
+        "y": 1845,
         "w": 74,
         "h": 111
       },
@@ -3802,8 +3662,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.n.3": {
       "frame": {
-        "x": 1013,
-        "y": 539,
+        "x": 345,
+        "y": 788,
         "w": 74,
         "h": 122
       },
@@ -3822,7 +3682,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.ne.0": {
       "frame": {
-        "x": 1487,
+        "x": 1557,
         "y": 0,
         "w": 70,
         "h": 133
@@ -3842,8 +3702,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.ne.1": {
       "frame": {
-        "x": 1929,
-        "y": 412,
+        "x": 1042,
+        "y": 539,
         "w": 70,
         "h": 124
       },
@@ -3862,8 +3722,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.ne.2": {
       "frame": {
-        "x": 1958,
-        "y": 906,
+        "x": 1967,
+        "y": 1152,
         "w": 74,
         "h": 116
       },
@@ -3882,7 +3742,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.ne.3": {
       "frame": {
-        "x": 677,
+        "x": 349,
         "y": 412,
         "w": 69,
         "h": 126
@@ -3902,7 +3762,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.nw.0": {
       "frame": {
-        "x": 1558,
+        "x": 1487,
         "y": 0,
         "w": 69,
         "h": 133
@@ -3922,8 +3782,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.nw.1": {
       "frame": {
-        "x": 1783,
-        "y": 412,
+        "x": 152,
+        "y": 539,
         "w": 70,
         "h": 124
       },
@@ -3942,8 +3802,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.nw.2": {
       "frame": {
-        "x": 1551,
-        "y": 906,
+        "x": 338,
+        "y": 1270,
         "w": 74,
         "h": 116
       },
@@ -3962,8 +3822,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.nw.3": {
       "frame": {
-        "x": 607,
-        "y": 412,
+        "x": 1602,
+        "y": 283,
         "w": 69,
         "h": 126
       },
@@ -3982,7 +3842,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.s.0": {
       "frame": {
-        "x": 1148,
+        "x": 998,
         "y": 412,
         "w": 73,
         "h": 125
@@ -4002,7 +3862,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.s.1": {
       "frame": {
-        "x": 432,
+        "x": 683,
         "y": 283,
         "w": 77,
         "h": 127
@@ -4022,7 +3882,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.s.2": {
       "frame": {
-        "x": 1758,
+        "x": 1913,
         "y": 283,
         "w": 85,
         "h": 126
@@ -4042,7 +3902,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.s.3": {
       "frame": {
-        "x": 1242,
+        "x": 521,
         "y": 283,
         "w": 76,
         "h": 127
@@ -4062,7 +3922,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.se.0": {
       "frame": {
-        "x": 1430,
+        "x": 1223,
         "y": 151,
         "w": 66,
         "h": 129
@@ -4082,7 +3942,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.se.1": {
       "frame": {
-        "x": 0,
+        "x": 77,
         "y": 151,
         "w": 74,
         "h": 131
@@ -4102,7 +3962,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.se.2": {
       "frame": {
-        "x": 654,
+        "x": 598,
         "y": 283,
         "w": 84,
         "h": 127
@@ -4122,7 +3982,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.se.3": {
       "frame": {
-        "x": 1356,
+        "x": 1290,
         "y": 151,
         "w": 73,
         "h": 129
@@ -4142,8 +4002,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.sw.0": {
       "frame": {
-        "x": 291,
-        "y": 283,
+        "x": 1642,
+        "y": 151,
         "w": 67,
         "h": 128
       },
@@ -4162,7 +4022,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.sw.1": {
       "frame": {
-        "x": 823,
+        "x": 888,
         "y": 151,
         "w": 73,
         "h": 130
@@ -4182,7 +4042,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.sw.2": {
       "frame": {
-        "x": 0,
+        "x": 780,
         "y": 412,
         "w": 82,
         "h": 126
@@ -4202,8 +4062,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.sw.3": {
       "frame": {
-        "x": 359,
-        "y": 283,
+        "x": 1710,
+        "y": 151,
         "w": 72,
         "h": 128
       },
@@ -4222,7 +4082,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.w.0": {
       "frame": {
-        "x": 1497,
+        "x": 1364,
         "y": 151,
         "w": 61,
         "h": 129
@@ -4242,7 +4102,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.w.1": {
       "frame": {
-        "x": 893,
+        "x": 1139,
         "y": 412,
         "w": 68,
         "h": 125
@@ -4262,8 +4122,8 @@
     },
     "unit.monster.boss_ninth_flame.attack.w.2": {
       "frame": {
-        "x": 1529,
-        "y": 664,
+        "x": 1083,
+        "y": 911,
         "w": 76,
         "h": 120
       },
@@ -4282,7 +4142,7 @@
     },
     "unit.monster.boss_ninth_flame.attack.w.3": {
       "frame": {
-        "x": 1336,
+        "x": 1072,
         "y": 412,
         "w": 66,
         "h": 125
@@ -4302,8 +4162,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.e.0": {
       "frame": {
-        "x": 41,
-        "y": 906,
+        "x": 1122,
+        "y": 1152,
         "w": 65,
         "h": 117
       },
@@ -4322,7 +4182,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.e.1": {
       "frame": {
-        "x": 501,
+        "x": 569,
         "y": 0,
         "w": 55,
         "h": 141
@@ -4362,7 +4222,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.e.3": {
       "frame": {
-        "x": 747,
+        "x": 931,
         "y": 412,
         "w": 66,
         "h": 125
@@ -4382,8 +4242,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.n.0": {
       "frame": {
-        "x": 174,
-        "y": 786,
+        "x": 1427,
+        "y": 911,
         "w": 82,
         "h": 119
       },
@@ -4422,7 +4282,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.n.2": {
       "frame": {
-        "x": 152,
+        "x": 221,
         "y": 151,
         "w": 63,
         "h": 131
@@ -4442,8 +4302,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.n.3": {
       "frame": {
-        "x": 1068,
-        "y": 664,
+        "x": 401,
+        "y": 911,
         "w": 74,
         "h": 120
       },
@@ -4462,8 +4322,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.ne.0": {
       "frame": {
-        "x": 674,
-        "y": 786,
+        "x": 68,
+        "y": 1032,
         "w": 75,
         "h": 119
       },
@@ -4482,7 +4342,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.ne.1": {
       "frame": {
-        "x": 289,
+        "x": 221,
         "y": 0,
         "w": 69,
         "h": 145
@@ -4502,7 +4362,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.ne.2": {
       "frame": {
-        "x": 1172,
+        "x": 1169,
         "y": 0,
         "w": 66,
         "h": 135
@@ -4522,8 +4382,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.ne.3": {
       "frame": {
-        "x": 844,
-        "y": 539,
+        "x": 838,
+        "y": 664,
         "w": 69,
         "h": 123
       },
@@ -4542,8 +4402,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.nw.0": {
       "frame": {
-        "x": 464,
-        "y": 786,
+        "x": 1849,
+        "y": 911,
         "w": 74,
         "h": 119
       },
@@ -4562,7 +4422,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.nw.1": {
       "frame": {
-        "x": 221,
+        "x": 291,
         "y": 0,
         "w": 67,
         "h": 145
@@ -4582,7 +4442,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.nw.2": {
       "frame": {
-        "x": 1105,
+        "x": 1236,
         "y": 0,
         "w": 66,
         "h": 135
@@ -4602,8 +4462,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.nw.3": {
       "frame": {
-        "x": 699,
-        "y": 539,
+        "x": 130,
+        "y": 664,
         "w": 69,
         "h": 123
       },
@@ -4622,8 +4482,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.s.0": {
       "frame": {
-        "x": 1473,
-        "y": 1256,
+        "x": 1889,
+        "y": 1732,
         "w": 77,
         "h": 111
       },
@@ -4642,7 +4502,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.s.1": {
       "frame": {
-        "x": 1043,
+        "x": 423,
         "y": 151,
         "w": 66,
         "h": 130
@@ -4682,7 +4542,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.s.3": {
       "frame": {
-        "x": 367,
+        "x": 0,
         "y": 539,
         "w": 76,
         "h": 124
@@ -4702,8 +4562,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.se.0": {
       "frame": {
-        "x": 474,
-        "y": 1024,
+        "x": 1867,
+        "y": 1270,
         "w": 70,
         "h": 115
       },
@@ -4762,7 +4622,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.se.3": {
       "frame": {
-        "x": 739,
+        "x": 1329,
         "y": 283,
         "w": 73,
         "h": 127
@@ -4782,8 +4642,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.sw.0": {
       "frame": {
-        "x": 407,
-        "y": 1141,
+        "x": 1034,
+        "y": 1387,
         "w": 70,
         "h": 114
       },
@@ -4802,7 +4662,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.sw.1": {
       "frame": {
-        "x": 1239,
+        "x": 1105,
         "y": 0,
         "w": 63,
         "h": 135
@@ -4842,8 +4702,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.sw.3": {
       "frame": {
-        "x": 1510,
-        "y": 283,
+        "x": 0,
+        "y": 412,
         "w": 72,
         "h": 126
       },
@@ -4862,8 +4722,8 @@
     },
     "unit.monster.boss_ninth_flame.cast.w.0": {
       "frame": {
-        "x": 38,
-        "y": 1024,
+        "x": 59,
+        "y": 1270,
         "w": 65,
         "h": 116
       },
@@ -4902,7 +4762,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.w.2": {
       "frame": {
-        "x": 557,
+        "x": 501,
         "y": 0,
         "w": 67,
         "h": 141
@@ -4922,7 +4782,7 @@
     },
     "unit.monster.boss_ninth_flame.cast.w.3": {
       "frame": {
-        "x": 233,
+        "x": 975,
         "y": 539,
         "w": 66,
         "h": 124
@@ -4942,7 +4802,7 @@
     },
     "unit.monster.boss_ninth_flame.death.e.0": {
       "frame": {
-        "x": 1450,
+        "x": 1542,
         "y": 283,
         "w": 59,
         "h": 127
@@ -4962,8 +4822,8 @@
     },
     "unit.monster.boss_ninth_flame.death.e.1": {
       "frame": {
-        "x": 976,
-        "y": 664,
+        "x": 991,
+        "y": 911,
         "w": 91,
         "h": 120
       },
@@ -4982,7 +4842,7 @@
     },
     "unit.monster.boss_ninth_flame.death.n.0": {
       "frame": {
-        "x": 897,
+        "x": 1145,
         "y": 151,
         "w": 77,
         "h": 130
@@ -5002,8 +4862,8 @@
     },
     "unit.monster.boss_ninth_flame.death.n.1": {
       "frame": {
-        "x": 1147,
-        "y": 539,
+        "x": 938,
+        "y": 788,
         "w": 97,
         "h": 122
       },
@@ -5022,7 +4882,7 @@
     },
     "unit.monster.boss_ninth_flame.death.ne.0": {
       "frame": {
-        "x": 534,
+        "x": 490,
         "y": 151,
         "w": 72,
         "h": 130
@@ -5042,8 +4902,8 @@
     },
     "unit.monster.boss_ninth_flame.death.ne.1": {
       "frame": {
-        "x": 0,
-        "y": 786,
+        "x": 1697,
+        "y": 911,
         "w": 99,
         "h": 119
       },
@@ -5062,7 +4922,7 @@
     },
     "unit.monster.boss_ninth_flame.death.nw.0": {
       "frame": {
-        "x": 1151,
+        "x": 1073,
         "y": 151,
         "w": 71,
         "h": 130
@@ -5082,8 +4942,8 @@
     },
     "unit.monster.boss_ninth_flame.death.nw.1": {
       "frame": {
-        "x": 1606,
-        "y": 664,
+        "x": 537,
+        "y": 911,
         "w": 96,
         "h": 120
       },
@@ -5102,8 +4962,8 @@
     },
     "unit.monster.boss_ninth_flame.death.s.0": {
       "frame": {
-        "x": 100,
-        "y": 786,
+        "x": 1510,
+        "y": 911,
         "w": 73,
         "h": 119
       },
@@ -5122,8 +4982,8 @@
     },
     "unit.monster.boss_ninth_flame.death.s.1": {
       "frame": {
-        "x": 914,
-        "y": 539,
+        "x": 123,
+        "y": 788,
         "w": 98,
         "h": 122
       },
@@ -5142,7 +5002,7 @@
     },
     "unit.monster.boss_ninth_flame.death.se.0": {
       "frame": {
-        "x": 1403,
+        "x": 1805,
         "y": 412,
         "w": 66,
         "h": 125
@@ -5162,8 +5022,8 @@
     },
     "unit.monster.boss_ninth_flame.death.se.1": {
       "frame": {
-        "x": 1689,
-        "y": 412,
+        "x": 602,
+        "y": 539,
         "w": 93,
         "h": 124
       },
@@ -5182,7 +5042,7 @@
     },
     "unit.monster.boss_ninth_flame.death.sw.0": {
       "frame": {
-        "x": 300,
+        "x": 535,
         "y": 539,
         "w": 66,
         "h": 124
@@ -5202,8 +5062,8 @@
     },
     "unit.monster.boss_ninth_flame.death.sw.1": {
       "frame": {
-        "x": 1319,
-        "y": 539,
+        "x": 494,
+        "y": 788,
         "w": 94,
         "h": 122
       },
@@ -5222,7 +5082,7 @@
     },
     "unit.monster.boss_ninth_flame.death.w.0": {
       "frame": {
-        "x": 1012,
+        "x": 1492,
         "y": 412,
         "w": 59,
         "h": 125
@@ -5242,8 +5102,8 @@
     },
     "unit.monster.boss_ninth_flame.death.w.1": {
       "frame": {
-        "x": 1438,
-        "y": 664,
+        "x": 683,
+        "y": 911,
         "w": 90,
         "h": 120
       },
@@ -5262,18 +5122,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.e.0": {
       "frame": {
-        "x": 1544,
-        "y": 539,
-        "w": 58,
-        "h": 122
+        "x": 277,
+        "y": 911,
+        "w": 62,
+        "h": 120
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 80,
-        "y": 25,
-        "w": 58,
-        "h": 122
+        "x": 78,
+        "y": 27,
+        "w": 62,
+        "h": 120
       },
       "sourceSize": {
         "w": 247,
@@ -5282,17 +5142,37 @@
     },
     "unit.monster.boss_ninth_flame.hit.e.1": {
       "frame": {
-        "x": 1387,
-        "y": 283,
+        "x": 472,
+        "y": 539,
         "w": 62,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 82,
+        "y": 23,
+        "w": 62,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.e.2": {
+      "frame": {
+        "x": 1403,
+        "y": 283,
+        "w": 63,
         "h": 127
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 83,
+        "x": 85,
         "y": 20,
-        "w": 62,
+        "w": 63,
         "h": 127
       },
       "sourceSize": {
@@ -5302,18 +5182,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.n.0": {
       "frame": {
-        "x": 1545,
-        "y": 412,
-        "w": 79,
-        "h": 125
+        "x": 1651,
+        "y": 539,
+        "w": 82,
+        "h": 123
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 95,
-        "y": 19,
-        "w": 79,
-        "h": 125
+        "x": 94,
+        "y": 22,
+        "w": 82,
+        "h": 123
       },
       "sourceSize": {
         "w": 247,
@@ -5322,18 +5202,38 @@
     },
     "unit.monster.boss_ninth_flame.hit.n.1": {
       "frame": {
-        "x": 214,
-        "y": 283,
+        "x": 392,
+        "y": 539,
+        "w": 79,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 95,
+        "y": 19,
+        "w": 79,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.n.2": {
+      "frame": {
+        "x": 642,
+        "y": 412,
         "w": 76,
-        "h": 128
+        "h": 126
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 96,
-        "y": 15,
+        "y": 16,
         "w": 76,
-        "h": 128
+        "h": 126
       },
       "sourceSize": {
         "w": 247,
@@ -5342,18 +5242,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.ne.0": {
       "frame": {
-        "x": 1844,
-        "y": 283,
-        "w": 73,
-        "h": 126
+        "x": 514,
+        "y": 664,
+        "w": 76,
+        "h": 123
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 74,
-        "y": 21,
-        "w": 73,
-        "h": 126
+        "x": 72,
+        "y": 24,
+        "w": 76,
+        "h": 123
       },
       "sourceSize": {
         "w": 247,
@@ -5362,17 +5262,37 @@
     },
     "unit.monster.boss_ninth_flame.hit.ne.1": {
       "frame": {
-        "x": 144,
+        "x": 419,
+        "y": 412,
+        "w": 71,
+        "h": 126
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 76,
+        "y": 20,
+        "w": 71,
+        "h": 126
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.ne.2": {
+      "frame": {
+        "x": 91,
         "y": 283,
-        "w": 69,
+        "w": 68,
         "h": 128
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 78,
+        "x": 79,
         "y": 17,
-        "w": 69,
+        "w": 68,
         "h": 128
       },
       "sourceSize": {
@@ -5382,18 +5302,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.nw.0": {
       "frame": {
-        "x": 535,
-        "y": 412,
-        "w": 71,
-        "h": 126
+        "x": 1797,
+        "y": 539,
+        "w": 75,
+        "h": 123
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 104,
-        "y": 21,
-        "w": 71,
-        "h": 126
+        "x": 102,
+        "y": 24,
+        "w": 75,
+        "h": 123
       },
       "sourceSize": {
         "w": 247,
@@ -5402,7 +5322,27 @@
     },
     "unit.monster.boss_ninth_flame.hit.nw.1": {
       "frame": {
-        "x": 75,
+        "x": 223,
+        "y": 412,
+        "w": 71,
+        "h": 126
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 102,
+        "y": 20,
+        "w": 71,
+        "h": 126
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.nw.2": {
+      "frame": {
+        "x": 160,
         "y": 283,
         "w": 68,
         "h": 128
@@ -5410,7 +5350,7 @@
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 103,
+        "x": 102,
         "y": 17,
         "w": 68,
         "h": 128
@@ -5422,18 +5362,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.s.0": {
       "frame": {
-        "x": 1614,
-        "y": 1024,
-        "w": 71,
-        "h": 114
+        "x": 0,
+        "y": 1732,
+        "w": 76,
+        "h": 112
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 98,
-        "y": 28,
-        "w": 71,
-        "h": 114
+        "x": 96,
+        "y": 30,
+        "w": 76,
+        "h": 112
       },
       "sourceSize": {
         "w": 247,
@@ -5442,18 +5382,38 @@
     },
     "unit.monster.boss_ninth_flame.hit.s.1": {
       "frame": {
-        "x": 627,
-        "y": 664,
+        "x": 769,
+        "y": 1152,
         "w": 74,
-        "h": 121
+        "h": 117
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 97,
-        "y": 22,
+        "y": 26,
         "w": 74,
-        "h": 121
+        "h": 117
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.s.2": {
+      "frame": {
+        "x": 1576,
+        "y": 539,
+        "w": 74,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 97,
+        "y": 21,
+        "w": 74,
+        "h": 123
       },
       "sourceSize": {
         "w": 247,
@@ -5462,18 +5422,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.se.0": {
       "frame": {
-        "x": 257,
-        "y": 786,
-        "w": 66,
-        "h": 119
+        "x": 125,
+        "y": 1270,
+        "w": 69,
+        "h": 116
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 77,
-        "y": 26,
-        "w": 66,
-        "h": 119
+        "x": 75,
+        "y": 29,
+        "w": 69,
+        "h": 116
       },
       "sourceSize": {
         "w": 247,
@@ -5482,17 +5442,37 @@
     },
     "unit.monster.boss_ninth_flame.hit.se.1": {
       "frame": {
-        "x": 1319,
+        "x": 1752,
+        "y": 664,
+        "w": 68,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 78,
+        "y": 24,
+        "w": 68,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.se.2": {
+      "frame": {
+        "x": 1189,
         "y": 283,
-        "w": 67,
+        "w": 69,
         "h": 127
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 79,
+        "x": 80,
         "y": 20,
-        "w": 67,
+        "w": 69,
         "h": 127
       },
       "sourceSize": {
@@ -5502,18 +5482,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.sw.0": {
       "frame": {
-        "x": 1888,
-        "y": 786,
-        "w": 67,
-        "h": 118
+        "x": 72,
+        "y": 1387,
+        "w": 70,
+        "h": 115
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 104,
-        "y": 26,
-        "w": 67,
-        "h": 118
+        "x": 103,
+        "y": 29,
+        "w": 70,
+        "h": 115
       },
       "sourceSize": {
         "w": 247,
@@ -5522,17 +5502,37 @@
     },
     "unit.monster.boss_ninth_flame.hit.sw.1": {
       "frame": {
-        "x": 1691,
-        "y": 283,
-        "w": 66,
-        "h": 126
+        "x": 1036,
+        "y": 788,
+        "w": 67,
+        "h": 121
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 103,
+        "y": 24,
+        "w": 67,
+        "h": 121
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.sw.2": {
+      "frame": {
+        "x": 1844,
+        "y": 283,
+        "w": 68,
+        "h": 126
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 100,
         "y": 20,
-        "w": 66,
+        "w": 68,
         "h": 126
       },
       "sourceSize": {
@@ -5542,18 +5542,18 @@
     },
     "unit.monster.boss_ninth_flame.hit.w.0": {
       "frame": {
-        "x": 318,
-        "y": 664,
-        "w": 58,
-        "h": 121
+        "x": 1634,
+        "y": 911,
+        "w": 62,
+        "h": 119
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 111,
-        "y": 25,
-        "w": 58,
-        "h": 121
+        "x": 109,
+        "y": 27,
+        "w": 62,
+        "h": 119
       },
       "sourceSize": {
         "w": 247,
@@ -5562,17 +5562,37 @@
     },
     "unit.monster.boss_ninth_flame.hit.w.1": {
       "frame": {
-        "x": 1273,
-        "y": 412,
+        "x": 1734,
+        "y": 539,
         "w": 62,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 105,
+        "y": 23,
+        "w": 62,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 247,
+        "h": 153
+      }
+    },
+    "unit.monster.boss_ninth_flame.hit.w.2": {
+      "frame": {
+        "x": 1616,
+        "y": 412,
+        "w": 63,
         "h": 125
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 104,
+        "x": 101,
         "y": 20,
-        "w": 62,
+        "w": 63,
         "h": 125
       },
       "sourceSize": {
@@ -5582,7 +5602,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.e.0": {
       "frame": {
-        "x": 883,
+        "x": 1044,
         "y": 283,
         "w": 63,
         "h": 127
@@ -5602,7 +5622,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.e.1": {
       "frame": {
-        "x": 396,
+        "x": 563,
         "y": 151,
         "w": 63,
         "h": 130
@@ -5622,7 +5642,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.e.2": {
       "frame": {
-        "x": 1706,
+        "x": 1628,
         "y": 0,
         "w": 63,
         "h": 132
@@ -5642,7 +5662,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.e.3": {
       "frame": {
-        "x": 396,
+        "x": 563,
         "y": 151,
         "w": 63,
         "h": 130
@@ -5662,8 +5682,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.n.0": {
       "frame": {
-        "x": 1854,
-        "y": 412,
+        "x": 77,
+        "y": 539,
         "w": 74,
         "h": 124
       },
@@ -5682,7 +5702,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.n.1": {
       "frame": {
-        "x": 144,
+        "x": 491,
         "y": 412,
         "w": 74,
         "h": 126
@@ -5702,8 +5722,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.n.2": {
       "frame": {
-        "x": 0,
-        "y": 283,
+        "x": 1933,
+        "y": 151,
         "w": 74,
         "h": 128
       },
@@ -5722,7 +5742,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.n.3": {
       "frame": {
-        "x": 144,
+        "x": 491,
         "y": 412,
         "w": 74,
         "h": 126
@@ -5742,7 +5762,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.ne.0": {
       "frame": {
-        "x": 364,
+        "x": 155,
         "y": 412,
         "w": 67,
         "h": 126
@@ -5762,8 +5782,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.ne.1": {
       "frame": {
-        "x": 1850,
-        "y": 151,
+        "x": 362,
+        "y": 283,
         "w": 67,
         "h": 128
       },
@@ -5782,7 +5802,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.ne.2": {
       "frame": {
-        "x": 607,
+        "x": 285,
         "y": 151,
         "w": 67,
         "h": 130
@@ -5802,8 +5822,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.ne.3": {
       "frame": {
-        "x": 1850,
-        "y": 151,
+        "x": 362,
+        "y": 283,
         "w": 67,
         "h": 128
       },
@@ -5822,8 +5842,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.nw.0": {
       "frame": {
-        "x": 1623,
-        "y": 283,
+        "x": 863,
+        "y": 412,
         "w": 67,
         "h": 126
       },
@@ -5842,7 +5862,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.nw.1": {
       "frame": {
-        "x": 1782,
+        "x": 1865,
         "y": 151,
         "w": 67,
         "h": 128
@@ -5862,7 +5882,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.nw.2": {
       "frame": {
-        "x": 975,
+        "x": 820,
         "y": 151,
         "w": 67,
         "h": 130
@@ -5882,7 +5902,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.nw.3": {
       "frame": {
-        "x": 1782,
+        "x": 1865,
         "y": 151,
         "w": 67,
         "h": 128
@@ -5902,8 +5922,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.s.0": {
       "frame": {
-        "x": 769,
-        "y": 539,
+        "x": 763,
+        "y": 664,
         "w": 74,
         "h": 123
       },
@@ -5922,7 +5942,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.s.1": {
       "frame": {
-        "x": 1470,
+        "x": 1872,
         "y": 412,
         "w": 74,
         "h": 125
@@ -5942,7 +5962,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.s.2": {
       "frame": {
-        "x": 579,
+        "x": 1467,
         "y": 283,
         "w": 74,
         "h": 127
@@ -5962,7 +5982,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.s.3": {
       "frame": {
-        "x": 1470,
+        "x": 1872,
         "y": 412,
         "w": 74,
         "h": 125
@@ -5982,7 +6002,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.se.0": {
       "frame": {
-        "x": 813,
+        "x": 1259,
         "y": 283,
         "w": 69,
         "h": 127
@@ -6002,7 +6022,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.se.1": {
       "frame": {
-        "x": 675,
+        "x": 353,
         "y": 151,
         "w": 69,
         "h": 130
@@ -6022,7 +6042,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.se.2": {
       "frame": {
-        "x": 1818,
+        "x": 1799,
         "y": 0,
         "w": 69,
         "h": 132
@@ -6042,7 +6062,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.se.3": {
       "frame": {
-        "x": 675,
+        "x": 353,
         "y": 151,
         "w": 69,
         "h": 130
@@ -6062,8 +6082,8 @@
     },
     "unit.monster.boss_ninth_flame.idle.sw.0": {
       "frame": {
-        "x": 219,
-        "y": 412,
+        "x": 1672,
+        "y": 283,
         "w": 68,
         "h": 126
       },
@@ -6082,7 +6102,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.sw.1": {
       "frame": {
-        "x": 1287,
+        "x": 1426,
         "y": 151,
         "w": 68,
         "h": 129
@@ -6102,7 +6122,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.sw.2": {
       "frame": {
-        "x": 216,
+        "x": 152,
         "y": 151,
         "w": 68,
         "h": 131
@@ -6122,7 +6142,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.sw.3": {
       "frame": {
-        "x": 1287,
+        "x": 1426,
         "y": 151,
         "w": 68,
         "h": 129
@@ -6142,7 +6162,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.w.0": {
       "frame": {
-        "x": 1625,
+        "x": 1552,
         "y": 412,
         "w": 63,
         "h": 125
@@ -6162,7 +6182,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.w.1": {
       "frame": {
-        "x": 1095,
+        "x": 844,
         "y": 283,
         "w": 63,
         "h": 127
@@ -6182,7 +6202,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.w.2": {
       "frame": {
-        "x": 1223,
+        "x": 1495,
         "y": 151,
         "w": 63,
         "h": 129
@@ -6202,7 +6222,7 @@
     },
     "unit.monster.boss_ninth_flame.idle.w.3": {
       "frame": {
-        "x": 1095,
+        "x": 844,
         "y": 283,
         "w": 63,
         "h": 127
@@ -6220,50 +6240,10 @@
         "h": 153
       }
     },
-    "unit.monster.boss_ninth_flame.walk.e.0": {
-      "frame": {
-        "x": 252,
-        "y": 1482,
-        "w": 81,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 87,
-        "y": 28,
-        "w": 81,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.e.1": {
-      "frame": {
-        "x": 1172,
-        "y": 1593,
-        "w": 98,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 72,
-        "y": 20,
-        "w": 98,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
     "unit.monster.boss_ninth_flame.walk.e.2": {
       "frame": {
-        "x": 880,
-        "y": 1141,
+        "x": 120,
+        "y": 1618,
         "w": 99,
         "h": 113
       },
@@ -6280,30 +6260,10 @@
         "h": 153
       }
     },
-    "unit.monster.boss_ninth_flame.walk.e.3": {
-      "frame": {
-        "x": 1084,
-        "y": 1593,
-        "w": 87,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 80,
-        "y": 33,
-        "w": 87,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
     "unit.monster.boss_ninth_flame.walk.e.4": {
       "frame": {
-        "x": 1217,
-        "y": 1024,
+        "x": 1138,
+        "y": 1270,
         "w": 76,
         "h": 115
       },
@@ -6322,8 +6282,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.e.5": {
       "frame": {
-        "x": 93,
-        "y": 1370,
+        "x": 946,
+        "y": 1732,
         "w": 96,
         "h": 111
       },
@@ -6340,49 +6300,9 @@
         "h": 153
       }
     },
-    "unit.monster.boss_ninth_flame.walk.e.6": {
-      "frame": {
-        "x": 1106,
-        "y": 1482,
-        "w": 84,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 24,
-        "w": 84,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.e.7": {
-      "frame": {
-        "x": 1024,
-        "y": 1810,
-        "w": 72,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 93,
-        "y": 33,
-        "w": 72,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
     "unit.monster.boss_ninth_flame.walk.n.0": {
       "frame": {
-        "x": 1359,
+        "x": 1303,
         "y": 0,
         "w": 69,
         "h": 134
@@ -6402,7 +6322,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.n.1": {
       "frame": {
-        "x": 901,
+        "x": 795,
         "y": 0,
         "w": 68,
         "h": 137
@@ -6422,8 +6342,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.n.2": {
       "frame": {
-        "x": 238,
-        "y": 906,
+        "x": 660,
+        "y": 1152,
         "w": 67,
         "h": 117
       },
@@ -6442,8 +6362,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.n.3": {
       "frame": {
-        "x": 1247,
-        "y": 664,
+        "x": 1902,
+        "y": 788,
         "w": 68,
         "h": 120
       },
@@ -6462,7 +6382,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.n.4": {
       "frame": {
-        "x": 285,
+        "x": 962,
         "y": 151,
         "w": 67,
         "h": 130
@@ -6502,8 +6422,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.n.6": {
       "frame": {
-        "x": 1145,
-        "y": 1024,
+        "x": 0,
+        "y": 1387,
         "w": 71,
         "h": 115
       },
@@ -6522,8 +6442,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.n.7": {
       "frame": {
-        "x": 1821,
-        "y": 786,
+        "x": 211,
+        "y": 1032,
         "w": 66,
         "h": 118
       },
@@ -6542,7 +6462,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.0": {
       "frame": {
-        "x": 814,
+        "x": 1947,
         "y": 412,
         "w": 78,
         "h": 125
@@ -6582,8 +6502,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.2": {
       "frame": {
-        "x": 48,
-        "y": 1141,
+        "x": 0,
+        "y": 1503,
         "w": 77,
         "h": 114
       },
@@ -6602,8 +6522,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.3": {
       "frame": {
-        "x": 536,
-        "y": 906,
+        "x": 942,
+        "y": 1152,
         "w": 73,
         "h": 117
       },
@@ -6622,8 +6542,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.4": {
       "frame": {
-        "x": 1918,
-        "y": 151,
+        "x": 229,
+        "y": 283,
         "w": 74,
         "h": 128
       },
@@ -6642,7 +6562,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.5": {
       "frame": {
-        "x": 75,
+        "x": 0,
         "y": 151,
         "w": 76,
         "h": 131
@@ -6662,8 +6582,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.6": {
       "frame": {
-        "x": 309,
-        "y": 1256,
+        "x": 1662,
+        "y": 1618,
         "w": 74,
         "h": 112
       },
@@ -6682,8 +6602,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.ne.7": {
       "frame": {
-        "x": 250,
-        "y": 1141,
+        "x": 122,
+        "y": 1503,
         "w": 73,
         "h": 114
       },
@@ -6702,7 +6622,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.0": {
       "frame": {
-        "x": 460,
+        "x": 627,
         "y": 151,
         "w": 73,
         "h": 130
@@ -6722,7 +6642,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.1": {
       "frame": {
-        "x": 745,
+        "x": 701,
         "y": 151,
         "w": 77,
         "h": 130
@@ -6742,8 +6662,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.2": {
       "frame": {
-        "x": 1397,
-        "y": 1256,
+        "x": 432,
+        "y": 1845,
         "w": 75,
         "h": 111
       },
@@ -6762,8 +6682,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.3": {
       "frame": {
-        "x": 173,
-        "y": 1141,
+        "x": 1105,
+        "y": 1387,
         "w": 76,
         "h": 114
       },
@@ -6782,8 +6702,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.4": {
       "frame": {
-        "x": 1414,
-        "y": 539,
+        "x": 1546,
+        "y": 664,
         "w": 76,
         "h": 122
       },
@@ -6802,7 +6722,7 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.5": {
       "frame": {
-        "x": 1159,
+        "x": 761,
         "y": 283,
         "w": 82,
         "h": 127
@@ -6822,8 +6742,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.6": {
       "frame": {
-        "x": 747,
-        "y": 1024,
+        "x": 264,
+        "y": 1387,
         "w": 76,
         "h": 115
       },
@@ -6842,8 +6762,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.nw.7": {
       "frame": {
-        "x": 962,
-        "y": 1024,
+        "x": 143,
+        "y": 1387,
         "w": 72,
         "h": 115
       },
@@ -6862,8 +6782,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.s.2": {
       "frame": {
-        "x": 517,
-        "y": 1370,
+        "x": 581,
+        "y": 1845,
         "w": 63,
         "h": 111
       },
@@ -6882,8 +6802,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.s.6": {
       "frame": {
-        "x": 497,
-        "y": 1256,
+        "x": 77,
+        "y": 1732,
         "w": 64,
         "h": 112
       },
@@ -6902,8 +6822,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.se.2": {
       "frame": {
-        "x": 815,
-        "y": 1256,
+        "x": 1857,
+        "y": 1618,
         "w": 74,
         "h": 112
       },
@@ -6920,110 +6840,10 @@
         "h": 153
       }
     },
-    "unit.monster.boss_ninth_flame.walk.se.3": {
-      "frame": {
-        "x": 793,
-        "y": 1917,
-        "w": 69,
-        "h": 102
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 94,
-        "y": 42,
-        "w": 69,
-        "h": 102
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.se.4": {
-      "frame": {
-        "x": 1564,
-        "y": 1917,
-        "w": 69,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 35,
-        "w": 69,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.se.6": {
-      "frame": {
-        "x": 1432,
-        "y": 1370,
-        "w": 77,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 83,
-        "y": 34,
-        "w": 77,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.sw.0": {
-      "frame": {
-        "x": 1492,
-        "y": 1917,
-        "w": 71,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 90,
-        "y": 36,
-        "w": 71,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.sw.2": {
-      "frame": {
-        "x": 990,
-        "y": 1482,
-        "w": 73,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 92,
-        "y": 35,
-        "w": 73,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
     "unit.monster.boss_ninth_flame.walk.sw.6": {
       "frame": {
-        "x": 170,
-        "y": 1256,
+        "x": 287,
+        "y": 1732,
         "w": 68,
         "h": 112
       },
@@ -7034,26 +6854,6 @@
         "y": 35,
         "w": 68,
         "h": 112
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.sw.7": {
-      "frame": {
-        "x": 1159,
-        "y": 1917,
-        "w": 64,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 91,
-        "y": 43,
-        "w": 64,
-        "h": 101
       },
       "sourceSize": {
         "w": 247,
@@ -7062,8 +6862,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.w.0": {
       "frame": {
-        "x": 1686,
-        "y": 1024,
+        "x": 840,
+        "y": 1387,
         "w": 80,
         "h": 114
       },
@@ -7082,8 +6882,8 @@
     },
     "unit.monster.boss_ninth_flame.walk.w.1": {
       "frame": {
-        "x": 980,
-        "y": 1141,
+        "x": 1928,
+        "y": 1503,
         "w": 98,
         "h": 113
       },
@@ -7100,90 +6900,10 @@
         "h": 153
       }
     },
-    "unit.monster.boss_ninth_flame.walk.w.2": {
-      "frame": {
-        "x": 812,
-        "y": 1593,
-        "w": 89,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 78,
-        "y": 26,
-        "w": 89,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.w.3": {
-      "frame": {
-        "x": 692,
-        "y": 1810,
-        "w": 72,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 84,
-        "y": 33,
-        "w": 72,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.w.4": {
-      "frame": {
-        "x": 796,
-        "y": 1482,
-        "w": 77,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 28,
-        "w": 77,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.w.5": {
-      "frame": {
-        "x": 1493,
-        "y": 1810,
-        "w": 96,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 80,
-        "y": 21,
-        "w": 96,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
     "unit.monster.boss_ninth_flame.walk.w.6": {
       "frame": {
-        "x": 1883,
-        "y": 1141,
+        "x": 1011,
+        "y": 1503,
         "w": 99,
         "h": 113
       },
@@ -7194,26 +6914,6 @@
         "y": 26,
         "w": 99,
         "h": 113
-      },
-      "sourceSize": {
-        "w": 247,
-        "h": 153
-      }
-    },
-    "unit.monster.boss_ninth_flame.walk.w.7": {
-      "frame": {
-        "x": 1658,
-        "y": 1593,
-        "w": 81,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 85,
-        "y": 35,
-        "w": 81,
-        "h": 107
       },
       "sourceSize": {
         "w": 247,
@@ -7222,8 +6922,8 @@
     },
     "unit.monster.boss_warden.attack.e.0": {
       "frame": {
-        "x": 1369,
-        "y": 1024,
+        "x": 1997,
+        "y": 1270,
         "w": 42,
         "h": 115
       },
@@ -7240,70 +6940,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.e.1": {
-      "frame": {
-        "x": 1346,
-        "y": 1370,
-        "w": 42,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 15,
-        "w": 42,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.e.2": {
-      "frame": {
-        "x": 845,
-        "y": 1810,
-        "w": 51,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 80,
-        "y": 20,
-        "w": 51,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.e.3": {
-      "frame": {
-        "x": 42,
-        "y": 1482,
-        "w": 42,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 15,
-        "w": 42,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.attack.n.0": {
       "frame": {
-        "x": 1826,
-        "y": 1024,
+        "x": 921,
+        "y": 1387,
         "w": 112,
         "h": 114
       },
@@ -7320,50 +6960,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.n.1": {
-      "frame": {
-        "x": 218,
-        "y": 1810,
-        "w": 106,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 47,
-        "y": 15,
-        "w": 106,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.n.3": {
-      "frame": {
-        "x": 1794,
-        "y": 1702,
-        "w": 106,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 47,
-        "y": 14,
-        "w": 106,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.attack.ne.0": {
       "frame": {
-        "x": 1534,
-        "y": 1024,
+        "x": 1242,
+        "y": 1387,
         "w": 79,
         "h": 114
       },
@@ -7380,50 +6980,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.ne.1": {
-      "frame": {
-        "x": 1960,
-        "y": 1702,
-        "w": 76,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 15,
-        "w": 76,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.ne.3": {
-      "frame": {
-        "x": 1474,
-        "y": 1593,
-        "w": 76,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 15,
-        "w": 76,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.attack.nw.0": {
       "frame": {
-        "x": 86,
-        "y": 1256,
+        "x": 837,
+        "y": 1503,
         "w": 83,
         "h": 113
       },
@@ -7440,150 +7000,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.nw.1": {
-      "frame": {
-        "x": 765,
-        "y": 1810,
-        "w": 79,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 16,
-        "w": 79,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.nw.3": {
-      "frame": {
-        "x": 1284,
-        "y": 1702,
-        "w": 80,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 16,
-        "w": 80,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.s.0": {
-      "frame": {
-        "x": 396,
-        "y": 1702,
-        "w": 104,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 49,
-        "y": 14,
-        "w": 104,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.s.1": {
-      "frame": {
-        "x": 412,
-        "y": 1482,
-        "w": 110,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 46,
-        "y": 15,
-        "w": 110,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.s.2": {
-      "frame": {
-        "x": 604,
-        "y": 1593,
-        "w": 120,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 41,
-        "y": 19,
-        "w": 120,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.s.3": {
-      "frame": {
-        "x": 408,
-        "y": 1593,
-        "w": 110,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 46,
-        "y": 16,
-        "w": 110,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.se.0": {
-      "frame": {
-        "x": 1064,
-        "y": 1370,
-        "w": 84,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 14,
-        "w": 84,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.attack.se.1": {
       "frame": {
-        "x": 429,
-        "y": 1370,
+        "x": 1202,
+        "y": 1845,
         "w": 87,
         "h": 111
       },
@@ -7600,30 +7020,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.se.2": {
-      "frame": {
-        "x": 270,
-        "y": 1593,
-        "w": 94,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 55,
-        "y": 20,
-        "w": 94,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.attack.se.3": {
       "frame": {
-        "x": 1823,
-        "y": 1370,
+        "x": 1874,
+        "y": 1845,
         "w": 86,
         "h": 110
       },
@@ -7642,8 +7042,8 @@
     },
     "unit.monster.boss_warden.attack.sw.0": {
       "frame": {
-        "x": 1262,
-        "y": 1370,
+        "x": 1704,
+        "y": 1845,
         "w": 83,
         "h": 110
       },
@@ -7662,8 +7062,8 @@
     },
     "unit.monster.boss_warden.attack.sw.1": {
       "frame": {
-        "x": 1310,
-        "y": 1256,
+        "x": 807,
+        "y": 1845,
         "w": 86,
         "h": 111
       },
@@ -7680,30 +7080,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.sw.2": {
-      "frame": {
-        "x": 1904,
-        "y": 1482,
-        "w": 93,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 52,
-        "y": 19,
-        "w": 93,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.attack.sw.3": {
       "frame": {
-        "x": 166,
-        "y": 1482,
+        "x": 1788,
+        "y": 1845,
         "w": 85,
         "h": 110
       },
@@ -7722,8 +7102,8 @@
     },
     "unit.monster.boss_warden.attack.w.0": {
       "frame": {
-        "x": 1019,
-        "y": 1370,
+        "x": 901,
+        "y": 1732,
         "w": 44,
         "h": 111
       },
@@ -7740,90 +7120,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.attack.w.1": {
-      "frame": {
-        "x": 1431,
-        "y": 1593,
-        "w": 42,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 78,
-        "y": 16,
-        "w": 42,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.w.2": {
-      "frame": {
-        "x": 1957,
-        "y": 1810,
-        "w": 51,
-        "h": 103
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 70,
-        "y": 21,
-        "w": 51,
-        "h": 103
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.attack.w.3": {
-      "frame": {
-        "x": 353,
-        "y": 1702,
-        "w": 42,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 78,
-        "y": 16,
-        "w": 42,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.cast.e.0": {
-      "frame": {
-        "x": 430,
-        "y": 1917,
-        "w": 45,
-        "h": 102
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 23,
-        "w": 45,
-        "h": 102
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.e.1": {
       "frame": {
-        "x": 1740,
-        "y": 539,
+        "x": 589,
+        "y": 788,
         "w": 44,
         "h": 122
       },
@@ -7842,7 +7142,7 @@
     },
     "unit.monster.boss_warden.cast.e.2": {
       "frame": {
-        "x": 962,
+        "x": 1366,
         "y": 412,
         "w": 49,
         "h": 125
@@ -7860,49 +7160,9 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.e.3": {
-      "frame": {
-        "x": 365,
-        "y": 1593,
-        "w": 42,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 17,
-        "w": 42,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.cast.n.0": {
-      "frame": {
-        "x": 186,
-        "y": 1917,
-        "w": 120,
-        "h": 103
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 40,
-        "y": 21,
-        "w": 120,
-        "h": 103
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.n.1": {
       "frame": {
-        "x": 0,
+        "x": 868,
         "y": 539,
         "w": 106,
         "h": 124
@@ -7922,8 +7182,8 @@
     },
     "unit.monster.boss_warden.cast.n.2": {
       "frame": {
-        "x": 1180,
-        "y": 1141,
+        "x": 1835,
+        "y": 1503,
         "w": 92,
         "h": 113
       },
@@ -7940,50 +7200,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.n.3": {
-      "frame": {
-        "x": 79,
-        "y": 1917,
-        "w": 106,
-        "h": 103
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 47,
-        "y": 17,
-        "w": 106,
-        "h": 103
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.cast.ne.0": {
-      "frame": {
-        "x": 644,
-        "y": 1917,
-        "w": 84,
-        "h": 102
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 58,
-        "y": 22,
-        "w": 84,
-        "h": 102
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.ne.1": {
       "frame": {
-        "x": 1603,
-        "y": 539,
+        "x": 1821,
+        "y": 664,
         "w": 74,
         "h": 122
       },
@@ -8002,8 +7222,8 @@
     },
     "unit.monster.boss_warden.cast.ne.2": {
       "frame": {
-        "x": 1035,
-        "y": 1024,
+        "x": 593,
+        "y": 1387,
         "w": 67,
         "h": 115
       },
@@ -8020,50 +7240,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.ne.3": {
-      "frame": {
-        "x": 897,
-        "y": 1810,
-        "w": 76,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 17,
-        "w": 76,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.cast.nw.0": {
-      "frame": {
-        "x": 1634,
-        "y": 1917,
-        "w": 88,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 56,
-        "y": 23,
-        "w": 88,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.nw.1": {
       "frame": {
-        "x": 516,
-        "y": 664,
+        "x": 1154,
+        "y": 788,
         "w": 77,
         "h": 121
       },
@@ -8082,8 +7262,8 @@
     },
     "unit.monster.boss_warden.cast.nw.2": {
       "frame": {
-        "x": 1463,
-        "y": 1024,
+        "x": 1545,
+        "y": 1387,
         "w": 70,
         "h": 114
       },
@@ -8100,30 +7280,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.nw.3": {
-      "frame": {
-        "x": 1698,
-        "y": 1810,
-        "w": 80,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 18,
-        "w": 80,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.s.1": {
       "frame": {
-        "x": 257,
-        "y": 1370,
+        "x": 645,
+        "y": 1845,
         "w": 94,
         "h": 111
       },
@@ -8142,8 +7302,8 @@
     },
     "unit.monster.boss_warden.cast.s.2": {
       "frame": {
-        "x": 432,
-        "y": 412,
+        "x": 1741,
+        "y": 283,
         "w": 102,
         "h": 126
       },
@@ -8160,30 +7320,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.s.3": {
-      "frame": {
-        "x": 936,
-        "y": 1702,
-        "w": 110,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 46,
-        "y": 18,
-        "w": 110,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.se.1": {
       "frame": {
-        "x": 824,
-        "y": 1024,
+        "x": 1337,
+        "y": 1270,
         "w": 76,
         "h": 115
       },
@@ -8202,7 +7342,7 @@
     },
     "unit.monster.boss_warden.cast.se.2": {
       "frame": {
-        "x": 1700,
+        "x": 1783,
         "y": 151,
         "w": 81,
         "h": 128
@@ -8220,30 +7360,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.se.3": {
-      "frame": {
-        "x": 725,
-        "y": 1593,
-        "w": 86,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 58,
-        "y": 18,
-        "w": 86,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.sw.1": {
       "frame": {
-        "x": 1294,
-        "y": 1024,
+        "x": 725,
+        "y": 1270,
         "w": 74,
         "h": 115
       },
@@ -8262,7 +7382,7 @@
     },
     "unit.monster.boss_warden.cast.sw.2": {
       "frame": {
-        "x": 1014,
+        "x": 1108,
         "y": 283,
         "w": 80,
         "h": 127
@@ -8280,30 +7400,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.sw.3": {
-      "frame": {
-        "x": 902,
-        "y": 1593,
-        "w": 85,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 57,
-        "y": 17,
-        "w": 85,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.cast.w.1": {
       "frame": {
-        "x": 1370,
-        "y": 786,
+        "x": 337,
+        "y": 1032,
         "w": 46,
         "h": 118
       },
@@ -8322,8 +7422,8 @@
     },
     "unit.monster.boss_warden.cast.w.2": {
       "frame": {
-        "x": 136,
-        "y": 664,
+        "x": 1798,
+        "y": 788,
         "w": 48,
         "h": 121
       },
@@ -8340,70 +7440,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.cast.w.3": {
-      "frame": {
-        "x": 1489,
-        "y": 1702,
-        "w": 42,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 78,
-        "y": 18,
-        "w": 42,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.death.e.0": {
-      "frame": {
-        "x": 1995,
-        "y": 1370,
-        "w": 44,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 78,
-        "y": 15,
-        "w": 44,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.death.e.1": {
-      "frame": {
-        "x": 1343,
-        "y": 1810,
-        "w": 79,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 38,
-        "y": 27,
-        "w": 79,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.death.n.0": {
       "frame": {
-        "x": 384,
-        "y": 1256,
+        "x": 1549,
+        "y": 1618,
         "w": 112,
         "h": 112
       },
@@ -8422,8 +7462,8 @@
     },
     "unit.monster.boss_warden.death.n.1": {
       "frame": {
-        "x": 1902,
-        "y": 539,
+        "x": 1373,
+        "y": 664,
         "w": 113,
         "h": 122
       },
@@ -8440,30 +7480,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.death.n.2": {
-      "frame": {
-        "x": 1286,
-        "y": 1917,
-        "w": 121,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 58,
-        "w": 121,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.death.ne.0": {
       "frame": {
-        "x": 1838,
-        "y": 1256,
+        "x": 1691,
+        "y": 1732,
         "w": 79,
         "h": 111
       },
@@ -8482,8 +7502,8 @@
     },
     "unit.monster.boss_warden.death.ne.1": {
       "frame": {
-        "x": 940,
-        "y": 1256,
+        "x": 977,
+        "y": 1618,
         "w": 96,
         "h": 112
       },
@@ -8502,8 +7522,8 @@
     },
     "unit.monster.boss_warden.death.nw.0": {
       "frame": {
-        "x": 1656,
-        "y": 1370,
+        "x": 1961,
+        "y": 1845,
         "w": 83,
         "h": 110
       },
@@ -8522,8 +7542,8 @@
     },
     "unit.monster.boss_warden.death.nw.1": {
       "frame": {
-        "x": 1079,
-        "y": 1141,
+        "x": 1734,
+        "y": 1503,
         "w": 100,
         "h": 113
       },
@@ -8540,30 +7560,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.death.s.0": {
-      "frame": {
-        "x": 476,
-        "y": 1917,
-        "w": 104,
-        "h": 102
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 49,
-        "y": 18,
-        "w": 104,
-        "h": 102
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.death.s.1": {
       "frame": {
-        "x": 862,
-        "y": 664,
+        "x": 163,
+        "y": 911,
         "w": 113,
         "h": 120
       },
@@ -8580,50 +7580,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.death.s.2": {
-      "frame": {
-        "x": 1930,
-        "y": 1917,
-        "w": 118,
-        "h": 100
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 80,
-        "y": 59,
-        "w": 118,
-        "h": 100
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.death.se.0": {
-      "frame": {
-        "x": 1532,
-        "y": 1702,
-        "w": 83,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 18,
-        "w": 83,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.death.se.1": {
       "frame": {
-        "x": 478,
-        "y": 1141,
+        "x": 740,
+        "y": 1387,
         "w": 99,
         "h": 114
       },
@@ -8640,30 +7600,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.death.sw.0": {
-      "frame": {
-        "x": 853,
-        "y": 1702,
-        "w": 82,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 17,
-        "w": 82,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.death.sw.1": {
       "frame": {
-        "x": 377,
-        "y": 1024,
+        "x": 392,
+        "y": 1387,
         "w": 96,
         "h": 115
       },
@@ -8680,370 +7620,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.death.w.0": {
-      "frame": {
-        "x": 686,
-        "y": 1702,
-        "w": 46,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 16,
-        "w": 46,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.death.w.1": {
-      "frame": {
-        "x": 0,
-        "y": 1917,
-        "w": 78,
-        "h": 103
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 84,
-        "y": 29,
-        "w": 78,
-        "h": 103
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.e.0": {
-      "frame": {
-        "x": 733,
-        "y": 1702,
-        "w": 45,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 77,
-        "y": 19,
-        "w": 45,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.e.1": {
-      "frame": {
-        "x": 1389,
-        "y": 1370,
-        "w": 42,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 80,
-        "y": 15,
-        "w": 42,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.n.0": {
-      "frame": {
-        "x": 0,
-        "y": 1593,
-        "w": 114,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 43,
-        "y": 16,
-        "w": 114,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.n.1": {
-      "frame": {
-        "x": 1149,
-        "y": 1370,
-        "w": 112,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 44,
-        "y": 13,
-        "w": 112,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.ne.0": {
-      "frame": {
-        "x": 606,
-        "y": 1702,
-        "w": 79,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 18,
-        "w": 79,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.ne.1": {
-      "frame": {
-        "x": 1191,
-        "y": 1482,
-        "w": 78,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 61,
-        "y": 14,
-        "w": 78,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.nw.0": {
-      "frame": {
-        "x": 1119,
-        "y": 1702,
-        "w": 83,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 19,
-        "w": 83,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.nw.1": {
-      "frame": {
-        "x": 1668,
-        "y": 1482,
-        "w": 82,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 15,
-        "w": 82,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.s.1": {
-      "frame": {
-        "x": 1097,
-        "y": 1810,
-        "w": 104,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 49,
-        "y": 17,
-        "w": 104,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.se.0": {
-      "frame": {
-        "x": 1408,
-        "y": 1917,
-        "w": 83,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 22,
-        "w": 83,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.se.1": {
-      "frame": {
-        "x": 519,
-        "y": 1593,
-        "w": 84,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 17,
-        "w": 84,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.sw.0": {
-      "frame": {
-        "x": 947,
-        "y": 1917,
-        "w": 82,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 21,
-        "w": 82,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.sw.1": {
-      "frame": {
-        "x": 1347,
-        "y": 1593,
-        "w": 83,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 58,
-        "y": 16,
-        "w": 83,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.w.0": {
-      "frame": {
-        "x": 1841,
-        "y": 1810,
-        "w": 47,
-        "h": 104
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 20,
-        "w": 47,
-        "h": 104
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.hit.w.1": {
-      "frame": {
-        "x": 81,
-        "y": 1702,
-        "w": 43,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 16,
-        "w": 43,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.e.0": {
-      "frame": {
-        "x": 0,
-        "y": 1482,
-        "w": 41,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 81,
-        "y": 15,
-        "w": 41,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.idle.e.1": {
       "frame": {
-        "x": 748,
-        "y": 1141,
+        "x": 520,
+        "y": 1618,
         "w": 41,
         "h": 113
       },
@@ -9062,8 +7642,8 @@
     },
     "unit.monster.boss_warden.idle.e.2": {
       "frame": {
-        "x": 1103,
-        "y": 1024,
+        "x": 683,
+        "y": 1270,
         "w": 41,
         "h": 115
       },
@@ -9082,8 +7662,8 @@
     },
     "unit.monster.boss_warden.idle.e.3": {
       "frame": {
-        "x": 748,
-        "y": 1141,
+        "x": 520,
+        "y": 1618,
         "w": 41,
         "h": 113
       },
@@ -9100,50 +7680,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.idle.n.0": {
-      "frame": {
-        "x": 1740,
-        "y": 1593,
-        "w": 108,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 46,
-        "y": 14,
-        "w": 108,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.n.1": {
-      "frame": {
-        "x": 1270,
-        "y": 1482,
-        "w": 108,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 46,
-        "y": 12,
-        "w": 108,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.idle.n.2": {
       "frame": {
-        "x": 1612,
-        "y": 1256,
+        "x": 323,
+        "y": 1845,
         "w": 108,
         "h": 111
       },
@@ -9160,70 +7700,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.idle.n.3": {
-      "frame": {
-        "x": 1270,
-        "y": 1482,
-        "w": 108,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 46,
-        "y": 12,
-        "w": 108,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.ne.0": {
-      "frame": {
-        "x": 276,
-        "y": 1702,
-        "w": 76,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 15,
-        "w": 76,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.ne.1": {
-      "frame": {
-        "x": 523,
-        "y": 1482,
-        "w": 76,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 13,
-        "w": 76,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.idle.ne.2": {
       "frame": {
-        "x": 798,
-        "y": 1370,
+        "x": 1967,
+        "y": 1732,
         "w": 76,
         "h": 111
       },
@@ -9240,210 +7720,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.idle.ne.3": {
-      "frame": {
-        "x": 523,
-        "y": 1482,
-        "w": 76,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 13,
-        "w": 76,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.nw.0": {
-      "frame": {
-        "x": 1203,
-        "y": 1702,
-        "w": 80,
-        "h": 106
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 16,
-        "w": 80,
-        "h": 106
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.nw.1": {
-      "frame": {
-        "x": 1823,
-        "y": 1482,
-        "w": 80,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 14,
-        "w": 80,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.nw.2": {
-      "frame": {
-        "x": 85,
-        "y": 1482,
-        "w": 80,
-        "h": 110
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 12,
-        "w": 80,
-        "h": 110
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.nw.3": {
-      "frame": {
-        "x": 1823,
-        "y": 1482,
-        "w": 80,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 60,
-        "y": 14,
-        "w": 80,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.s.0": {
-      "frame": {
-        "x": 58,
-        "y": 1810,
-        "w": 106,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 48,
-        "y": 17,
-        "w": 106,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.s.1": {
-      "frame": {
-        "x": 1551,
-        "y": 1593,
-        "w": 106,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 48,
-        "y": 15,
-        "w": 106,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.s.2": {
-      "frame": {
-        "x": 600,
-        "y": 1482,
-        "w": 106,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 48,
-        "y": 13,
-        "w": 106,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.s.3": {
-      "frame": {
-        "x": 1551,
-        "y": 1593,
-        "w": 106,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 48,
-        "y": 15,
-        "w": 106,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.se.0": {
-      "frame": {
-        "x": 1583,
-        "y": 1482,
-        "w": 84,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 17,
-        "w": 84,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.idle.se.1": {
       "frame": {
-        "x": 875,
-        "y": 1370,
+        "x": 119,
+        "y": 1845,
         "w": 84,
         "h": 111
       },
@@ -9462,8 +7742,8 @@
     },
     "unit.monster.boss_warden.idle.se.2": {
       "frame": {
-        "x": 1692,
-        "y": 1141,
+        "x": 320,
+        "y": 1618,
         "w": 84,
         "h": 113
       },
@@ -9482,8 +7762,8 @@
     },
     "unit.monster.boss_warden.idle.se.3": {
       "frame": {
-        "x": 875,
-        "y": 1370,
+        "x": 119,
+        "y": 1845,
         "w": 84,
         "h": 111
       },
@@ -9500,30 +7780,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.idle.sw.0": {
-      "frame": {
-        "x": 115,
-        "y": 1593,
-        "w": 83,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 58,
-        "y": 16,
-        "w": 83,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.idle.sw.1": {
       "frame": {
-        "x": 581,
-        "y": 1370,
+        "x": 1334,
+        "y": 1732,
         "w": 83,
         "h": 111
       },
@@ -9542,8 +7802,8 @@
     },
     "unit.monster.boss_warden.idle.sw.2": {
       "frame": {
-        "x": 1608,
-        "y": 1141,
+        "x": 1454,
+        "y": 1503,
         "w": 83,
         "h": 113
       },
@@ -9562,8 +7822,8 @@
     },
     "unit.monster.boss_warden.idle.sw.3": {
       "frame": {
-        "x": 581,
-        "y": 1370,
+        "x": 1334,
+        "y": 1732,
         "w": 83,
         "h": 111
       },
@@ -9580,50 +7840,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.idle.w.0": {
-      "frame": {
-        "x": 501,
-        "y": 1702,
-        "w": 41,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 16,
-        "w": 41,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.idle.w.1": {
-      "frame": {
-        "x": 874,
-        "y": 1482,
-        "w": 41,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 14,
-        "w": 41,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.idle.w.2": {
       "frame": {
-        "x": 1721,
-        "y": 1256,
+        "x": 1556,
+        "y": 1732,
         "w": 41,
         "h": 111
       },
@@ -9640,130 +7860,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.idle.w.3": {
-      "frame": {
-        "x": 874,
-        "y": 1482,
-        "w": 41,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 79,
-        "y": 14,
-        "w": 41,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.e.1": {
-      "frame": {
-        "x": 447,
-        "y": 1810,
-        "w": 107,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 50,
-        "y": 16,
-        "w": 107,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.e.2": {
-      "frame": {
-        "x": 1723,
-        "y": 1917,
-        "w": 122,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 36,
-        "y": 20,
-        "w": 122,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.e.4": {
-      "frame": {
-        "x": 863,
-        "y": 1917,
-        "w": 83,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 62,
-        "y": 20,
-        "w": 83,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.e.5": {
-      "frame": {
-        "x": 125,
-        "y": 1702,
-        "w": 102,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 51,
-        "y": 14,
-        "w": 102,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.e.6": {
-      "frame": {
-        "x": 1846,
-        "y": 1917,
-        "w": 83,
-        "h": 100
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 59,
-        "y": 21,
-        "w": 83,
-        "h": 100
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.walk.n.0": {
       "frame": {
-        "x": 1488,
-        "y": 906,
+        "x": 620,
+        "y": 1270,
         "w": 62,
         "h": 116
       },
@@ -9782,8 +7882,8 @@
     },
     "unit.monster.boss_warden.walk.n.1": {
       "frame": {
-        "x": 474,
-        "y": 906,
+        "x": 50,
+        "y": 1152,
         "w": 61,
         "h": 117
       },
@@ -9802,8 +7902,8 @@
     },
     "unit.monster.boss_warden.walk.n.2": {
       "frame": {
-        "x": 738,
-        "y": 1370,
+        "x": 204,
+        "y": 1845,
         "w": 59,
         "h": 111
       },
@@ -9820,30 +7920,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.walk.n.3": {
-      "frame": {
-        "x": 386,
-        "y": 1810,
-        "w": 60,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 69,
-        "y": 16,
-        "w": 60,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.walk.n.4": {
       "frame": {
-        "x": 1151,
-        "y": 1256,
+        "x": 1390,
+        "y": 1618,
         "w": 63,
         "h": 112
       },
@@ -9862,8 +7942,8 @@
     },
     "unit.monster.boss_warden.walk.n.5": {
       "frame": {
-        "x": 1417,
-        "y": 786,
+        "x": 1389,
+        "y": 1032,
         "w": 64,
         "h": 118
       },
@@ -9882,8 +7962,8 @@
     },
     "unit.monster.boss_warden.walk.n.6": {
       "frame": {
-        "x": 190,
-        "y": 1370,
+        "x": 740,
+        "y": 1845,
         "w": 66,
         "h": 111
       },
@@ -9900,50 +7980,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.walk.n.7": {
-      "frame": {
-        "x": 307,
-        "y": 1917,
-        "w": 61,
-        "h": 103
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 70,
-        "y": 18,
-        "w": 61,
-        "h": 103
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.ne.0": {
-      "frame": {
-        "x": 543,
-        "y": 1702,
-        "w": 62,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 71,
-        "y": 16,
-        "w": 62,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.walk.ne.1": {
       "frame": {
-        "x": 721,
-        "y": 1256,
+        "x": 692,
+        "y": 1732,
         "w": 93,
         "h": 112
       },
@@ -9960,70 +8000,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.walk.ne.2": {
-      "frame": {
-        "x": 199,
-        "y": 1593,
-        "w": 70,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 67,
-        "y": 13,
-        "w": 70,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.ne.3": {
-      "frame": {
-        "x": 1097,
-        "y": 1917,
-        "w": 61,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 76,
-        "y": 20,
-        "w": 61,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.ne.4": {
-      "frame": {
-        "x": 916,
-        "y": 1482,
-        "w": 73,
-        "h": 109
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 74,
-        "y": 14,
-        "w": 73,
-        "h": 109
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.walk.ne.5": {
       "frame": {
-        "x": 578,
-        "y": 1141,
+        "x": 661,
+        "y": 1387,
         "w": 78,
         "h": 114
       },
@@ -10040,30 +8020,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.walk.ne.6": {
-      "frame": {
-        "x": 1751,
-        "y": 1482,
-        "w": 71,
-        "h": 108
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 71,
-        "y": 13,
-        "w": 71,
-        "h": 108
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.walk.nw.0": {
       "frame": {
-        "x": 239,
-        "y": 1256,
+        "x": 1737,
+        "y": 1618,
         "w": 69,
         "h": 112
       },
@@ -10082,8 +8042,8 @@
     },
     "unit.monster.boss_warden.walk.nw.1": {
       "frame": {
-        "x": 1469,
-        "y": 1141,
+        "x": 1653,
+        "y": 1503,
         "w": 80,
         "h": 113
       },
@@ -10100,70 +8060,10 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.walk.nw.2": {
-      "frame": {
-        "x": 0,
-        "y": 1702,
-        "w": 80,
-        "h": 107
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 49,
-        "y": 14,
-        "w": 80,
-        "h": 107
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.nw.3": {
-      "frame": {
-        "x": 1030,
-        "y": 1917,
-        "w": 66,
-        "h": 101
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 58,
-        "y": 20,
-        "w": 66,
-        "h": 101
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
-    "unit.monster.boss_warden.walk.nw.4": {
-      "frame": {
-        "x": 625,
-        "y": 1810,
-        "w": 66,
-        "h": 105
-      },
-      "rotated": false,
-      "trimmed": true,
-      "spriteSourceSize": {
-        "x": 64,
-        "y": 16,
-        "w": 66,
-        "h": 105
-      },
-      "sourceSize": {
-        "w": 199,
-        "h": 159
-      }
-    },
     "unit.monster.boss_warden.walk.nw.5": {
       "frame": {
-        "x": 1215,
-        "y": 1256,
+        "x": 1181,
+        "y": 1618,
         "w": 94,
         "h": 112
       },
@@ -10180,72 +8080,992 @@
         "h": 159
       }
     },
-    "unit.monster.boss_warden.walk.nw.6": {
+    "unit.monster.guardian_choir.attack.n.0": {
       "frame": {
-        "x": 779,
-        "y": 1702,
-        "w": 73,
-        "h": 106
+        "x": 681,
+        "y": 1618,
+        "w": 116,
+        "h": 113
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 63,
-        "y": 15,
-        "w": 73,
-        "h": 106
+        "x": 49,
+        "y": 11,
+        "w": 116,
+        "h": 113
       },
       "sourceSize": {
-        "w": 199,
-        "h": 159
+        "w": 215,
+        "h": 165
       }
     },
-    "unit.monster.boss_warden.walk.w.1": {
+    "unit.monster.guardian_choir.attack.ne.0": {
       "frame": {
-        "x": 1616,
-        "y": 1702,
-        "w": 105,
-        "h": 106
+        "x": 1218,
+        "y": 1732,
+        "w": 115,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 49,
+        "y": 12,
+        "w": 115,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.attack.nw.0": {
+      "frame": {
+        "x": 1087,
+        "y": 1845,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 51,
+        "y": 12,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.e.1": {
+      "frame": {
+        "x": 1579,
+        "y": 1032,
+        "w": 106,
+        "h": 117
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 53,
+        "y": 5,
+        "w": 106,
+        "h": 117
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.e.2": {
+      "frame": {
+        "x": 502,
+        "y": 1032,
+        "w": 108,
+        "h": 118
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 60,
+        "y": 3,
+        "w": 108,
+        "h": 118
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.n.1": {
+      "frame": {
+        "x": 591,
+        "y": 664,
+        "w": 108,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 53,
+        "y": 1,
+        "w": 108,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.n.2": {
+      "frame": {
+        "x": 142,
+        "y": 1732,
+        "w": 96,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 59,
+        "y": 6,
+        "w": 96,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.ne.1": {
+      "frame": {
+        "x": 774,
+        "y": 911,
+        "w": 107,
+        "h": 120
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 52,
+        "y": 3,
+        "w": 107,
+        "h": 120
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.ne.2": {
+      "frame": {
+        "x": 1289,
+        "y": 1503,
+        "w": 99,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 60,
+        "y": 6,
+        "w": 99,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.nw.1": {
+      "frame": {
+        "x": 882,
+        "y": 911,
+        "w": 108,
+        "h": 120
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 55,
+        "y": 3,
+        "w": 108,
+        "h": 120
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.nw.2": {
+      "frame": {
+        "x": 220,
+        "y": 1618,
+        "w": 99,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 55,
+        "y": 6,
+        "w": 99,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.s.1": {
+      "frame": {
+        "x": 1403,
+        "y": 1845,
+        "w": 98,
+        "h": 110
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 58,
+        "y": 9,
+        "w": 98,
+        "h": 110
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.s.2": {
+      "frame": {
+        "x": 1208,
+        "y": 412,
+        "w": 106,
+        "h": 125
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 54,
+        "y": 0,
+        "w": 106,
+        "h": 125
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.se.1": {
+      "frame": {
+        "x": 1932,
+        "y": 1618,
+        "w": 100,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 58,
+        "y": 8,
+        "w": 100,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.se.2": {
+      "frame": {
+        "x": 1017,
+        "y": 664,
+        "w": 108,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 58,
+        "y": 1,
+        "w": 108,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.sw.1": {
+      "frame": {
+        "x": 591,
+        "y": 1732,
+        "w": 100,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 57,
+        "y": 8,
+        "w": 100,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.sw.2": {
+      "frame": {
+        "x": 908,
+        "y": 664,
+        "w": 108,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 49,
+        "y": 1,
+        "w": 108,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.w.1": {
+      "frame": {
+        "x": 1771,
+        "y": 1032,
+        "w": 106,
+        "h": 117
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 56,
+        "y": 5,
+        "w": 106,
+        "h": 117
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.cast.w.2": {
+      "frame": {
+        "x": 1061,
+        "y": 1032,
+        "w": 107,
+        "h": 118
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 47,
+        "y": 3,
+        "w": 107,
+        "h": 118
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.e.1": {
+      "frame": {
+        "x": 329,
+        "y": 664,
+        "w": 129,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 28,
+        "w": 129,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.e.2": {
+      "frame": {
+        "x": 1572,
+        "y": 1270,
+        "w": 122,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 48,
+        "w": 122,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.n.0": {
+      "frame": {
+        "x": 0,
+        "y": 1845,
+        "w": 118,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 48,
+        "y": 14,
+        "w": 118,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.n.1": {
+      "frame": {
+        "x": 1367,
+        "y": 539,
+        "w": 129,
+        "h": 124
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 27,
+        "w": 129,
+        "h": 124
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.n.2": {
+      "frame": {
+        "x": 800,
+        "y": 1270,
+        "w": 119,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 49,
+        "w": 119,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.ne.1": {
+      "frame": {
+        "x": 1623,
+        "y": 664,
+        "w": 128,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 29,
+        "w": 128,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.ne.2": {
+      "frame": {
+        "x": 1450,
+        "y": 1270,
+        "w": 121,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 50,
+        "w": 121,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.nw.1": {
+      "frame": {
+        "x": 1896,
+        "y": 664,
+        "w": 128,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 67,
+        "y": 29,
+        "w": 128,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.nw.2": {
+      "frame": {
+        "x": 1215,
+        "y": 1270,
+        "w": 121,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 93,
+        "y": 50,
+        "w": 121,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.s.1": {
+      "frame": {
+        "x": 1182,
+        "y": 664,
+        "w": 128,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 66,
+        "y": 30,
+        "w": 128,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.s.2": {
+      "frame": {
+        "x": 562,
+        "y": 1618,
+        "w": 118,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 93,
+        "y": 51,
+        "w": 118,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.se.1": {
+      "frame": {
+        "x": 200,
+        "y": 664,
+        "w": 128,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 22,
+        "y": 28,
+        "w": 128,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.se.2": {
+      "frame": {
+        "x": 1802,
+        "y": 1387,
+        "w": 121,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 49,
+        "w": 121,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.sw.1": {
+      "frame": {
+        "x": 757,
+        "y": 788,
+        "w": 127,
+        "h": 122
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 65,
+        "y": 29,
+        "w": 127,
+        "h": 122
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.sw.2": {
+      "frame": {
+        "x": 1168,
+        "y": 1503,
+        "w": 120,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 92,
+        "y": 50,
+        "w": 120,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.w.1": {
+      "frame": {
+        "x": 0,
+        "y": 664,
+        "w": 129,
+        "h": 123
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 65,
+        "y": 28,
+        "w": 129,
+        "h": 123
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.death.w.2": {
+      "frame": {
+        "x": 196,
+        "y": 1503,
+        "w": 122,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 93,
+        "y": 49,
+        "w": 122,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.idle.n.2": {
+      "frame": {
+        "x": 1290,
+        "y": 1845,
+        "w": 112,
+        "h": 110
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 51,
+        "y": 12,
+        "w": 112,
+        "h": 110
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.walk.n.1": {
+      "frame": {
+        "x": 1423,
+        "y": 1387,
+        "w": 121,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 47,
+        "y": 7,
+        "w": 121,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.walk.n.5": {
+      "frame": {
+        "x": 1745,
+        "y": 1270,
+        "w": 121,
+        "h": 115
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
         "x": 46,
-        "y": 15,
-        "w": 105,
-        "h": 106
+        "y": 7,
+        "w": 121,
+        "h": 115
       },
       "sourceSize": {
-        "w": 199,
-        "h": 159
+        "w": 215,
+        "h": 165
       }
     },
-    "unit.monster.boss_warden.walk.w.5": {
+    "unit.monster.guardian_choir.walk.n.6": {
       "frame": {
-        "x": 1590,
-        "y": 1810,
-        "w": 107,
-        "h": 104
+        "x": 1587,
+        "y": 1845,
+        "w": 116,
+        "h": 110
       },
       "rotated": false,
       "trimmed": true,
       "spriteSourceSize": {
-        "x": 43,
-        "y": 17,
-        "w": 107,
-        "h": 104
+        "x": 49,
+        "y": 12,
+        "w": 116,
+        "h": 110
       },
       "sourceSize": {
-        "w": 199,
-        "h": 159
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.walk.ne.1": {
+      "frame": {
+        "x": 1771,
+        "y": 1732,
+        "w": 117,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 59,
+        "y": 11,
+        "w": 117,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.walk.ne.5": {
+      "frame": {
+        "x": 0,
+        "y": 1618,
+        "w": 119,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 55,
+        "y": 9,
+        "w": 119,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.walk.nw.1": {
+      "frame": {
+        "x": 472,
+        "y": 1732,
+        "w": 118,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 42,
+        "y": 10,
+        "w": 118,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_choir.walk.nw.5": {
+      "frame": {
+        "x": 894,
+        "y": 1845,
+        "w": 117,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 39,
+        "y": 11,
+        "w": 117,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 215,
+        "h": 165
+      }
+    },
+    "unit.monster.guardian_maw.cast.e.1": {
+      "frame": {
+        "x": 78,
+        "y": 1503,
+        "w": 43,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 63,
+        "y": 2,
+        "w": 43,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 180,
+        "h": 122
+      }
+    },
+    "unit.monster.guardian_maw.cast.e.2": {
+      "frame": {
+        "x": 1453,
+        "y": 1152,
+        "w": 49,
+        "h": 116
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 82,
+        "y": 0,
+        "w": 49,
+        "h": 116
+      },
+      "sourceSize": {
+        "w": 180,
+        "h": 122
+      }
+    },
+    "unit.monster.guardian_maw.cast.se.2": {
+      "frame": {
+        "x": 911,
+        "y": 1618,
+        "w": 65,
+        "h": 112
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 64,
+        "y": 8,
+        "w": 65,
+        "h": 112
+      },
+      "sourceSize": {
+        "w": 180,
+        "h": 122
+      }
+    },
+    "unit.monster.guardian_maw.cast.w.1": {
+      "frame": {
+        "x": 638,
+        "y": 1503,
+        "w": 44,
+        "h": 113
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 73,
+        "y": 2,
+        "w": 44,
+        "h": 113
+      },
+      "sourceSize": {
+        "w": 180,
+        "h": 122
+      }
+    },
+    "unit.monster.guardian_maw.cast.w.2": {
+      "frame": {
+        "x": 341,
+        "y": 1387,
+        "w": 50,
+        "h": 115
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 48,
+        "y": 0,
+        "w": 50,
+        "h": 115
+      },
+      "sourceSize": {
+        "w": 180,
+        "h": 122
       }
     }
   },
   "meta": {
     "image": "atlas-0.png",
     "size": {
-      "w": 2048,
-      "h": 2020
+      "w": 2044,
+      "h": 1956
     },
     "scale": "1"
   }

@@ -8,7 +8,7 @@
  * writers; readers use the getters below (which throw when it is missing).
  */
 import type { Entity, World } from "@gamez/kernel";
-import type { ItemInstance, ItemRarity } from "./types.ts";
+import type { ItemCategory, ItemInstance, ItemRarity } from "./types.ts";
 
 export const RES = {
   /** Owner classic.core. */
@@ -27,6 +27,13 @@ export const RES = {
   stash: "classic.stash",
   /** Owner classic.core (see bus.ts). */
   bus: "classic.bus",
+  // ---- wave A
+  /** Owner classic.items (created lazily; read with lootFilterOf, which falls back to DEFAULT_LOOT_FILTER). */
+  lootFilter: "classic.lootFilter",
+  /** Owner classic.rift. */
+  rift: "classic.riftState",
+  /** Owner classic.achievements. */
+  achievements: "classic.achievements",
 } as const;
 
 export interface GameState {
@@ -125,6 +132,15 @@ export interface AutoConfig {
   buyPotions: boolean;
   /** Keep this much mana in reserve for emergency skills (percent of max). */
   manaReservePct: number;
+  // ---- wave A (optional in stored configs; read with `?? DEFAULT_AUTO_CONFIG.x`) ----
+  /** Repair worn gear at the smith on town visits. */
+  autoRepair?: boolean;
+  /** Use smith crafting (sockets + gems, upgrades, rerolls) with spare gold. */
+  autoCraft?: boolean;
+  /** Gamble with spare gold. */
+  autoGamble?: boolean;
+  /** Run Rifts once unlocked and the main dungeon is done. */
+  autoRift?: boolean;
 }
 
 export interface ControlState {
@@ -146,8 +162,15 @@ export interface VendorState {
   stocks: VendorStock[];
 }
 
+/**
+ * Stash items of every tab in one list; ItemInstance.tab says which tab
+ * (absent = 0). Capacity per tab = BalanceProto.stashSize; tabs =
+ * BalanceProto.stashTabs (rules.stashTabCount). Owner classic.items.
+ */
 export interface StashState {
   items: ItemInstance[];
+  /** Player-chosen tab names (index = tab); missing entries use "Tab n". Optional. */
+  tabNames?: string[];
 }
 
 export interface RunStats {
@@ -161,6 +184,20 @@ export interface RunStats {
   potionsUsed: number;
   ticksPlayed: number;
   offlineMs: number;
+  // ---- wave A counters (optional; writers increment `(rs.x ?? 0) + n`) ----
+  /** Gold paid to any sink (vendors, repair, crafting, gambling, resets, rift fees). Every spender adds. */
+  goldSpent?: number;
+  /** Unique / set items that entered the hero's possession (pickup, gamble, grant). classic.items. */
+  uniquesFound?: number;
+  setItemsFound?: number;
+  /** Successful smith operations (upgrade, reroll, socket added, gems combined). classic.crafting. */
+  itemsCrafted?: number;
+  /** Gems put into sockets. classic.crafting. */
+  gemsSocketed?: number;
+  /** Items bought from the gambler. classic.items. */
+  gambles?: number;
+  /** Rift runs completed (guardian killed). classic.rift. */
+  riftsCompleted?: number;
 }
 
 export const DEFAULT_AUTO_CONFIG: AutoConfig = {
@@ -178,7 +215,85 @@ export const DEFAULT_AUTO_CONFIG: AutoConfig = {
   maxDepth: 0,
   buyPotions: true,
   manaReservePct: 15,
+  autoRepair: true,
+  autoCraft: true,
+  autoGamble: true,
+  autoRift: true,
 };
+
+// ---------------------------------------------------------------------------
+// Wave A resources (docs/design/wave-A.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Loot filter (owner classic.items, action classic.setLootFilter). Hidden
+ * loot shows no ground label and the auto controller never picks it up; a
+ * manual click still picks it up. Pure checks: src/loot.ts lootVisible.
+ */
+export interface LootFilter {
+  /** Lowest rarity shown per item category; "none" hides the category. Potions and gold use the flags below. */
+  minRarity: Record<ItemCategory, ItemRarity | "none">;
+  showGold: boolean;
+  /** Gold piles smaller than this are hidden. */
+  minGold: number;
+  showPotions: boolean;
+}
+
+/** A finished Rift run: everything a leaderboard needs (server verification comes with wave B). */
+export interface RiftRecord {
+  level: number;
+  /** Run length in ticks (20 Hz). */
+  ticks: number;
+  /** rules.riftScore(level, ticks, timeLimit, deaths). */
+  score: number;
+  deaths: number;
+  completed: boolean;
+  /** Failure reason when !completed. */
+  reason: "" | "death" | "left";
+  heroLevel: number;
+  classId: string;
+  heroName: string;
+  worldSeed: number;
+  /** Sim tick the run ended. */
+  endTick: number;
+  /** Run id (RiftState.nextRun at open time). */
+  run: number;
+}
+
+export interface RiftRun {
+  level: number;
+  /** rules.riftDepth(level, run). */
+  depth: number;
+  run: number;
+  startTick: number;
+  /** Progress points (RiftProto.progress per kill), capped at goal. */
+  progress: number;
+  goal: number;
+  /** Guardian entity once spawned (0 before). */
+  guardian: Entity;
+  guardianSpawned: boolean;
+  deaths: number;
+  feePaid: number;
+}
+
+export interface RiftState {
+  unlocked: boolean;
+  /** Highest level completed (levels 1..maxCompleted + 1 can be opened). */
+  maxCompleted: number;
+  best: RiftRecord | null;
+  /** Last 10 runs, newest first. */
+  history: RiftRecord[];
+  active: RiftRun | null;
+  /** Next run id (monotonic). */
+  nextRun: number;
+}
+
+export interface AchievementState {
+  /** Unlocked achievement ids with the tick, sorted by id. */
+  unlocked: { id: string; at: number }[];
+  /** Chosen title (an unlocked achievement's reward title) or "". */
+  title: string;
+}
 
 function need<T>(world: World, key: string): T {
   const v = world.getResource<T>(key);
@@ -229,4 +344,37 @@ export function exploredPct(area: ExploreArea): number {
 
 export function exploreAreaOf(w: World, depth: number): ExploreArea | undefined {
   return w.getResource<ExploreState>(RES.explore)?.areas.find((a) => a.depth === depth);
+}
+
+export const DEFAULT_LOOT_FILTER: LootFilter = {
+  minRarity: {
+    weapon: "normal",
+    shield: "normal",
+    helm: "normal",
+    armor: "normal",
+    gloves: "normal",
+    boots: "normal",
+    ring: "normal",
+    amulet: "normal",
+    potion: "normal",
+    gem: "normal",
+  },
+  showGold: true,
+  minGold: 0,
+  showPotions: true,
+};
+
+/** The loot filter, or the default when the resource does not exist yet. */
+export function lootFilterOf(w: World): LootFilter {
+  return w.getResource<LootFilter>(RES.lootFilter) ?? DEFAULT_LOOT_FILTER;
+}
+
+/** Rift state or null when classic.rift is not loaded / has not created it yet. */
+export function riftOf(w: World): RiftState | null {
+  return w.getResource<RiftState>(RES.rift) ?? null;
+}
+
+/** Achievement state or null when classic.achievements is not loaded / has not created it yet. */
+export function achievementsOf(w: World): AchievementState | null {
+  return w.getResource<AchievementState>(RES.achievements) ?? null;
 }

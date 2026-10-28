@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Container, Texture, type Text } from "pixi.js";
+import { Container, Texture, type ColorMatrixFilter, type Text } from "pixi.js";
 import type { TileMap } from "@gamez/world";
 import type { ArpgRenderEntity } from "@gamez/ui-host";
 import { EntityLayer, type EntityView } from "../../src/client/render/entity-view.ts";
@@ -29,6 +29,7 @@ function fakeVisuals(anims: string[], sprites: string[] = [], frameCount = 1): V
     animation: anim,
     spriteExact: still,
     animationExact: anim,
+    hasExactAnimation: (key: string) => anims.includes(key),
   };
 }
 
@@ -44,6 +45,12 @@ function entity(extra: Partial<ArpgRenderEntity> = {}): ArpgRenderEntity {
     isSelf: false,
     ...extra,
   };
+}
+
+/** Stands in for ColorMatrixFilter (which needs WebGL): only the matrix and destroy matter here. */
+class FakeFilter {
+  matrix: number[] = [];
+  destroy(): void {}
 }
 
 function setup(visuals: Visuals) {
@@ -206,16 +213,58 @@ describe("EntityLayer animation and labels", () => {
     expect(view().anim!.animationSpeed).toBeCloseTo(base * 1.8, 9);
   });
 
-  it("flashes red and knocks back on a hit, then restores the tint", () => {
+  it("flashes white with a colour filter and knocks back on a hit, then restores", () => {
     const { layer, view } = setup(fakeVisuals([]));
+    const filters: FakeFilter[] = [];
+    layer.makeFlashFilter = () => {
+      const f = new FakeFilter();
+      filters.push(f);
+      return f as unknown as ColorMatrixFilter;
+    };
     layer.upsert(entity({ kind: "unit", hitFlash: 1 }));
-    const flashed = view().paintedTint;
-    expect(flashed).not.toBe(0xffffff);
-    expect((flashed >> 16) & 0xff).toBeGreaterThan(flashed & 0xff);
+    // The body keeps its own tint: the flash is a colour matrix, not a multiply tint.
+    expect(view().paintedTint).toBe(0xffffff);
+    expect(view().body.filters).toHaveLength(1);
+    const m = filters[0]!.matrix;
+    // White mix at full flash: the colour is kept at 1 - k and the offset adds k.
+    expect(m[0]).toBeLessThan(1);
+    expect(m[4]).toBeGreaterThan(0);
+    expect(m[4]).toBeCloseTo(m[9]!, 9);
     expect(view().body.x).not.toBe(0);
     layer.upsert(entity({ kind: "unit" }));
-    expect(view().paintedTint).toBe(0xffffff);
+    expect(view().body.filters).toBeNull();
     expect(view().body.x).toBe(0);
+  });
+
+  it("uses the hit flash colour when given, and skips the flash without a filter", () => {
+    const { layer, view } = setup(fakeVisuals([]));
+    layer.makeFlashFilter = () => null;
+    layer.upsert(entity({ kind: "unit", hitFlash: 1 }));
+    expect(view().body.filters ?? null).toBeNull();
+    const f = new FakeFilter();
+    layer.makeFlashFilter = () => f as unknown as ColorMatrixFilter;
+    layer.upsert(entity({ kind: "unit", hitFlash: 1, hitFlashColor: 0x00ff00 }));
+    expect(f.matrix[9]).toBeGreaterThan(0);
+    expect(f.matrix[4]).toBe(0);
+  });
+
+  it("draws an additive cast glow in the skill colour and lifts the unit while casting", () => {
+    const { layer, view } = setup(fakeVisuals([]));
+    layer.upsert(entity({ kind: "unit" }));
+    expect(view().glow).toBeNull();
+    layer.upsert(entity({ kind: "unit", castGlow: 1, glowColor: 0x33ccff }));
+    const v = view();
+    expect(v.glow).not.toBeNull();
+    expect(v.glow!.blendMode).toBe("add");
+    expect(v.glow!.alpha).toBe(1);
+    expect(v.body.y).toBeLessThan(0);
+    layer.upsert(entity({ kind: "unit", castGlow: 0 }));
+    expect(v.glow!.visible).toBe(false);
+    expect(v.body.y).toBe(0);
+    // Quality low turns the halo off.
+    layer.glowOn = false;
+    layer.upsert(entity({ kind: "unit", castGlow: 1 }));
+    expect(v.glow!.visible).toBe(false);
   });
 
   it("mirrors facing-less art for screen-left facings, never facing-specific clips", () => {

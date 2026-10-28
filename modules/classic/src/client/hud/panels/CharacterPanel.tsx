@@ -1,11 +1,22 @@
-/** Character sheet: attributes with + buttons, derived stats and resists (panel "character"). */
+/**
+ * Character sheet (panel "character"): attributes with + buttons, offence and defence blocks,
+ * resistances, the damage table of the bar skills (DpsView) and where the stats come from.
+ */
 import { ACTION } from "../../../actions.ts";
 import { ATTRS } from "../../../types.ts";
-import type { HeroView } from "../../contract.ts";
+import type { DpsView, HeroView } from "../../contract.ts";
 import { ELEMENT_COLOR, hex } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
-import { ATTR_LABEL, fmtInt, fmtPct, fmtRegen, pluralize } from "../format.ts";
+import {
+  ATTR_LABEL,
+  fmtInt,
+  fmtPct,
+  fmtPerSecond,
+  fmtRate,
+  fmtRegen,
+  pluralize,
+} from "../format.ts";
 import { C, labelStyle } from "../styles.ts";
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -25,7 +36,85 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CharacterBody({ api, hero }: SlotProps & { hero: HeroView }) {
+/** The bar skills' damage: one row per skill, the best one marked. */
+export function DpsTable({ dps }: { dps: DpsView }) {
+  if (dps.skills.length === 0) {
+    return <p style={labelStyle}>No damage skills on the bar yet.</p>;
+  }
+  const head = { ...labelStyle, fontWeight: 700, textAlign: "right" as const, padding: "4px 0" };
+  return (
+    <table
+      aria-label="Damage per second of the bar skills"
+      style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+    >
+      <thead>
+        <tr>
+          <th style={{ ...head, textAlign: "left" }}>Skill</th>
+          <th style={head}>Avg hit</th>
+          <th style={head}>Casts</th>
+          <th style={head}>DPS</th>
+          <th style={head}>Mana</th>
+        </tr>
+      </thead>
+      <tbody>
+        {dps.skills.map((s) => {
+          const best = s.dps > 0 && s.dps === dps.best;
+          return (
+            <tr
+              key={s.skill}
+              data-best={best ? "true" : undefined}
+              style={{ color: best ? C.goldBright : C.text }}
+            >
+              <td style={{ padding: "4px 0", borderTop: `1px dashed ${C.faint}` }}>{s.name}</td>
+              <td style={{ textAlign: "right", borderTop: `1px dashed ${C.faint}` }}>
+                {fmtInt(s.avgHit)}
+              </td>
+              <td style={{ textAlign: "right", borderTop: `1px dashed ${C.faint}` }}>
+                {fmtPerSecond(s.perSecond)}
+              </td>
+              <td
+                style={{
+                  textAlign: "right",
+                  fontWeight: 700,
+                  borderTop: `1px dashed ${C.faint}`,
+                }}
+              >
+                {fmtInt(s.dps)}
+              </td>
+              <td style={{ textAlign: "right", borderTop: `1px dashed ${C.faint}` }}>
+                {fmtRate(s.manaPerSecond)}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+/** Where the hero's stats come from: items, sets, talents and buffs, with short lines. */
+export function SourceList({ dps }: { dps: DpsView }) {
+  return (
+    <>
+      {dps.sources.map((s) => (
+        <div key={s.source} style={{ marginBottom: 6 }}>
+          <div style={{ fontWeight: 700 }}>{s.source}</div>
+          {s.lines.length === 0 ? (
+            <div style={labelStyle}>None</div>
+          ) : (
+            s.lines.map((line) => (
+              <div key={line} style={{ fontSize: 12, color: C.muted }}>
+                {line}
+              </div>
+            ))
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function CharacterBody({ api, hero, dps }: SlotProps & { hero: HeroView; dps: DpsView | null }) {
   const sheet = hero.sheet;
   const canSpend = hero.statPoints > 0;
   return (
@@ -68,25 +157,36 @@ function CharacterBody({ api, hero }: SlotProps & { hero: HeroView }) {
           </Row>
         ))}
       </Section>
-      <Section title="Derived">
-        <Stat label="Life" value={fmtInt(hero.lifeMax)} />
-        <Stat label="Mana" value={fmtInt(hero.manaMax)} />
-        <Stat label="Life regen" value={fmtRegen(sheet.lifeRegen)} />
-        <Stat label="Mana regen" value={fmtRegen(sheet.manaRegen)} />
-        <Stat label="Armor" value={fmtInt(hero.armor)} />
-        <Stat label="Damage" value={`${fmtInt(hero.dmgMin)}-${fmtInt(hero.dmgMax)}`} />
-        <Stat label="To hit" value={fmtInt(hero.toHit)} />
+      <Section title="Damage">
+        {dps ? (
+          <DpsTable dps={dps} />
+        ) : (
+          <>
+            <Stat label="Damage" value={`${fmtInt(hero.dmgMin)}-${fmtInt(hero.dmgMax)}`} />
+            <Stat label="To hit" value={fmtInt(hero.toHit)} />
+          </>
+        )}
         <Stat label="Critical chance" value={fmtPct(hero.critPct)} />
         <Stat label="Attack speed" value={fmtPct(hero.attackSpeed)} />
         <Stat label="Cast speed" value={fmtPct(hero.castSpeed)} />
         <Stat label="Move speed" value={fmtPct(hero.moveSpeed)} />
         <Stat label="Magic find" value={fmtPct(sheet.magicFind)} />
         <Stat label="Gold find" value={fmtPct(sheet.goldFind)} />
-        <Stat label="Light radius" value={pluralize(sheet.lightRadius, "tile")} />
         <Stat label="Life on kill" value={fmtInt(sheet.lifeOnKill)} />
         <Stat label="Mana on kill" value={fmtInt(sheet.manaOnKill)} />
         <Stat label="All skills" value={`+${fmtInt(sheet.allSkills)}`} />
         <Stat label="Potion effect" value={fmtPct(sheet.potionPct)} />
+        <Stat label="Light radius" value={pluralize(sheet.lightRadius, "tile")} />
+      </Section>
+      <Section title="Defence">
+        <Stat label="Life" value={fmtInt(hero.lifeMax)} />
+        <Stat label="Mana" value={fmtInt(hero.manaMax)} />
+        <Stat label="Life regen" value={fmtRegen(sheet.lifeRegen)} />
+        <Stat label="Mana regen" value={fmtRegen(sheet.manaRegen)} />
+        <Stat label="Armor" value={fmtInt(hero.armor)} />
+        {dps ? (
+          <Stat label="Effective life (physical hit)" value={fmtInt(dps.effectiveLife)} />
+        ) : null}
       </Section>
       <Section title="Resistances">
         {(["fire", "cold", "lightning", "poison"] as const).map((el) => (
@@ -102,21 +202,31 @@ function CharacterBody({ api, hero }: SlotProps & { hero: HeroView }) {
           ))}
         </div>
       </Section>
+      {dps ? (
+        <Section title="Sources">
+          <SourceList dps={dps} />
+        </Section>
+      ) : null}
     </>
   );
 }
 
 export function CharacterPanel({ api }: SlotProps) {
   const hero = useSelect(api.hud, (s) => s.hero);
+  const dps = useSelect(api.hud, (s) => s.dps ?? null);
+  const title = useSelect(api.hud, (s) => s.achievements?.title ?? "");
+  const subtitle = hero
+    ? [`${hero.name} · ${hero.className} · level ${hero.level}`, title ? `"${title}"` : ""]
+        .filter((x) => x !== "")
+        .join(" · ")
+    : undefined;
   return (
-    <PanelFrame
-      api={api}
-      id="character"
-      title="Character"
-      width={380}
-      subtitle={hero ? `${hero.name} · ${hero.className} · level ${hero.level}` : undefined}
-    >
-      {hero ? <CharacterBody api={api} hero={hero} /> : <p style={labelStyle}>No hero yet.</p>}
+    <PanelFrame api={api} id="character" title="Character" width={380} subtitle={subtitle}>
+      {hero ? (
+        <CharacterBody api={api} hero={hero} dps={dps} />
+      ) : (
+        <p style={labelStyle}>No hero yet.</p>
+      )}
     </PanelFrame>
   );
 }

@@ -1,6 +1,7 @@
 /**
  * classic.items.commands (update 50, OWNER: T5): drains the item ops of
- * Bus.commands (queued by classic.auto and other systems) and runs them with
+ * Bus.commands (queued by classic.auto and other systems; wave A adds gamble
+ * and stashMove) and runs them with
  * the same execX functions the actions use. Failures emit classic.command.failed.
  */
 import type { SimContext, SystemDef, World } from "@gamez/kernel";
@@ -9,7 +10,9 @@ import { ERR, fail, type OpResult } from "../actions.ts";
 import type { HeroCommand } from "../actions.ts";
 import { emit } from "../events.ts";
 import { SYSTEM } from "../ids.ts";
-import { execBuy, execSell, execStashPut } from "./vendor.ts";
+import { execBuy, execSell } from "./vendor.ts";
+import { execStashMove, execStashPut } from "./stash.ts";
+import { execGamble } from "./gamble.ts";
 import { execDrink } from "./belt.ts";
 import { execEquip, execUnequip } from "./equip.ts";
 import { execDrop, execGrantGold, execGrantItems, execPickup } from "./ground.ts";
@@ -25,6 +28,9 @@ export const ITEM_OPS = [
   "drop",
   "grantGold",
   "grantItems",
+  // wave A
+  "gamble",
+  "stashMove",
 ] as const;
 
 /** Runs one item command. */
@@ -43,7 +49,11 @@ export function runItemCommand(world: World, ctx: SimContext, c: HeroCommand): O
     case "sell":
       return execSell(world, ctx, c.npc, c.uid);
     case "stashPut":
-      return execStashPut(world, ctx, c.uid);
+      return execStashPut(world, ctx, c.uid, c.tab);
+    case "stashMove":
+      return execStashMove(world, ctx, c.uid, c.tab);
+    case "gamble":
+      return execGamble(world, ctx, c.npc, c.category);
     case "drop":
       return execDrop(world, ctx, c.uid);
     case "grantGold":

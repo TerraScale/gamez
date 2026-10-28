@@ -22,6 +22,9 @@ import {
   bottomOrderFor,
   hudLayoutFor,
   SHORT_MAX_HEIGHT,
+  PANEL_ROW_RIGHT,
+  TOAST_WIDTH,
+  tipLayout,
 } from "../src/client/hud/layout.ts";
 import { HERO_MIN_DIAMETER, MARKER } from "../src/client/hud/widgets/Minimap.tsx";
 import { SKILL_GLYPHS } from "../src/client/hud/icons.tsx";
@@ -192,5 +195,64 @@ describe("skill glyphs", () => {
     expect(SKILL_GLYPHS["classic.skill.venom_shot"]).not.toEqual(
       SKILL_GLYPHS["classic.skill.ember_bolt"],
     );
+  });
+});
+
+describe("toasts never cover open panels (QA major 2)", () => {
+  // A toast box sits HUD_EDGE from the right edge and is TOAST_WIDTH wide (desktop).
+  const toastLeft = (width: number) => width - HUD_EDGE - TOAST_WIDTH;
+  // The panel row ends at PANEL_ROW_RIGHT from the right edge.
+  const rowRight = (width: number) => width - PANEL_ROW_RIGHT.desktop;
+
+  it("the desktop panel row ends at least HUD_EDGE left of the toast column, at every common width", () => {
+    for (const width of [1024, 1280, 1366, 1440, 1600, 1920]) {
+      expect(rowRight(width)).toBeLessThanOrEqual(toastLeft(width) - HUD_EDGE);
+    }
+  });
+
+  it("the reserve is the toast column plus its gap on both sides (no magic number)", () => {
+    expect(PANEL_ROW_RIGHT.desktop).toBe(TOAST_WIDTH + HUD_EDGE * 2);
+    expect(PANEL_ROW_RIGHT.compact).toBe(0);
+    expect(PANEL_ROW_RIGHT.short).toBe(0);
+  });
+
+  it("the desktop toast column stays where it was (top right, under the minimap)", () => {
+    const t = toastLayout("desktop", true, true);
+    expect(t.style.right).toBe(HUD_EDGE);
+    expect(t.style.width).toBe(TOAST_WIDTH);
+    expect(t.visible).toBe(true);
+  });
+
+  it("the error flash moves to the sheet foot while a phone panel covers the top region", () => {
+    const style = errorFlashStyle("compact", { top: 90, bottom: 300 }, true);
+    expect(style.top).toBeUndefined();
+    expect(style.bottom).toBe(HUD_EDGE * 2);
+    expect(errorFlashStyle("desktop", NO_INSETS, true)).toEqual(
+      errorFlashStyle("desktop", NO_INSETS),
+    );
+  });
+});
+
+describe("onboarding tip placement", () => {
+  it("desktop: centred above the measured bottom bar, never over a panel", () => {
+    const t = tipLayout("desktop", 200, false, false);
+    expect(t).not.toBeNull();
+    expect(t?.bottom).toBe(bottomBarInset("desktop", 200) + HUD_EDGE + 4);
+    expect(t?.left).toBe("50%");
+    expect(tipLayout("desktop", 200, true, false)).toBeNull();
+  });
+
+  it("phones: starts right of the left column and gives way to toasts", () => {
+    const t = tipLayout("compact", 310, false, false);
+    expect(t?.left).toBe(LEFT_WIDTH.compact + HUD_EDGE * 2);
+    expect(t?.bottom).toBe(310 + HUD_EDGE + 4);
+    expect(tipLayout("compact", 310, false, true)).toBeNull();
+    expect(tipLayout("short", 156, true, false)).toBeNull();
+  });
+
+  it("is hidden while any panel is open on every layout", () => {
+    for (const layout of ["desktop", "compact", "short"] as const) {
+      expect(tipLayout(layout, 0, true, false)).toBeNull();
+    }
   });
 });

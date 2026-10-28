@@ -44,6 +44,8 @@ describe("DebugTracker", () => {
     t.resolved("unit.monster.y", "idle", "s", "", "unit.monster.y.idle");
     t.effect("nova", "fx.frost_ring", false);
     t.effect("hit", undefined, true);
+    t.effect("nova", "fx.frost_ring", "anim");
+    t.effect("explosion", "fx.blast", "sprite");
     for (let i = 0; i < 300; i++) t.frame(16, 2);
     expect(sortedRecord(t.anims)).toEqual({
       "unit.monster.x|walk|s": "unit.hero.walk (fallback)",
@@ -51,10 +53,11 @@ describe("DebugTracker", () => {
     });
     expect([...t.entityMissing]).toEqual(["unit.monster.x"]);
     expect(sortedRecord(t.effects)).toEqual({
+      "explosion|fx.blast": "sprite",
       "hit|": "sprite",
-      "nova|fx.frost_ring": "procedural",
+      "nova|fx.frost_ring": "anim",
     });
-    expect(t.effectsPlayed).toBe(2);
+    expect(t.effectsPlayed).toBe(4);
     expect(t.frameMs()).toEqual({ avg: 16, p95: 16, max: 16 });
     expect(t.tickMs()).toEqual({ avg: 2, p95: 2 });
   });

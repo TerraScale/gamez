@@ -9,6 +9,7 @@ import type {
   EntityKind,
   Facing,
   FloatTextSpec,
+  GraphicsQualityLevel,
   LabelInsets,
   PointerInfo,
   RendererDebug,
@@ -37,8 +38,10 @@ import {
 } from "./primitives.ts";
 import { loadVisuals, type Visuals } from "./visuals.ts";
 import { EntityLayer } from "./entity-view.ts";
-import { FxLayer } from "./fx.ts";
+import { FxLayer, type EffectArt } from "./fx.ts";
 import { floatOrigin } from "./fx-plan.ts";
+import { burstKeyIn, frameDeltaMs, shakeOffset } from "./fx-math.ts";
+import { glowEnabled, lightTextureSize, qualityResolution, shakeEnabled } from "./quality.ts";
 import { insetRect } from "./label-layout.ts";
 import { LightingOverlay } from "./lighting.ts";
 import { GestureTracker, type GestureEvent } from "./gestures.ts";
@@ -127,6 +130,17 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
   private timeMs = 0;
   private lightDarkness = 0;
   private lightRadius = 0;
+  /** Graphics quality (setQuality); high until the game says otherwise. */
+  private quality: GraphicsQualityLevel = "high";
+  /** Camera base position (before shake), in view px. */
+  private baseX = 0;
+  private baseY = 0;
+  /** Camera shake: strength (px), total duration and elapsed time (ms), current offset (px). */
+  private shakeStrength = 0;
+  private shakeMs = 0;
+  private shakeElapsed = 0;
+  private shakeX = 0;
+  private shakeY = 0;
 
   /** QA: ids that resolved to "missing" or nothing (filled once per id by the sprite cache). */
   private readonly missingIds = new Set<string>();
@@ -169,10 +183,15 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.entities = new EntityLayer(this.world, visuals, prims, this.labels);
     this.entities.debug = this.tracker;
     // Exact ids only: an effect without art is drawn procedurally, never as the "missing" sprite.
-    this.fx = new FxLayer((id) => visuals.spriteExact(id)?.texture ?? null);
+    this.fx = new FxLayer(
+      (id) => visuals.spriteExact(id)?.texture ?? null,
+      () => null,
+      (style) => visuals.spriteExact(`fx.particle.${style}`)?.texture ?? null,
+    );
     // Effects above the name labels, float texts above everything in the view.
     this.view.addChild(this.fx.layer, this.fx.floatLayer);
     this.lighting = new LightingOverlay(this.lightLayer);
+    this.applyQuality();
 
     const canvas = app.canvas;
     canvas.style.display = "block";
@@ -269,12 +288,38 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
 
   playEffect(spec: EffectSpec): void {
     if (!this.ready) return;
-    if (this.tracker) {
-      const sprite = spec.sprite;
-      this.tracker.effect(spec.kind, sprite, !!sprite && this.hasExactSprite(sprite));
-    }
+    // `${sprite}.burst` plays once when the manifest has that exact animation.
+    const visuals = this.visuals;
+    const key = visuals ? burstKeyIn(spec.sprite, (k) => visuals.hasExactAnimation(k)) : null;
+    const burst = key && visuals ? visuals.animationExact(key) : null;
     const s = tileToScreen(spec.x + 0.5, spec.y + 0.5);
-    this.fx?.effect(spec, { sx: s.sx, sy: s.sy });
+    const art: EffectArt =
+      this.fx?.effect(spec, { sx: s.sx, sy: s.sy }, burst?.frames ?? null) ?? "procedural";
+    if (this.tracker) this.tracker.effect(spec.kind, spec.sprite, art);
+  }
+
+  /**
+   * Graphics quality (wave A). low: no particles or glow, a smaller light texture,
+   * resolution 1, no shake. medium: half the particles, resolution <= 1.5. high:
+   * full particles and glow, resolution <= 2 (the device pixel ratio, at most).
+   */
+  setQuality(q: GraphicsQualityLevel): void {
+    if (q !== "low" && q !== "medium" && q !== "high") return;
+    if (q === this.quality && this.ready) return;
+    this.quality = q;
+    this.applyQuality();
+  }
+
+  /** Brief camera shake (boss slams): `strength` px, decays over `ms`. Off on low quality. */
+  shake(strength: number, ms: number): void {
+    if (!this.ready || !shakeEnabled(this.quality)) return;
+    if (!(strength > 0) || !(ms > 0)) return;
+    // A stronger shake replaces a weaker one still running; a weaker one never cuts a stronger one short.
+    const left = this.shakeStrength * remainingShare(this.shakeMs, this.shakeElapsed);
+    if (strength < left) return;
+    this.shakeStrength = strength;
+    this.shakeMs = ms;
+    this.shakeElapsed = 0;
   }
 
   setZoom(z: number): void {
@@ -314,8 +359,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     // coordinates. Resolution only changes the backing store and cancels out here.
     const px = (clientX - rect.left) * (app.screen.width / rect.width);
     const py = (clientY - rect.top) * (app.screen.height / rect.height);
-    const wx = (px - this.view.x) / this.zoom;
-    const wy = (py - this.view.y) / this.zoom;
+    const wx = (px - this.baseX) / this.zoom;
+    const wy = (py - this.baseY) / this.zoom;
     const t = screenToTile(wx, wy);
     return { x: t.x - 0.5, y: t.y - 0.5 };
   }
@@ -327,8 +372,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     const rect = canvas.getBoundingClientRect();
     if (app.screen.width === 0 || app.screen.height === 0) return null;
     const s = tileToScreen(x + 0.5, y + 0.5);
-    const px = this.view.x + s.sx * this.zoom;
-    const py = this.view.y + s.sy * this.zoom;
+    const px = this.baseX + s.sx * this.zoom;
+    const py = this.baseY + s.sy * this.zoom;
     return {
       x: rect.left + px * (rect.width / app.screen.width),
       y: rect.top + py * (rect.height / app.screen.height),
@@ -476,6 +521,20 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.canvas = null;
   }
 
+  /** Applies the quality to every layer and the renderer resolution. */
+  private applyQuality(): void {
+    const q = this.quality;
+    this.fx?.setQuality(q);
+    if (this.entities) this.entities.glowOn = glowEnabled(q);
+    this.lighting?.setTextureSize(lightTextureSize(q));
+    const app = this.app;
+    if (!app) return;
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio : 1;
+    const res = qualityResolution(q, dpr);
+    if (app.renderer.resolution === res) return;
+    app.renderer.resize(app.screen.width, app.screen.height, res);
+  }
+
   private clearChunks(): void {
     for (const c of this.chunks.values()) destroyChunk(c);
     this.chunks.clear();
@@ -484,7 +543,9 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
 
   private readonly tick = (t: Ticker): void => {
     const start = performance.now();
-    const dt = t.deltaMS;
+    // Wall-clock step (clamped at FRAME_DELTA_MAX_MS): Pixi's deltaMS is clamped at 100 ms, so slow frames lose sim time.
+    const real = this.lastFrameAt > 0 ? start - this.lastFrameAt : t.deltaMS;
+    const dt = frameDeltaMs(start, this.lastFrameAt, t.deltaMS);
     this.timeMs += dt;
     for (const ev of this.gestures.tick(start)) this.emitGesture(ev);
     for (const h of this.frameHandlers) h(dt);
@@ -499,18 +560,16 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
       else this.marker.alpha = this.markerMs / MARKER_MS;
     }
     const spent = performance.now() - start;
-    this.frameStats.frame(dt, spent);
-    if (this.tracker) {
-      // Wall-clock interval: Pixi clamps deltaMS at 100 ms, which hides slow frames.
-      const real = this.lastFrameAt > 0 ? start - this.lastFrameAt : dt;
-      this.tracker.frame(real, spent);
-    }
+    this.frameStats.frame(real, spent);
+    if (this.tracker) this.tracker.frame(real, spent);
     this.lastFrameAt = start;
   };
 
   private updateCamera(dt: number): void {
     const app = this.app;
-    if (!app || !this.hasTarget) return;
+    if (!app) return;
+    this.updateShake(dt);
+    if (!this.hasTarget) return;
     if (!this.hasCam) {
       this.camX = this.targetX;
       this.camY = this.targetY;
@@ -521,7 +580,9 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     }
     const sw = app.screen.width;
     const sh = app.screen.height;
-    this.view.position.set(sw / 2 - this.camX * this.zoom, sh / 2 - this.camY * this.zoom);
+    this.baseX = sw / 2 - this.camX * this.zoom;
+    this.baseY = sh / 2 - this.camY * this.zoom;
+    this.view.position.set(this.baseX + this.shakeX, this.baseY + this.shakeY);
     // Written in place: this runs every frame.
     const hw = sw / (2 * this.zoom);
     const hh = sh / (2 * this.zoom);
@@ -530,6 +591,30 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.rect.y0 = this.camY - hh;
     this.rect.y1 = this.camY + hh;
     insetRect(this.rect, this.labelInsets, this.zoom, this.labelRect);
+  }
+
+  /** Advances the camera shake and writes its offset (zero when none runs). */
+  private updateShake(dt: number): void {
+    if (this.shakeMs <= 0) {
+      if (this.shakeX !== 0 || this.shakeY !== 0) {
+        this.shakeX = 0;
+        this.shakeY = 0;
+        if (this.hasTarget) this.view.position.set(this.baseX, this.baseY);
+      }
+      return;
+    }
+    this.shakeElapsed += dt;
+    if (this.shakeElapsed >= this.shakeMs) {
+      this.shakeMs = 0;
+      this.shakeStrength = 0;
+      this.shakeX = 0;
+      this.shakeY = 0;
+    } else {
+      const o = shakeOffset(this.shakeStrength, this.shakeMs, this.shakeElapsed);
+      this.shakeX = o.dx;
+      this.shakeY = o.dy;
+    }
+    if (this.hasTarget) this.view.position.set(this.baseX + this.shakeX, this.baseY + this.shakeY);
   }
 
   /**
@@ -724,6 +809,13 @@ class DebugApi implements RendererDebug {
   tileToClient(x: number, y: number): { x: number; y: number } | null {
     return this.r.tileToClient(x, y);
   }
+}
+
+/** Share of a shake's amplitude still to come (quadratic decay, 0..1). */
+function remainingShare(durationMs: number, elapsedMs: number): number {
+  if (!(durationMs > 0)) return 0;
+  const left = 1 - elapsedMs / durationMs;
+  return left > 0 ? left * left : 0;
 }
 
 function pointerType(t: string): "mouse" | "touch" | "pen" {

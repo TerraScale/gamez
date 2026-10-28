@@ -35,9 +35,12 @@ export function XpBar({ api }: SlotProps) {
       aria-label="Experience"
       style={{
         order: bottomOrderFor(layout, "xp"),
+        // The row always fills its own line (a max-width would let the life orb wrap up beside
+        // it); the padding centres a bar of at most 900 px.
         flexBasis: "100%",
-        maxWidth: 900,
         width: "100%",
+        boxSizing: "border-box",
+        paddingInline: "max(0px, calc((100% - 900px) / 2))",
         minWidth: 0,
         display: "flex",
         alignItems: "center",

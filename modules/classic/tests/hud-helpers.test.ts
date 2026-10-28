@@ -2,6 +2,7 @@
 import { createSlotRegistry } from "@gamez/ui-host";
 import { describe, expect, it } from "vite-plus/test";
 import type { ClassicMap } from "../src/world/maps.ts";
+import { riftDepth } from "../src/rules.ts";
 import type { ItemView, MinimapData } from "../src/client/contract.ts";
 import {
   BAG_CELL_PX,
@@ -21,6 +22,7 @@ import {
   pickEquipSlot,
   pluralize,
   xpFraction,
+  depthLabel,
 } from "../src/client/hud/format.ts";
 import { createSelectMemo, shallowEqual } from "../src/client/hud/hooks.ts";
 import { bottomOrder, PANEL_IDS, panelSlot, SLOT } from "../src/client/hud/layout.ts";
@@ -69,6 +71,15 @@ describe("number formatting", () => {
   it("pluralizes", () => {
     expect(pluralize(1, "item")).toBe("1 item");
     expect(pluralize(3, "item")).toBe("3 items");
+  });
+});
+
+describe("depth labels", () => {
+  it("names town, dungeon depths and rift levels, never a raw rift depth", () => {
+    expect(depthLabel(0)).toBe("Town");
+    expect(depthLabel(7)).toBe("Depth 7");
+    expect(depthLabel(riftDepth(3, 12))).toBe("Rift level 3");
+    expect(depthLabel(riftDepth(1, 0))).toBe("Rift level 1");
   });
 });
 
@@ -239,7 +250,8 @@ describe("icons and labels", () => {
 
   it("lists the auto config editor fields", () => {
     const labels = autoConfigLabels();
-    expect(labels.length).toBe(12);
+    // 6 numbers + 10 toggles (wave A adds repair, craft, gamble and rift).
+    expect(labels.length).toBe(16);
     expect(new Set(labels).size).toBe(labels.length);
   });
 
@@ -353,6 +365,7 @@ describe("slot table", () => {
       "classic.newHeroScreen",
       "classic.deathScreen",
       "classic.toasts",
+      "classic.tips",
       "classic.tooltip",
       "classic.errorFlash",
     ]);
@@ -371,7 +384,7 @@ describe("slot table", () => {
     expect(() => registerDefaultHud(slots)).toThrow();
   });
 
-  it("has ten panel ids, each unique", () => {
-    expect(new Set(PANEL_IDS).size).toBe(10);
+  it("has sixteen panel ids (wave A adds six), each unique", () => {
+    expect(new Set(PANEL_IDS).size).toBe(16);
   });
 });

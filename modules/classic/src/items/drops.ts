@@ -1,6 +1,6 @@
 /**
- * classic.items.drops (post 100, OWNER: T5): loot for hero kills (design
- * §11.3). Reads Bus.deaths only; creates Loot entities on walkable tiles
+ * classic.items.drops (post 100, OWNER: T5 / T-items): loot for hero kills
+ * (design §11.3; wave A: dropped sockets and gems, wave-A.md §5.2). Reads Bus.deaths only; creates Loot entities on walkable tiles
  * around the death point (spiral search, radius <= 3).
  */
 import type { Entity, FrozenRegistry, SystemDef, World } from "@gamez/kernel";
@@ -19,7 +19,7 @@ import {
   type MonsterRarity,
 } from "../types.ts";
 import { balanceOf, heroFind, percentRoll } from "./common.ts";
-import { rollItem } from "./generate.ts";
+import { gemBaseFor, gemTierFor, makeGemItem, rollDropSockets, rollItem } from "./generate.ts";
 
 /** Potion base whose tier is closest to ceil(depth / 4) for the given kind (ties: lower tier). */
 export function potionFor(
@@ -137,7 +137,9 @@ export const dropsSystem: SystemDef = {
             magicFind: find.magicFind,
             minRarity: d.rarity === "boss" && i < 2 ? "rare" : "normal",
           });
-          if (item) place({ kind: "item", item });
+          if (!item) continue;
+          rollDropSockets(rng, reg, bal, item);
+          place({ kind: "item", item });
         }
       }
       if (percentRoll(rng, table.gold)) {
@@ -149,6 +151,12 @@ export const dropsSystem: SystemDef = {
         const kind = percentRoll(rng, 75) ? "life" : "mana";
         const potion = potionFor(reg, kind, d.depth);
         if (potion) place({ kind: "potion", potion });
+      }
+      // Wave A: gems (BalanceProto.gemDrops by monster rarity, tier by monster level).
+      const gemPct = bal.gemDrops?.[d.rarity] ?? 0;
+      if (gemPct > 0 && percentRoll(rng, gemPct)) {
+        const gem = gemBaseFor(rng, reg, gemTierFor(d.level));
+        if (gem) place({ kind: "item", item: makeGemItem(world, reg, gem) });
       }
     }
   },

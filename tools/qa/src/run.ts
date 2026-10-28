@@ -7,6 +7,7 @@
  *   node tools/qa/src/run.ts picker
  *   node tools/qa/src/run.ts classic-start warrior
  *   node tools/qa/src/run.ts classic-idle warrior 1 8
+ *   node tools/qa/src/run.ts classic-features warrior
  *   node tools/qa/src/run.ts gallery [--all-facings]
  *   node tools/qa/src/run.ts panels [class]
  *   node tools/qa/src/run.ts classic-create [class]
@@ -76,6 +77,7 @@ const SCENARIOS = [
   "classic-start",
   "classic-create",
   "classic-idle",
+  "classic-features",
   "gallery",
   "panels",
   "steps",
@@ -90,6 +92,7 @@ function usage(msg?: string): never {
       `scenarios: ${SCENARIOS.join(", ")}\n` +
       "  classic-start <class>                 class: warrior | rogue | sorcerer\n" +
       "  classic-idle <class> <minutes> <speed> speed: 1 | 2 | 4 | 8\n" +
+      "  classic-features <class>              cheats (?debug=1&cheats=1): talents, smith, gambler, rift\n" +
       "  gallery [--all-facings]\n" +
       "  panels [class], classic-create [class]\n",
   );
@@ -214,9 +217,13 @@ function classArg(run: Run, i = 0): string {
   return c;
 }
 
-/** Opens classic with ?debug, ?seed, ?class, ?autostart and waits for the hero. */
-async function startClassic(run: Run, cls: string): Promise<void> {
-  const q = `debug=1&seed=${run.args.seed}&class=${encodeURIComponent(cls)}&autostart=1`;
+/**
+ * Opens classic with ?debug, ?seed, ?class, ?autostart and waits for the hero.
+ * `cheats` adds ?cheats=1 (the QA grant action, classic.debug).
+ */
+async function startClassic(run: Run, cls: string, opts: { cheats?: boolean } = {}): Promise<void> {
+  const cheats = opts.cheats === true ? "&cheats=1" : "";
+  const q = `debug=1&seed=${run.args.seed}&class=${encodeURIComponent(cls)}&autostart=1${cheats}`;
   await openPicker(run, q);
   await pickMode(run, "Classic");
   await run.page.waitFor(
@@ -517,6 +524,8 @@ interface QaCounters {
   events: Record<string, number>;
   slain: number;
   heroDeaths: number;
+  /** Stairs-down descents (wave A debug counters). */
+  descents?: number;
 }
 
 const countersOf = (run: Run): Promise<QaCounters | null> =>
@@ -531,7 +540,13 @@ function countersTotals(
   end: QaCounters | null,
   reloadsAtStart: number,
   run: Run,
-): { ticks: number; slain: number; heroDeaths: number; events: Record<string, number> } | null {
+): {
+  ticks: number;
+  slain: number;
+  heroDeaths: number;
+  descents: number;
+  events: Record<string, number>;
+} | null {
   const reloads = (run.report.data.reloads as number) ?? 0;
   if (!start || !end || reloads !== reloadsAtStart) return null;
   const events: Record<string, number> = {};
@@ -543,6 +558,7 @@ function countersTotals(
     ticks: end.ticksTotal - start.ticksTotal,
     slain: end.slain - start.slain,
     heroDeaths: end.heroDeaths - start.heroDeaths,
+    descents: (end.descents ?? 0) - (start.descents ?? 0),
     events,
   };
 }
@@ -685,6 +701,10 @@ async function classicIdle(run: Run): Promise<void> {
     },
   );
   run.check("left town at least once", maxDepth > 0, { maxDepth }, true);
+  // Descents are the stairs-down area changes (classic.area.changed via stairsDown), counted by the probe.
+  const descents = totals?.descents ?? null;
+  run.report.data.descents = descents;
+  run.check("descended at least once", (descents ?? 0) > 0, { descents }, true);
   const art = splitMissingIds(r?.missingIds ?? []);
   run.check(
     "no missing art ids",
@@ -857,6 +877,185 @@ async function panels(run: Run): Promise<void> {
   run.report.data.render = renderSummary(await renderOf(run));
 }
 
+/** Ticks a queued cheat grant needs to land (manual x1 runs 20 ticks per second). */
+const GRANT_WAIT_MS = 1500;
+
+/**
+ * classic-features <class>: the wave A systems in one run (cheats on). Late-game
+ * grants, then talents (N), the smith (vendor, craft, repair, upgrade, socket),
+ * the gambler, stash tabs, the loot filter, settings, character, achievements
+ * (Y), the rift (locked, unlocked, a level opened, its guardian reached on
+ * auto). Every panel gets a screenshot (use --viewport phone for the phone layout).
+ * Actions are checked for "accepted or refused by a rule", never for a crash.
+ */
+async function classicFeatures(run: Run): Promise<void> {
+  const cls = classArg(run);
+  await startClassic(run, cls, { cheats: true });
+  await run.page.evaluate("window.__gamez.controls.setMode('manual')");
+  await run.page.wait(300);
+  const data: Record<string, unknown> = {};
+  run.report.data.features = data;
+
+  const actRes = (
+    name: string,
+    payload: unknown,
+  ): Promise<{ ok: boolean; error?: { code: string; message: string } }> =>
+    run.page.evaluate(
+      `window.__gamez.controls.act(${JSON.stringify(name)}, ${JSON.stringify(payload)})`,
+    );
+  /** Accepted, or refused by a game rule (not an unknown action or a client crash). */
+  const ruleOk = (r: { ok: boolean; error?: { code: string } }): boolean =>
+    r.ok || !["unknown_action", "internal", "client"].includes(r.error?.code ?? "");
+  const hud = <T>(expr: string): Promise<T> => run.page.evaluate<T>(`window.__gamez.hud.${expr}`);
+  const hasPanel = async (p: string): Promise<boolean> => (await uiOf(run)).panels.includes(p);
+
+  /** Walks to a station or NPC through the kernel and waits for its panel. */
+  const interactPanel = async (target: string, panel: string): Promise<void> => {
+    const res = await run.page.evaluate<{ ok: boolean; error?: unknown }>(
+      `window.__gamez.controls.interact(${JSON.stringify(target)})`,
+    );
+    if (!res.ok) {
+      run.check(`interact ${target}`, false, res.error);
+      return;
+    }
+    let reached = true;
+    try {
+      await run.page.waitFor(`window.__gamez.ui.panels.includes(${JSON.stringify(panel)})`, 25_000);
+    } catch {
+      reached = false;
+    }
+    await run.page.wait(400);
+    run.check(`${target} opens ${panel}`, reached, (await uiOf(run)).panels);
+  };
+
+  // 1. Late-game grants: gold, ten levels, talent points, rare items, gems.
+  const grant = await run.page.evaluate<{ ok: boolean; error?: unknown }>(
+    `window.__gamez.controls.cheat(${JSON.stringify({
+      gold: 5000,
+      levels: 10,
+      talentPoints: 5,
+      items: { count: 6, rarity: "rare", ilvl: 12 },
+      gems: 4,
+    })})`,
+  );
+  run.check("cheat grant accepted", grant.ok, grant.error);
+  await run.page.wait(GRANT_WAIT_MS);
+  const after = await simOf(run);
+  run.check("grant raised the level", (after.hero?.level ?? 0) >= 11, { level: after.hero?.level });
+
+  // 2. Talents (N).
+  await run.page.press("n");
+  await run.page.wait(400);
+  run.check("N opens talents", await hasPanel("talents"), (await uiOf(run)).panels);
+  await run.shot("talents");
+  const learnable = await hud<string | null>("talents?.nodes.find((n) => n.learnable)?.id ?? null");
+  if (learnable === null) {
+    run.check("a talent node is learnable after the grant", false, await hud("talents"), true);
+  } else {
+    const r = await actRes("classic.learnTalent", { node: learnable });
+    data.learnTalent = { node: learnable, ok: r.ok, code: r.error?.code ?? null };
+    run.check("learnTalent accepted or refused by a rule", ruleOk(r), r.error);
+    await run.page.wait(300);
+    await run.shot("talents-learned");
+  }
+  await run.page.press("Escape");
+  await run.page.wait(200);
+
+  // 3. Smith: vendor, craft panel, repair everything, upgrade and socket the first bag item.
+  await interactPanel("smith", "vendor");
+  await run.shot("smith-vendor");
+  await run.page.evaluate("window.__gamez.controls.openPanel('craft')");
+  await run.page.wait(400);
+  run.check("craft panel opens by the smith", await hasPanel("craft"), (await uiOf(run)).panels);
+  await run.shot("smith-craft");
+  const smithNpc = await hud<number | null>("vendor?.npc ?? null");
+  const bagUid = await hud<number | null>("inventory.items[0]?.item.uid ?? null");
+  if (smithNpc !== null) {
+    const repair = await actRes("classic.repair", { npc: smithNpc, uid: 0 });
+    data.repair = { ok: repair.ok, code: repair.error?.code ?? null };
+    run.check("repair accepted or refused by a rule", ruleOk(repair), repair.error);
+    if (bagUid !== null) {
+      const up = await actRes("classic.upgradeItem", { npc: smithNpc, uid: bagUid });
+      data.upgrade = { ok: up.ok, code: up.error?.code ?? null };
+      run.check("upgrade accepted or refused by a rule", ruleOk(up), up.error);
+      const sock = await actRes("classic.addSocket", { npc: smithNpc, uid: bagUid });
+      data.addSocket = { ok: sock.ok, code: sock.error?.code ?? null };
+      run.check("addSocket accepted or refused by a rule", ruleOk(sock), sock.error);
+    }
+  }
+  await run.page.wait(300);
+  await run.shot("smith-after");
+  await run.page.evaluate("window.__gamez.controls.closeAll()");
+  await run.page.wait(250);
+
+  // 4. Gambler, stash tabs, loot filter, settings, character, achievements.
+  await interactPanel("gambler", "gamble");
+  await run.shot("gambler");
+  await run.page.evaluate("window.__gamez.controls.closeAll()");
+  await run.page.wait(250);
+  await interactPanel("stash", "stash");
+  await run.shot("stash-tabs");
+  await run.page.evaluate("window.__gamez.controls.openPanel('lootFilter')");
+  await run.page.wait(400);
+  run.check("loot filter panel opens", await hasPanel("lootFilter"), (await uiOf(run)).panels);
+  await run.shot("loot-filter");
+  await run.page.evaluate("window.__gamez.controls.openPanel('settings')");
+  await run.page.wait(400);
+  await run.shot("settings");
+  await run.page.evaluate("window.__gamez.controls.openPanel('character')");
+  await run.page.wait(400);
+  await run.shot("character");
+  await run.page.press("y");
+  await run.page.wait(400);
+  run.check("Y opens achievements", await hasPanel("achievements"), (await uiOf(run)).panels);
+  await run.shot("achievements");
+  await run.page.press("Escape");
+  await run.page.wait(200);
+
+  // 5. Rift: obelisk locked, then unlocked, a level opened, the guardian reached on auto.
+  await interactPanel("obelisk", "rift");
+  await run.shot("rift-locked");
+  data.riftLocked = await hud("rift ?? null");
+  await run.page.evaluate("window.__gamez.controls.closeAll()");
+  await run.page.wait(250);
+  const unlock = await run.page.evaluate<{ ok: boolean; error?: unknown }>(
+    `window.__gamez.controls.cheat({ unlockRift: true })`,
+  );
+  run.check("cheat unlockRift accepted", unlock.ok, unlock.error);
+  await run.page.wait(GRANT_WAIT_MS);
+  await run.page.evaluate("window.__gamez.controls.openPanel('rift')");
+  await run.page.wait(400);
+  await run.shot("rift-unlocked");
+  const obelisk = await hud<number | null>("rift?.obelisk ?? null");
+  if (obelisk !== null && obelisk !== 0) {
+    const open = await actRes("classic.openRift", { target: obelisk, level: 1 });
+    data.openRift = { ok: open.ok, code: open.error?.code ?? null };
+    run.check("openRift accepted or refused by a rule", ruleOk(open), open.error);
+    await run.page.wait(800);
+    await run.shot("rift-level-1");
+    await run.page.evaluate("window.__gamez.controls.setMode('auto')");
+    let guardian = true;
+    try {
+      await run.page.waitFor("window.__gamez.hud.rift?.active?.guardianAlive === true", 150_000);
+    } catch {
+      guardian = false;
+    }
+    data.guardianReached = guardian;
+    run.check("a rift run reaches its guardian (auto)", guardian, await hud("rift ?? null"), true);
+    await run.shot("rift-guardian");
+    await run.page.evaluate("window.__gamez.controls.setMode('manual')");
+    const left = await actRes("classic.leaveRift", {});
+    data.leaveRift = { ok: left.ok, code: left.error?.code ?? null };
+    run.check("leaveRift accepted or refused by a rule", ruleOk(left), left.error);
+    await run.page.wait(500);
+    await run.shot("rift-left");
+  } else {
+    run.check("the obelisk is in reach for the rift run", false, obelisk, true);
+  }
+  run.report.data.render = renderSummary(await renderOf(run));
+  run.report.data.final = await simOf(run);
+}
+
 async function steps(run: Run): Promise<void> {
   await openPicker(run);
   await pickMode(run, "Steps");
@@ -960,6 +1159,7 @@ const RUNNERS: Record<(typeof SCENARIOS)[number], (run: Run) => Promise<void>> =
   "classic-start": classicStart,
   "classic-create": classicCreate,
   "classic-idle": classicIdle,
+  "classic-features": classicFeatures,
   gallery,
   panels,
   steps,

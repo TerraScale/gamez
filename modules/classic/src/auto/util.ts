@@ -53,6 +53,31 @@ export const AutoLeave = defineComponent<{ plan: "descend" | "toTown"; depth: nu
   "classic.autoLeave",
 );
 
+/**
+ * Retreat memory of the auto controller (owner: classic.auto, on the hero,
+ * created lazily): the ticks of the last two retreats. Two retreats within
+ * RETREAT_LOOP_TICKS mean the portal leads back into a fight the hero cannot
+ * win (no potions to buy): the next return avoids the portal.
+ */
+export const AutoRetreats = defineComponent<{ last: number; prev: number }>("classic.autoRetreats");
+/** Two retreats closer than this (2 min) avoid the portal on the way back. */
+export const RETREAT_LOOP_TICKS = 2400;
+
+/** Records a retreat (town portal at low life). */
+export function noteRetreat(c: AutoCtx): void {
+  const r = c.world.get(c.hero, AutoRetreats);
+  if (r) c.world.update(c.hero, AutoRetreats, { last: c.tick, prev: r.last });
+  else c.world.add(c.hero, AutoRetreats, { last: c.tick, prev: -RETREAT_LOOP_TICKS });
+}
+
+/** True when the last two retreats were close together (see AutoRetreats). */
+export function retreatLoop(c: AutoCtx): boolean {
+  const r = c.world.get(c.hero, AutoRetreats);
+  return (
+    r !== undefined && r.last - r.prev < RETREAT_LOOP_TICKS && c.tick - r.last < RETREAT_LOOP_TICKS
+  );
+}
+
 export type ValueOf<C> = C extends ComponentType<infer T> ? T : never;
 export type AutoStateValue = ValueOf<typeof AutoState>;
 
@@ -97,13 +122,20 @@ export const TRAVEL_RETRY_TICKS = 20;
 /** Margin (sub) kept under INTERACT_RANGE before an op is pushed directly. */
 export const REACH = INTERACT_RANGE - 32;
 
-/** Town routine steps, in order. */
+/**
+ * Town routine steps, in order (wave A: repair, craft, gamble; the stash
+ * comes after them so the tabs see the final bag). A gamble that queued
+ * something inserts a second "sell" right after it (town.ts townStep).
+ */
 export const TOWN_STEPS: readonly string[] = [
   "heal",
   "sell",
-  "stash",
+  "repair",
   "buy",
   "smith",
+  "craft",
+  "gamble",
+  "stash",
   "quests",
   "return",
 ];
@@ -427,7 +459,8 @@ export function leaving(c: AutoCtx): boolean {
   if (c.depth === 0) return false;
   const plan = c.st.plan;
   if (plan === "descend" || plan === "toTown") return true;
-  if (plan !== "fight" && plan !== "loot") return false;
+  // "recover" = a telegraph dodge (dodge.ts) in the middle of the walk.
+  if (plan !== "fight" && plan !== "loot" && plan !== "recover") return false;
   const l = c.world.get(c.hero, AutoLeave);
   return l !== undefined && l.depth === c.depth;
 }
@@ -442,6 +475,10 @@ export function syncLeave(c: AutoCtx): void {
     return;
   }
   if (!cur) return;
-  if (c.depth === 0 || cur.depth !== c.depth || (plan !== "fight" && plan !== "loot"))
+  if (
+    c.depth === 0 ||
+    cur.depth !== c.depth ||
+    (plan !== "fight" && plan !== "loot" && plan !== "recover")
+  )
     c.world.remove(c.hero, AutoLeave);
 }

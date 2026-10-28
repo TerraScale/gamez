@@ -11,7 +11,7 @@
  */
 import { createRng, type FrozenRegistry, type Rng } from "@gamez/kernel";
 import { mix, type TilePos } from "../fixed.ts";
-import { isBossDepth, isWaypointDepth, tierOf } from "../rules.ts";
+import { isBossDepth, isWaypointDepth, MAIN_DUNGEON_DEPTH, tierOf } from "../rules.ts";
 import type { Rect } from "../types.ts";
 import {
   balanceOf,
@@ -23,6 +23,7 @@ import {
   pickTheme,
   filled,
   tileKey,
+  type ThemePick,
 } from "./common.ts";
 import type { ClassicMap } from "./maps.ts";
 
@@ -42,19 +43,40 @@ const DECOR_PCT = 12;
 /** Decor keeps this many tiles away from doors and stairs. */
 const DECOR_CLEARANCE = 2;
 
-/** Generates the dungeon level `depth` (>= 1). */
+/**
+ * Shape of a level. Dungeon levels take it from the balance proto and the
+ * theme cycle; Rift levels (wave A, ./riftMap.ts) pass their own. `rift`
+ * levels have no stairs at all (the rift exit appears when the guardian dies).
+ */
+export interface LevelShape {
+  width: number;
+  height: number;
+  rooms: [number, number];
+  roomSize: [number, number];
+  theme: ThemePick;
+  /** Display name of the map. */
+  name: string;
+  rift: boolean;
+}
+
+/** Generates the dungeon level `depth` (>= 1). `shape` overrides the balance-driven default. */
 export function buildDungeon(
   registry: FrozenRegistry,
   worldSeed: number,
   depth: number,
+  shape?: LevelShape,
 ): ClassicMap {
   const bal = balanceOf(registry);
-  const width = bal?.levelWidth ?? DEFAULT_LEVEL.width;
-  const height = bal?.levelHeight ?? DEFAULT_LEVEL.height;
-  const roomCount = bal?.rooms ?? DEFAULT_LEVEL.rooms;
-  const roomSize = bal?.roomSize ?? DEFAULT_LEVEL.roomSize;
-  const theme = pickTheme(registry, depth);
+  const rift = shape?.rift ?? false;
+  const width = shape?.width ?? bal?.levelWidth ?? DEFAULT_LEVEL.width;
+  const height = shape?.height ?? bal?.levelHeight ?? DEFAULT_LEVEL.height;
+  const roomCount = shape?.rooms ?? bal?.rooms ?? DEFAULT_LEVEL.rooms;
+  const roomSize = shape?.roomSize ?? bal?.roomSize ?? DEFAULT_LEVEL.roomSize;
+  const theme = shape?.theme ?? pickTheme(registry, depth);
   const looks = looksOf(theme.proto);
+  // The main dungeon ends at MAIN_DUNGEON_DEPTH: no stairs down there (wave A).
+  const hasUp = !rift;
+  const hasDown = !rift && depth < MAIN_DUNGEON_DEPTH;
   const caves = tierOf(depth) === 1;
   const corridorWidth = caves ? 3 : 2;
   const rng = createRng(mix(worldSeed, depth));
@@ -97,7 +119,9 @@ export function buildDungeon(
   }
   // 6. Validation: everything important must stay reachable, else drop the decor.
   const reachNow = distancesFrom(width, height, walkMask(kind, blocked), spawnIdx);
-  const mustReach = [...rooms.map(centreOf), stairsUp, stairsDown];
+  const mustReach = rooms.map(centreOf);
+  if (hasUp) mustReach.push(stairsUp);
+  if (hasDown) mustReach.push(stairsDown);
   if (waypoint) mustReach.push(waypoint);
   if (mustReach.some((p) => distAt(reachNow, width, p) < 0)) {
     blocked.fill(0);
@@ -130,8 +154,8 @@ export function buildDungeon(
       if (k === DOOR) objects[i] = looks.door;
     }
   }
-  objects[tileKey(width, stairsUp.x, stairsUp.y)] = looks.stairsUp;
-  objects[tileKey(width, stairsDown.x, stairsDown.y)] = looks.stairsDown;
+  if (hasUp) objects[tileKey(width, stairsUp.x, stairsUp.y)] = looks.stairsUp;
+  if (hasDown) objects[tileKey(width, stairsDown.x, stairsDown.y)] = looks.stairsDown;
   if (waypoint) objects[tileKey(width, waypoint.x, waypoint.y)] = looks.waypoint;
 
   return {
@@ -144,10 +168,10 @@ export function buildDungeon(
     spawn,
     depth,
     theme: theme.id,
-    name: `${theme.name} - Level ${depth}`,
+    name: shape?.name ?? `${theme.name} - Level ${depth}`,
     rooms,
-    stairsDown,
-    stairsUp,
+    stairsDown: hasDown ? stairsDown : null,
+    stairsUp: hasUp ? stairsUp : null,
     waypoint,
     npcSpots: [],
     portalSpot: { x: spawn.x, y: spawn.y },

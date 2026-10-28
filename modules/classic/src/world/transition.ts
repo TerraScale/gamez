@@ -30,12 +30,13 @@ import {
 import { emit } from "../events.ts";
 import { tileCenter, type TilePos } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
-import { isWaypointDepth } from "../rules.ts";
-import { areaOf, dungeonOf, gameOf, heroOf } from "../resources.ts";
+import { isRiftDepth, isWaypointDepth } from "../rules.ts";
+import { areaOf, currentDepth, dungeonOf, gameOf, heroOf } from "../resources.ts";
 import { findFreeNear, tileKey } from "./common.ts";
 import { freshExploreArea, exploreStateOf } from "./explore.ts";
 import { getMap, type ClassicMap } from "./maps.ts";
 import { planPopulation } from "./populate.ts";
+import { ensureObelisk } from "./riftObelisk.ts";
 
 /** Runs the queued area transitions in order. */
 export function runTransitions(world: World, ctx: SimContext): void {
@@ -49,6 +50,8 @@ export const transitionSystem: SystemDef = {
   ...SYSTEM.worldTransition,
   run(world, ctx) {
     runTransitions(world, ctx);
+    // Old saves: the town gets its Rift obelisk the first time the hero is in town.
+    if (currentDepth(world) === 0) ensureObelisk(world, getMap(world, ctx.registry, 0));
   },
 };
 
@@ -66,13 +69,19 @@ function applyTransition(world: World, ctx: SimContext, req: TransitionRequest):
     if (!portal) return;
     if (target !== 0 && target !== portal.depth) return;
   }
+  // Rift transitions only enter rift depths; the rift exit only leads to town (wave A).
+  if (req.via === "rift" && !isRiftDepth(target)) return;
+  if (req.via === "riftExit" && target !== 0) return;
   const map = getMap(world, ctx.registry, target);
 
   if (target !== from) leaveArea(world, hero, from);
 
   const oldLive = dungeon.live;
   if (target >= 1 && target !== dungeon.live) enterLevel(world, ctx, map, target, hero, oldLive);
-  if (target >= 1) {
+  // A rift cannot be re-entered (wave A): going to town discards its level at once.
+  if (target === 0 && isRiftDepth(oldLive)) dropLiveLevel(world, hero);
+  // Rift levels never count as the main dungeon: no deepest, no waypoints.
+  if (target >= 1 && !isRiftDepth(target)) {
     dungeon.deepest = Math.max(dungeon.deepest, target);
     if (isWaypointDepth(target) && !dungeon.waypoints.includes(target)) {
       dungeon.waypoints = [...dungeon.waypoints, target].sort((a, b) => a - b);
@@ -131,13 +140,8 @@ function enterLevel(
 ): void {
   const dungeon = dungeonOf(world);
   if (oldLive > 0) {
-    recordBossWound(world, oldLive);
-    for (const e of world.query(AreaTag)) {
-      if (e !== hero && world.exists(e) && world.read(e, AreaTag).depth === oldLive) {
-        world.destroy(e);
-      }
-    }
-    dropSpawns(world, (r) => r.depth === oldLive);
+    if (!isRiftDepth(oldLive)) recordBossWound(world, oldLive);
+    destroyLevelEntities(world, hero, oldLive);
   }
   dungeon.live = depth;
 
@@ -153,6 +157,27 @@ function enterLevel(
   if (map.stairsUp) spawnInteractableAt(world, "stairsUp", depth - 1, map.stairsUp, depth);
   if (map.stairsDown) spawnInteractableAt(world, "stairsDown", depth + 1, map.stairsDown, depth);
   if (map.waypoint) spawnInteractableAt(world, "waypoint", depth, map.waypoint, depth);
+}
+
+/** Destroys every entity of `depth` except the hero and drops its queued spawns. */
+function destroyLevelEntities(world: World, hero: Entity, depth: number): void {
+  for (const e of world.query(AreaTag)) {
+    if (e !== hero && world.exists(e) && world.read(e, AreaTag).depth === depth) world.destroy(e);
+  }
+  dropSpawns(world, (r) => r.depth === depth);
+}
+
+/** Discards the live level entirely (its entities, exploration and bookkeeping): live = 0. */
+function dropLiveLevel(world: World, hero: Entity): void {
+  const dungeon = dungeonOf(world);
+  if (dungeon.live <= 0) return;
+  destroyLevelEntities(world, hero, dungeon.live);
+  const explore = exploreStateOf(world);
+  explore.areas = explore.areas.filter((a) => a.depth === 0);
+  dungeon.live = 0;
+  dungeon.liveSpawned = 0;
+  dungeon.liveKilled = 0;
+  dungeon.liveBossAlive = false;
 }
 
 /** Remembers how hurt the living boss of `depth` is before its level is destroyed. */
@@ -218,6 +243,12 @@ function arrivalTile(
       break;
     case "stairsUp":
       anchor = map.stairsDown;
+      break;
+    case "rift":
+    case "riftExit":
+      // A rift level is entered at its first room; the town is entered at its spawn.
+      anchor = map.spawn;
+      minRadius = 0;
       break;
     case "waypoint":
       anchor = map.waypoint;

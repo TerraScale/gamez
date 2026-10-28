@@ -10,7 +10,7 @@
  */
 import type { DispatchResult, Entity } from "@gamez/kernel";
 import type { AutoPlan, HeroStatsValue } from "../components.ts";
-import type { AutoConfig, ControlMode, SimSpeed } from "../resources.ts";
+import type { AutoConfig, ControlMode, LootFilter, RiftRecord, SimSpeed } from "../resources.ts";
 import type { ClassicMap } from "../world/maps.ts";
 import type {
   AttrBlock,
@@ -37,13 +37,27 @@ export type PanelId =
   | "waypoint"
   | "settings"
   | "log"
-  | "map";
+  | "map"
+  // ---- wave A (docs/design/wave-A.md §HUD)
+  /** Talent tree of the hero's class (key N). */
+  | "talents"
+  /** Smith services; opened with the smith (vendor panel shows a "Craft" button). */
+  | "craft"
+  /** Gambler offers; opened by the gambler NPC. */
+  | "gamble"
+  /** Rift levels, best runs, active run; opened by the obelisk. */
+  | "rift"
+  /** Achievement list (key Y). */
+  | "achievements"
+  /** Loot filter editor (from Settings). */
+  | "lootFilter";
 
 /** Display colours (0xRRGGBB) shared by HUD and renderer. */
 export const RARITY_COLOR: Record<ItemRarity, number> = {
   normal: 0xe6e6e6,
   magic: 0xa6c4ff,
   rare: 0xfff06b,
+  set: 0x6fe07a,
   unique: 0xffb85c,
 };
 export const MONSTER_COLOR: Record<MonsterRarity, number> = {
@@ -126,6 +140,24 @@ export interface ItemView {
   upgrade: number;
   /** Stat comparison with the equipped item (null when the item fits no slot). Optional for older fixtures. */
   compare?: ItemCompare | null;
+  // ---- wave A (optional; filled by client/model/items.ts extendItemView) ----
+  /** Set piece: the set, which pieces the hero wears, and each bonus with whether it is active. */
+  set?: {
+    id: string;
+    name: string;
+    pieces: { name: string; worn: boolean }[];
+    bonuses: { count: number; lines: string[]; active: boolean }[];
+  } | null;
+  /** One entry per socket: empty (gem null) or the gem's name and its lines for this item. */
+  sockets?: { gem: string | null; name: string; lines: string[] }[];
+  durability?: { cur: number; max: number } | null;
+  broken?: boolean;
+  /** Smith upgrade level (ItemInstance.upgrade); not to be confused with `upgrade` (auto-equip score). */
+  upgradeLevel?: number;
+  /** Stash tab when in the stash. */
+  tab?: number;
+  /** Hidden by the loot filter (ground labels / auto pickup). */
+  filtered?: boolean;
 }
 
 export interface SkillBarSlot {
@@ -298,6 +330,164 @@ export interface HudSnapshot {
   quests: QuestView[];
   /** NPC panel opened by classic.npc.opened (cleared when the hero walks away). */
   vendor: VendorView | null;
+  // ---- wave A sections (optional: null/absent when the module is not loaded or nothing applies).
+  // Each is built by its own file in src/client/model/ (see buildHud).
+  talents?: TalentsView | null;
+  craft?: CraftView | null;
+  gamble?: GambleView | null;
+  rift?: RiftView | null;
+  achievements?: AchievementsView | null;
+  lootFilter?: LootFilterView | null;
+  stashTabs?: StashTabView[];
+  dps?: DpsView | null;
+}
+
+// ---------------------------------------------------------------------------
+// Wave A HUD views (docs/design/wave-A.md §HUD)
+// ---------------------------------------------------------------------------
+
+export interface TalentNodeView {
+  id: string;
+  name: string;
+  /** Description with the current per-rank totals filled in. */
+  description: string;
+  icon: string;
+  tier: number;
+  col: number;
+  rank: number;
+  maxRank: number;
+  /** A point can be spent on it now (points > 0, tier unlocked, requirement met, below max). */
+  learnable: boolean;
+  /** Tier not unlocked yet or requirement missing. */
+  locked: boolean;
+  requires: string | null;
+  /** "Current: +4% life" / "Next: +6% life" lines. */
+  lines: string[];
+}
+
+export interface TalentsView {
+  tree: string;
+  name: string;
+  branches: string[];
+  tierPoints: number;
+  points: number;
+  spent: number;
+  nodes: TalentNodeView[];
+  /** Gold for a reset (rules.talentResetCost) and whether it is possible now (town, gold, spent > 0). */
+  resetCost: number;
+  canReset: boolean;
+}
+
+export interface CraftItemView {
+  item: ItemView;
+  where: "bag" | "equipped";
+  /** Prices (null = not possible for this item). */
+  repairCost: number | null;
+  upgradeCost: number | null;
+  /** Success chance of the next upgrade (percent). */
+  upgradeChance: number | null;
+  rerollCost: number | null;
+  socketCost: number | null;
+  /** Bag gem uids that fit an empty socket of this item. */
+  canSocket: boolean;
+  unsocketCost: number | null;
+}
+
+export interface CraftView {
+  npc: Entity;
+  items: CraftItemView[];
+  /** Bag gems grouped by base. */
+  gems: {
+    base: string;
+    name: string;
+    tier: number;
+    count: number;
+    uids: number[];
+    combineCost: number | null;
+  }[];
+  repairAllCost: number;
+}
+
+export interface GambleView {
+  npc: Entity;
+  name: string;
+  greeting: string;
+  offers: { category: ItemCategory; label: string; price: number; affordable: boolean }[];
+}
+
+export interface RiftView {
+  unlocked: boolean;
+  /** What unlocks it, for the locked panel ("Defeat the Hollow King"). */
+  unlockText: string;
+  /** Levels that can be opened now (1..maxCompleted + 1) with their fee and monster level. */
+  levels: { level: number; fee: number; monsterLevel: number; affordable: boolean }[];
+  maxCompleted: number;
+  best: RiftRecord | null;
+  history: RiftRecord[];
+  active: {
+    level: number;
+    progressPct: number;
+    /** Ticks left of the time limit (0 when over). */
+    ticksLeft: number;
+    guardianAlive: boolean;
+    done: boolean;
+  } | null;
+  /** The obelisk entity in reach (0 = none; the panel can still show records). */
+  obelisk: Entity;
+}
+
+export interface AchievementView {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  progress: number;
+  target: number;
+  unlocked: boolean;
+  /** Tick it was unlocked (0 when locked). */
+  at: number;
+  rewardText: string;
+}
+
+export interface AchievementsView {
+  unlocked: number;
+  total: number;
+  list: AchievementView[];
+  title: string;
+}
+
+export interface LootFilterView {
+  filter: LootFilter;
+  /** Ground loot items currently hidden in this area (feedback in the editor). */
+  hiddenOnGround: number;
+}
+
+export interface StashTabView {
+  index: number;
+  name: string;
+  count: number;
+  size: number;
+}
+
+export interface DpsSkillView {
+  skill: string;
+  name: string;
+  /** Average damage per hit (after the hero's bonuses, before monster defences), crit included. */
+  avgHit: number;
+  /** Casts per second at the current attack/cast speed. */
+  perSecond: number;
+  dps: number;
+  manaPerSecond: number;
+}
+
+export interface DpsView {
+  skills: DpsSkillView[];
+  /** Highest dps of the bar skills. */
+  best: number;
+  /** Effective life against a level-matched monster's physical hit (armor and block), for comparison. */
+  effectiveLife: number;
+  /** Where the hero's stats come from: "Items", "Talents", "Sets", "Buffs" with short lines. */
+  sources: { source: string; lines: string[] }[];
 }
 
 export type LogKind = "combat" | "loot" | "level" | "quest" | "system" | "death";
@@ -328,7 +518,19 @@ export interface Settings {
   lighting: boolean;
   /** Developer overlay: fps, tick ms, entities. */
   showPerf: boolean;
+  // ---- wave A
+  /** Volumes 0..100 (master scales sfx and music). */
+  masterVolume: number;
+  sfxVolume: number;
+  musicVolume: number;
+  muted: boolean;
+  /** Renderer quality ("auto" picks low on coarse-pointer / small screens, else high). */
+  quality: GraphicsQuality;
+  /** Onboarding tips on/off (dismissed tips are remembered separately). */
+  tips: boolean;
 }
+
+export type GraphicsQuality = "auto" | "low" | "medium" | "high";
 
 export interface PerfView {
   fps: number;

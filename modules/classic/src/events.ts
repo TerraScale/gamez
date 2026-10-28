@@ -7,8 +7,8 @@
  * client receives every event of every tick.
  */
 import type { Entity, SimContext } from "@gamez/kernel";
-import type { ControlMode, SimSpeed } from "./resources.ts";
-import type { Element, EquipSlot, ItemRarity, MonsterRarity } from "./types.ts";
+import type { ControlMode, RiftRecord, SimSpeed } from "./resources.ts";
+import type { Element, EquipSlot, ItemCategory, ItemRarity, MonsterRarity } from "./types.ts";
 
 export type ClassicEvent =
   // ---- classic.combat
@@ -138,7 +138,92 @@ export type ClassicEvent =
       levels: number;
     }
   // ---- any command owner
-  | { type: "classic.command.failed"; op: string; code: string; message: string };
+  | { type: "classic.command.failed"; op: string; code: string; message: string }
+  // ======================= wave A (docs/design/wave-A.md) =======================
+  // ---- classic.combat / classic.monsters (bosses)
+  /**
+   * A telegraph was placed: the danger zone fills for `ticks` and hits at
+   * `fireAt`. Positions sub; angle 0..63 steps; radius/length/width sub.
+   */
+  | {
+      type: "classic.telegraph";
+      entity: Entity;
+      caster: Entity;
+      skill: string;
+      effect: string;
+      shape: "circle" | "cone" | "line";
+      x: number;
+      y: number;
+      radius: number;
+      angle: number;
+      arc: number;
+      length: number;
+      width: number;
+      ticks: number;
+      fireAt: number;
+    }
+  /** A boss entered a phase (phase index 1-based into MonsterProto.phases). */
+  | {
+      type: "classic.boss.phase";
+      entity: Entity;
+      monster: string;
+      phase: number;
+      message: string;
+      enraged: boolean;
+    }
+  // ---- classic.items (durability, gambling, sets, stash, loot filter)
+  | { type: "classic.item.broken"; uid: number; slot: EquipSlot; name: string }
+  /** Durability fell to 10 % or less (once per item until repaired). */
+  | { type: "classic.item.worn"; uid: number; slot: EquipSlot; name: string }
+  | {
+      type: "classic.gambled";
+      npc: string;
+      category: ItemCategory;
+      name: string;
+      rarity: ItemRarity;
+      price: number;
+    }
+  /** The number of equipped pieces of a set crossed a bonus threshold (up or down). */
+  | { type: "classic.set.bonus"; set: string; name: string; pieces: number; active: number }
+  | { type: "classic.stash.moved"; uid: number; tab: number }
+  | { type: "classic.lootFilter.changed" }
+  // ---- classic.crafting (smith services)
+  | { type: "classic.repaired"; uids: number[]; cost: number }
+  | {
+      type: "classic.upgraded";
+      uid: number;
+      name: string;
+      level: number;
+      success: boolean;
+      cost: number;
+    }
+  | { type: "classic.rerolled"; uid: number; name: string; cost: number }
+  | { type: "classic.socket.added"; uid: number; sockets: number; cost: number }
+  | { type: "classic.gem.socketed"; uid: number; gem: string; slot: number }
+  | { type: "classic.gems.removed"; uid: number; gems: string[]; cost: number }
+  | { type: "classic.gems.combined"; from: string; to: string; cost: number }
+  // ---- classic.talents
+  | { type: "classic.talent.points"; points: number; gained: number }
+  | { type: "classic.talent.learned"; node: string; rank: number }
+  | { type: "classic.talents.reset"; refunded: number; cost: number }
+  // ---- classic.rift / classic.world
+  /** The obelisk was used (manual): open the Rift panel. */
+  | { type: "classic.rift.panel" }
+  | { type: "classic.rift.unlocked" }
+  | { type: "classic.rift.opened"; level: number; depth: number; fee: number; run: number }
+  /** Progress crossed another 10 % (pct 10..100). */
+  | { type: "classic.rift.progress"; pct: number }
+  | { type: "classic.rift.guardian"; entity: Entity; monster: string; name: string }
+  | { type: "classic.rift.completed"; record: RiftRecord; gold: number; items: number }
+  | { type: "classic.rift.failed"; record: RiftRecord }
+  // ---- classic.achievements
+  | {
+      type: "classic.achievement.unlocked";
+      id: string;
+      name: string;
+      gold: number;
+      title: string | null;
+    };
 
 export type ClassicEventType = ClassicEvent["type"];
 

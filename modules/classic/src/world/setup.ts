@@ -10,6 +10,7 @@ import { tileCenter } from "../fixed.ts";
 import { RES, type AreaState, type DungeonState, type ExploreState } from "../resources.ts";
 import { freshExploreArea } from "./explore.ts";
 import { getMap } from "./maps.ts";
+import { ensureObelisk } from "./riftObelisk.ts";
 import { spawnInteractableAt } from "./transition.ts";
 
 /** NPC body radius, sub units. */
@@ -48,4 +49,5 @@ export function setupWorld(world: World, ctx: SimContext): void {
   if (town.waypoint) spawnInteractableAt(world, "waypoint", 0, town.waypoint, 0);
   if (town.stash) spawnInteractableAt(world, "stash", 0, town.stash, 0);
   if (town.stairsDown) spawnInteractableAt(world, "stairsDown", 1, town.stairsDown, 0);
+  ensureObelisk(world, town);
 }

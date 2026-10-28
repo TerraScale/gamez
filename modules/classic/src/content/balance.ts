@@ -38,7 +38,7 @@ export const BALANCE: BalanceProto = {
   packRampDepth: 3,
   sleepRange: tiles(20),
   lightRadius: 8,
-  rarityWeights: { normal: 600, magic: 300, rare: 90, unique: 10 },
+  rarityWeights: { normal: 600, magic: 300, rare: 90, set: 8, unique: 10 },
   drops: {
     normal: { item: 12, items: [1, 1], gold: 45, potion: 12 },
     champion: { item: 40, items: [1, 2], gold: 60, potion: 25 },
@@ -47,10 +47,15 @@ export const BALANCE: BalanceProto = {
     minion: { item: 8, items: [1, 1], gold: 40, potion: 8 },
     summon: { item: 0, items: [0, 0], gold: 0, potion: 0 },
   },
-  goldPerLevel: [3, 8],
+  goldPerLevel: [4, 10],
   vendorItems: 8,
   offlineCapMs: 8 * 3600 * 1000,
   offlineEfficiencyPct: 35,
+  // ---- wave A (docs/design/wave-A.md)
+  talentPointsPerLevel: 1,
+  stashTabs: 4,
+  gemDrops: { normal: 2, champion: 10, unique: 30, boss: 100, minion: 2, summon: 0 },
+  socketedDropPct: 8,
 };
 
 export const BALANCES: Record<string, BalanceProto> = { [BALANCE_ID]: BALANCE };

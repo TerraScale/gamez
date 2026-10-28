@@ -4,9 +4,17 @@
  */
 import type { Entity, FrozenRegistry, Rng, World } from "@gamez/kernel";
 import { Attributes, Dead, HeroStats } from "../components.ts";
-import { heroOf } from "../resources.ts";
+import { heroOf, RES, type RunStats } from "../resources.ts";
 import { ERR, fail, type OpResult } from "../actions.ts";
-import { BALANCE_ID, KIND, type BalanceProto, type ItemBaseProto } from "../types.ts";
+import {
+  BALANCE_ID,
+  ECONOMY_ID,
+  KIND,
+  type BalanceProto,
+  type EconomyProto,
+  type ItemBaseProto,
+  type ItemInstance,
+} from "../types.ts";
 
 /** A registry entry as returned by registry.all(): [id, prototype]. */
 export type Entry<T> = readonly [string, Readonly<T>];
@@ -14,6 +22,35 @@ export type Base = Readonly<ItemBaseProto>;
 
 export function balanceOf(reg: FrozenRegistry): BalanceProto {
   return reg.require<BalanceProto>(KIND.balance, BALANCE_ID);
+}
+
+/** The EconomyProto (wave A), or undefined when the content defines none. */
+export function economyOf(reg: FrozenRegistry): Readonly<EconomyProto> | undefined {
+  return reg.get<EconomyProto>(KIND.economy, ECONOMY_ID);
+}
+
+/** Numeric RunStats counters that classic.items and classic.crafting increment. */
+export type RunCounter =
+  | "goldEarned"
+  | "itemsFound"
+  | "goldSpent"
+  | "uniquesFound"
+  | "setItemsFound"
+  | "itemsCrafted"
+  | "gemsSocketed"
+  | "gambles";
+
+/** Adds `n` to a RunStats counter (optional wave A counters start at 0). No-op without RunStats. */
+export function addRunStat(world: World, key: RunCounter, n: number): void {
+  if (n === 0) return;
+  const stats = world.getResource<RunStats>(RES.stats);
+  if (stats) stats[key] = (stats[key] ?? 0) + n;
+}
+
+/** Counts a unique or set item that entered the hero's possession (pickup, gamble, grants). */
+export function noteFound(world: World, item: ItemInstance): void {
+  if (item.rarity === "unique") addRunStat(world, "uniquesFound", 1);
+  else if (item.rarity === "set") addRunStat(world, "setItemsFound", 1);
 }
 
 export function baseOf(reg: FrozenRegistry, id: string): Base | undefined {

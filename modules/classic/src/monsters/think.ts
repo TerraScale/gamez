@@ -41,6 +41,7 @@ import {
   walkableSub,
   type ClassicMap,
 } from "../world/maps.ts";
+import { enterPhases, hasPhases, pendingTelegraphs, rotationSkills } from "./boss.ts";
 import { type DistanceField, fieldDistance, heroField as heroFieldOf, nextStep } from "./field.ts";
 import { modProtos } from "./spawn.ts";
 import {
@@ -205,6 +206,10 @@ function thinkOne(env: Env, e: Entity): void {
     specialAt: ai.specialAt,
     count: ai.count,
   };
+  // Wave A boss phases are entered even while the boss is busy (casting, stunned).
+  if (proto.behaviour === "boss" && hasPhases(proto)) {
+    u.count = enterPhases(world, ctx, e, proto, u.count);
+  }
 
   let state: AiStateName;
   if (world.has(e, Casting) || isStunned(world, ctx, e)) {
@@ -485,36 +490,53 @@ function exploder(env: Env, u: Unit): AiStateName {
 }
 
 /**
- * Bosses summon once per life threshold crossed (66 % and 33 %, Ai.count
- * holds the phases done) before anything else; otherwise they cast their
- * best ready skill (priority, then order): self skills when enemies are
- * close, targeted skills when in range and line of sight. Otherwise rush and
- * strike. Every boss attack skill has a cooldown, so the rotation rotates.
+ * Bosses without phases summon once per life threshold crossed (66 % and
+ * 33 %, Ai.count holds the thresholds done) before anything else. Bosses with
+ * MonsterProto.phases summon through their phases instead (./boss.ts) and
+ * rotate their skills plus the skills of the phases done. Either way they
+ * cast their best ready skill (priority, then order): self skills when
+ * enemies are close, targeted skills when in range and line of sight.
+ * Telegraphed skills wait while one of the boss's own telegraphs is pending,
+ * and a pending line telegraph (rush) holds the boss still. Otherwise rush
+ * and strike. Every boss attack skill has a cooldown, so the rotation rotates.
  */
 function boss(env: Env, u: Unit): AiStateName {
-  const life = env.world.read(u.e, Life);
-  const phase = bossPhase(life.hp, life.max);
+  const phased = hasPhases(u.proto);
+  const ids = phased ? rotationSkills(u.proto, u.count) : u.proto.skills.slice(1);
   const options: { id: string; sk: Readonly<SkillProto>; i: number }[] = [];
-  u.proto.skills.slice(1).forEach((id, i) => {
+  ids.forEach((id, i) => {
     const sk = skillOf(env.ctx, id);
     if (sk !== undefined) options.push({ id, sk, i });
   });
   options.sort((a, b) => b.sk.ai.priority - a.sk.ai.priority || a.i - b.i);
+  const pending = options.some((o) => o.sk.telegraph !== undefined)
+    ? pendingTelegraphs(env.world, u.e)
+    : { any: false, line: false };
+  if (pending.line) {
+    // Hold the lane: the rush starts from where the line was marked.
+    stopMover(env.world, u.e);
+    return "attack";
+  }
   if (canOrder(env.world, u.e)) {
-    if (u.count < phase) {
-      const call = options.find((o) => o.sk.shape === "summon" && o.sk.summon !== undefined);
-      if (call === undefined || liveMinionsOf(env.world, u.e) >= call.sk.summon!.max) {
-        // Nothing to call (or the room is full): the phase passes.
-        u.count = phase;
-      } else if (skillReady(env.world, u.e, call.id, env.tick)) {
-        stopMover(env.world, u.e);
-        issue(env, u, call.id);
-        u.count++;
-        return "attack";
+    if (!phased) {
+      const life = env.world.read(u.e, Life);
+      const phase = bossPhase(life.hp, life.max);
+      if (u.count < phase) {
+        const call = options.find((o) => o.sk.shape === "summon" && o.sk.summon !== undefined);
+        if (call === undefined || liveMinionsOf(env.world, u.e) >= call.sk.summon!.max) {
+          // Nothing to call (or the room is full): the phase passes.
+          u.count = phase;
+        } else if (skillReady(env.world, u.e, call.id, env.tick)) {
+          stopMover(env.world, u.e);
+          issue(env, u, call.id);
+          u.count++;
+          return "attack";
+        }
       }
     }
     for (const o of options) {
       if (o.sk.shape === "summon" || !skillReady(env.world, u.e, o.id, env.tick)) continue;
+      if (o.sk.telegraph !== undefined && pending.any) continue;
       if (o.sk.target === "self") {
         if (countEnemies(env, u.pos, o.sk.radius ?? tiles(2), u.enemy) > 0) {
           stopMover(env.world, u.e);

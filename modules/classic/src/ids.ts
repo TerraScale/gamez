@@ -22,6 +22,13 @@ export const MODULE = {
   items: "classic.items",
   progression: "classic.progression",
   auto: "classic.auto",
+  // ---- wave A
+  talents: "classic.talents",
+  crafting: "classic.crafting",
+  rift: "classic.rift",
+  achievements: "classic.achievements",
+  /** QA-only cheat module (src/debug), never part of the default `modules`. */
+  debug: "classic.debug",
 } as const;
 
 interface SysRow {
@@ -52,11 +59,19 @@ export const SYSTEM = {
   autoThink: sys("classic.auto.think", "pre", 0),
   /** auto: stat/skill point auto-allocation in auto/idle (queues commands). */
   autoAllocate: sys("classic.auto.allocate", "pre", 10),
+  /** talents (wave A): grant points on level ups, auto-spend them in auto/idle, keep BonusStats in sync. */
+  talentsPoints: sys("classic.talents.points", "pre", 12),
 
   // ----- update
   itemsCommands: sys("classic.items.commands", "update", 50),
   worldCommands: sys("classic.world.commands", "update", 51),
   progressionCommands: sys("classic.progression.commands", "update", 52),
+  /** talents (wave A): learnTalent / resetTalents ops. */
+  talentsCommands: sys("classic.talents.commands", "update", 53),
+  /** crafting (wave A): repair / upgrade / reroll / sockets / gems ops. */
+  craftingCommands: sys("classic.crafting.commands", "update", 54),
+  /** rift (wave A): openRift / leaveRift ops. */
+  riftCommands: sys("classic.rift.commands", "update", 55),
   /** core: execute the hero Intent (path, approach, CastOrder, pickup/interact commands). */
   coreIntent: sys("classic.core.intent", "update", 100),
   /** monsters: AI behaviours set Mover goals/paths and CastOrders. */
@@ -83,8 +98,12 @@ export const SYSTEM = {
   progressionKills: sys("classic.progression.kills", "post", 0),
   /** items: drop loot for monster deaths. */
   itemsDrops: sys("classic.items.drops", "post", 100),
+  /** items (wave A): durability wear from hero kills and hero deaths (Bus.deaths). */
+  itemsWear: sys("classic.items.wear", "post", 110),
   /** world: boss killed, level cleared, live-level counters. */
   worldLevelState: sys("classic.world.levelState", "post", 150),
+  /** rift (wave A): unlock, progress from Bus.deaths, guardian spawn, completion / failure, rewards. */
+  riftTrack: sys("classic.rift.track", "post", 160),
   /** monsters: remove corpses after corpseTicks, expire summons. */
   monstersCorpses: sys("classic.monsters.corpses", "post", 200),
   /** progression: life/mana regen (hero) and monster regen. */
@@ -93,6 +112,8 @@ export const SYSTEM = {
   worldExplore: sys("classic.world.explore", "post", 500),
   /** progression: hero death penalty, respawn timer (auto respawn handled by classic.auto). */
   progressionHeroDeath: sys("classic.progression.heroDeath", "post", 600),
+  /** achievements (wave A): check metrics (every 20 ticks), unlock, grant rewards. */
+  achievementsCheck: sys("classic.achievements.check", "post", 900),
   /** core: clear Bus.hits/deaths, drop leftover commands, tick RunStats.ticksPlayed. */
   coreCleanup: sys("classic.core.cleanup", "post", 1000),
 } as const;

@@ -31,6 +31,7 @@ function recordOf(sim: ReturnType<typeof testSim>): SaveRecord {
     savedAt: 1_700_000_000_000,
     snapshot: sim.snapshot(),
     settings: { ...DEFAULT_SETTINGS, zoom: 1.5, showPerf: true },
+    modules: sim.loaded.modules.map((m) => m.id),
   };
 }
 

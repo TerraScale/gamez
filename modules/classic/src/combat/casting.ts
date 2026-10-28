@@ -7,6 +7,17 @@
  * Shapes (docs/design/classic.md §7.3, §20): melee, arc, projectile, nova,
  * aoeTarget, chain, dash, blink, summon, self, pulse. Exploders
  * (MonsterProto.behaviour "exploder") die after firing their onDeathSkill.
+ *
+ * Wave A:
+ * - Skills with SkillProto.telegraph place their danger zones instead of
+ *   hitting (./telegraphs.ts); the cast itself ends normally.
+ * - Hero casts apply their skill modifiers (bonus.ts skillModsOf, read once
+ *   per firing): damagePct on every damage packet of the cast (weapon and
+ *   flat parts, projectiles, chains, pulses, areas), radiusPct on nova /
+ *   aoeTarget / pulse / self radii, arc reach and projectile explosions,
+ *   extraProjectiles, extraPierce, extraBounces, durationPct on applied
+ *   statuses, buffs and summon lifetimes, extraSummons on count and max.
+ *   Units without BonusStats (monsters) take the unmodified path.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { busOf, pushHit, pushSpawn } from "../bus.ts";
@@ -26,6 +37,7 @@ import { emit } from "../events.ts";
 import { angleDiff, angleOf, angleVec, isqrt, pct, scaleTo, tiles, toTile } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { currentDepth } from "../resources.ts";
+import type { SkillModTotals } from "../rules.ts";
 import { gridOf, type SpatialGrid } from "../spatial.ts";
 import { KIND, type MonsterProto, type SkillProto, type Team } from "../types.ts";
 import { getAreaMap, walkableAt, type ClassicMap } from "../world/maps.ts";
@@ -35,8 +47,10 @@ import {
   BASIC_PROJECTILE_RADIUS,
   BASIC_PROJECTILE_SPEED,
   bodyRadius,
+  castMods,
   enemiesInRadius,
   extraProjectiles,
+  grow,
   hitStatuses,
   isBasic,
   isEnemyOf,
@@ -54,6 +68,7 @@ import {
 import { killUnit } from "./death.ts";
 import { spawnProjectiles, type ProjectileSpec } from "./projectiles.ts";
 import { applyStatus } from "./statuses.ts";
+import { placeTelegraphs } from "./telegraphs.ts";
 
 /** Default blink reach when the skill has no range (tiles). */
 const BLINK_DEFAULT = tiles(8);
@@ -92,6 +107,8 @@ interface Fire {
   ty: number;
   /** Target entity when it is still a live unit, else 0. */
   target: Entity;
+  /** Skill modifiers of the cast (heroes with BonusStats), else null. */
+  mods: SkillModTotals | null;
 }
 
 export const castingSystem: SystemDef = {
@@ -129,7 +146,7 @@ export const castingSystem: SystemDef = {
         if (skill.shape === "pulse") {
           c.pulses++;
           if (c.pulses >= Math.max(1, skill.pulse?.count ?? 1)) c.fired = true;
-          area(f, f.px, f.py, skill.radius ?? 0);
+          area(f, f.px, f.py, radiusOf(f));
         } else {
           c.fired = true;
           fire(f);
@@ -181,10 +198,32 @@ function fireContext(
     tx,
     ty,
     target,
+    mods: castMods(world, ctx.registry, e, c.skill),
   };
 }
 
 function fire(f: Fire): void {
+  if (f.skill.telegraph) {
+    placeTelegraphs({
+      world: f.world,
+      ctx: f.ctx,
+      map: f.map,
+      depth: f.depth,
+      caster: f.caster,
+      team: f.team,
+      skillId: f.skillId,
+      skill: f.skill,
+      rank: f.rank,
+      px: f.px,
+      py: f.py,
+      tx: f.tx,
+      ty: f.ty,
+      aim: aimAngle(f),
+      reach: reachOf(f),
+      damage: () => rollDamage(f.world, f.ctx, f.caster, f.skill, f.rank, f.mods?.damagePct ?? 0),
+    });
+    return;
+  }
   switch (f.skill.shape) {
     case "melee":
       return fireMelee(f);
@@ -194,9 +233,9 @@ function fire(f: Fire): void {
       return fireProjectile(f);
     case "nova":
     case "pulse":
-      return area(f, f.px, f.py, f.skill.radius ?? 0);
+      return area(f, f.px, f.py, radiusOf(f));
     case "aoeTarget":
-      return area(f, f.tx, f.ty, f.skill.radius ?? 0);
+      return area(f, f.tx, f.ty, radiusOf(f));
     case "chain":
       return fireChain(f);
     case "dash":
@@ -210,33 +249,51 @@ function fire(f: Fire): void {
   }
 }
 
+/** The cast's damage packet (with the damagePct modifier). */
+function damageOf(f: Fire) {
+  return rollDamage(f.world, f.ctx, f.caster, f.skill, f.rank, f.mods?.damagePct ?? 0);
+}
+
+/** Statuses of the cast's hits (with the durationPct modifier). */
+function statusesOf(f: Fire) {
+  return hitStatuses(f.world, f.ctx.registry, f.caster, f.skill, f.rank, f.mods?.durationPct ?? 0);
+}
+
 /** Pushes one rolled hit of the cast's skill on `t`. */
 function hit(f: Fire, t: Entity, opts: { knockback?: number; damagePct?: number } = {}): void {
-  let d = rollDamage(f.world, f.ctx, f.caster, f.skill, f.rank);
+  let d = damageOf(f);
   if (opts.damagePct !== undefined) d = scaleDamage(d, opts.damagePct);
   pushHit(
     f.world,
     makeHit(f.caster, t, f.skillId, d, {
       canMiss: f.skill.canMiss,
       crit: rollCrit(f.ctx.rng, f.stats),
-      statuses: hitStatuses(f.world, f.ctx.registry, f.caster, f.skill, f.rank),
+      statuses: statusesOf(f),
       knockback: opts.knockback ?? 0,
     }),
   );
 }
 
+/** Melee reach (skill range, else the attack range); arc reach grows with radiusPct. */
 function reachOf(f: Fire): number {
-  return f.skill.range > 0 ? f.skill.range : (f.stats?.attackRange ?? 0);
+  const r = f.skill.range > 0 ? f.skill.range : (f.stats?.attackRange ?? 0);
+  return f.skill.shape === "arc" ? grow(r, f.mods?.radiusPct ?? 0) : r;
+}
+
+/** Area radius of nova / aoeTarget / pulse / self skills (radiusPct). */
+function radiusOf(f: Fire): number {
+  return grow(f.skill.radius ?? 0, f.mods?.radiusPct ?? 0);
 }
 
 function fireMelee(f: Fire): void {
   if (isBasic(f.skill) && f.stats && f.stats.attackProjectile !== "") {
     // Ranged weapon: the basic attack fires the weapon's projectile instead.
+    const count = 1 + (f.mods?.extraProjectiles ?? 0);
     return shoot(f, {
       speed: BASIC_PROJECTILE_SPEED,
-      count: 1,
-      spread: 0,
-      pierce: 0,
+      count,
+      spread: count > 1 ? 3 : 0,
+      pierce: f.mods?.extraPierce ?? 0,
       radius: BASIC_PROJECTILE_RADIUS,
       maxRange: Math.max(256, f.stats.attackRange),
       sprite: f.stats.attackProjectile,
@@ -301,7 +358,7 @@ function shoot(f: Fire, spec: ProjectileSpec): void {
     depth: f.depth,
     canMiss: f.skill.canMiss,
     spec,
-    damage: () => rollDamage(f.world, f.ctx, f.caster, f.skill, f.rank),
+    damage: () => damageOf(f),
     target: f.target,
   });
 }
@@ -309,16 +366,18 @@ function shoot(f: Fire, spec: ProjectileSpec): void {
 function fireProjectile(f: Fire): void {
   const pj = f.skill.projectile;
   if (!pj) return;
-  const extra = extraProjectiles(f.world, f.ctx.registry, f.caster);
+  const extra = f.mods
+    ? Math.max(0, f.mods.extraProjectiles)
+    : extraProjectiles(f.world, f.ctx.registry, f.caster);
   shoot(f, {
     speed: pj.speed,
     count: pj.count + extra,
     spread: pj.spread > 0 || pj.count + extra <= 1 ? pj.spread : 3,
-    pierce: pj.pierce,
+    pierce: pj.pierce + Math.max(0, f.mods?.extraPierce ?? 0),
     radius: pj.radius,
     maxRange: pj.maxRange > 0 ? pj.maxRange : Math.max(256, f.skill.range),
     sprite: pj.sprite,
-    explodeRadius: pj.explodeRadius ?? 0,
+    explodeRadius: grow(pj.explodeRadius ?? 0, f.mods?.radiusPct ?? 0),
   });
 }
 
@@ -350,13 +409,14 @@ function fireChain(f: Fire): void {
       ? f.target
       : nearestEnemy(f, f.tx, f.ty, ch.range, []);
   if (cur === 0) return;
-  const base = rollDamage(f.world, f.ctx, f.caster, f.skill, f.rank);
+  const base = damageOf(f);
   const crit = rollCrit(f.ctx.rng, f.stats);
-  const statuses = hitStatuses(f.world, f.ctx.registry, f.caster, f.skill, f.rank);
+  const statuses = statusesOf(f);
+  const bounces = ch.bounces + Math.max(0, f.mods?.extraBounces ?? 0);
   const done: Entity[] = [];
   const points: { x: number; y: number }[] = [{ x: f.px, y: f.py }];
   let keep = 100;
-  for (let i = 0; i <= ch.bounces && cur !== 0; i++) {
+  for (let i = 0; i <= bounces && cur !== 0; i++) {
     const d = keep === 100 ? base : scaleDamage(base, keep);
     pushHit(
       f.world,
@@ -366,7 +426,7 @@ function fireChain(f: Fire): void {
     const cp = f.world.read(cur, Pos);
     points.push({ x: cp.x, y: cp.y });
     keep = pct(keep, 100 - ch.falloffPct);
-    cur = i < ch.bounces ? nearestEnemy(f, cp.x, cp.y, ch.range, done) : 0;
+    cur = i < bounces ? nearestEnemy(f, cp.x, cp.y, ch.range, done) : 0;
   }
   emit(f.ctx, {
     type: "classic.effect",
@@ -458,7 +518,8 @@ function fireSummon(f: Fire): void {
   for (const req of busOf(w).spawns) {
     if (req.owner === f.caster && req.monster === sm.monster) alive++;
   }
-  const n = Math.min(sm.count, sm.max - alive);
+  const extra = Math.max(0, f.mods?.extraSummons ?? 0);
+  const n = Math.min(sm.count + extra, sm.max + extra - alive);
   if (n <= 0) return;
   let x = f.px;
   let y = f.py;
@@ -474,7 +535,7 @@ function fireSummon(f: Fire): void {
     }
   }
   const level = f.stats?.level ?? 1;
-  const until = sm.duration > 0 ? f.ctx.tick + sm.duration : 0;
+  const until = sm.duration > 0 ? f.ctx.tick + grow(sm.duration, f.mods?.durationPct ?? 0) : 0;
   const pack = w.get(f.caster, Monster)?.pack ?? 0;
   for (let i = 0; i < n; i++) {
     let sx = x;
@@ -509,6 +570,8 @@ function fireSelf(f: Fire): void {
   const w = f.world;
   const s = f.skill;
   const r1 = f.rank - 1;
+  const radius = s.radius ? radiusOf(f) : 0;
+  const durPct = f.mods?.durationPct ?? 0;
   if (s.heal) {
     const life = w.get(f.caster, Life);
     if (life) {
@@ -520,18 +583,20 @@ function fireSelf(f: Fire): void {
   }
   if (s.buff) {
     const power = s.buff.power + s.buff.powerPerRank * r1;
-    const allies = s.radius ? alliesInRadius(w, f.grid, f.px, f.py, s.radius, f.team, f.depth) : [];
+    const allies = radius ? alliesInRadius(w, f.grid, f.px, f.py, radius, f.team, f.depth) : [];
     if (!allies.includes(f.caster)) allies.unshift(f.caster);
+    const duration = grow(s.buff.duration, durPct);
     for (const a of allies) {
-      applyStatus(w, f.ctx, a, { id: s.buff.status, duration: s.buff.duration, power }, f.caster);
+      applyStatus(w, f.ctx, a, { id: s.buff.status, duration, power }, f.caster);
     }
   }
-  if (s.status && s.radius) {
+  if (s.status && radius) {
     const st = s.status;
     const power = st.power + st.powerPerRank * r1;
-    for (const t of enemiesInRadius(w, f.grid, f.px, f.py, s.radius, f.team, f.depth)) {
+    const duration = grow(st.duration, durPct);
+    for (const t of enemiesInRadius(w, f.grid, f.px, f.py, radius, f.team, f.depth)) {
       if (!rollPct(f.ctx.rng, st.chancePct)) continue;
-      applyStatus(w, f.ctx, t, { id: st.id, duration: st.duration, power }, f.caster);
+      applyStatus(w, f.ctx, t, { id: st.id, duration, power }, f.caster);
       wake(w, t, f.caster);
     }
   }
@@ -540,7 +605,7 @@ function fireSelf(f: Fire): void {
     effect: s.effect,
     x: f.px,
     y: f.py,
-    radius: s.radius ?? 0,
+    radius,
     points: [],
   });
 }

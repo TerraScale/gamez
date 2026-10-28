@@ -3,7 +3,7 @@
  * with every module loaded:
  * - town ping-pong livelocks (restock with too little gold, full stash),
  * - the progress watchdog (travel loops, kill droughts),
- * - bosses: hunted once ready, beaten by the auto hero, summons at 66/33 %,
+ * - bosses: hunted once ready, beaten by the auto hero, phases entered once,
  *   a rotating skill set (no stun lock), wounds kept across level re-entry,
  * - tank slams as every 4th attack, summoners only raise in reach,
  * - auto gear keeps the class's weapon style.
@@ -33,9 +33,9 @@ import type { ClassicEvent } from "../src/events.ts";
 import { mode, modules } from "../src/index.ts";
 import { placeNear } from "../src/monsters/spawn.ts";
 import { areaOf, dungeonOf, heroOf, RES, stashOf, type StashState } from "../src/resources.ts";
-import { bossPhase, monsterLevel, xpAtLevel } from "../src/rules.ts";
+import { monsterLevel, stashTabCount, xpAtLevel } from "../src/rules.ts";
 import { gridOf } from "../src/spatial.ts";
-import type { ItemInstance } from "../src/types.ts";
+import { KIND, type ItemInstance, type MonsterProto } from "../src/types.ts";
 import { getAreaMap } from "../src/world/maps.ts";
 
 const loaded = loadMode(mode, modules);
@@ -136,9 +136,16 @@ describe("town trips never livelock", () => {
     sim.step(400);
     const hero = heroOf(sim.world);
     const stash = stashOf(sim.world);
+    // Every tab full (wave A: stashTabs x stashSize).
     const filler: ItemInstance[] = [];
-    for (let i = stash.items.length; i < BALANCE.stashSize; i++)
-      filler.push(item(800_000 + i, "classic.item.iron_ring", "rare"));
+    const counts = Array.from({ length: stashTabCount(BALANCE) }, () => 0);
+    for (const it of stash.items) counts[it.tab ?? 0]!++;
+    counts.forEach((n, tab) => {
+      for (let i = n; i < BALANCE.stashSize; i++) {
+        const it = item(800_000 + tab * 1000 + i, "classic.item.iron_ring", "rare");
+        filler.push(tab > 0 ? { ...it, tab } : it);
+      }
+    });
     sim.world.setResource<StashState>(RES.stash, { ...stash, items: [...stash.items, ...filler] });
     const inv = sim.world.read(hero, Inventory);
     const bag: { x: number; y: number; item: ItemInstance }[] = [];
@@ -154,7 +161,11 @@ describe("town trips never livelock", () => {
     const ev = play(sim, 5 * MIN);
     expect(ofType(ev, "classic.auto.notice").some((e) => e.code === "stash_full")).toBe(true);
     expect(ofType(ev, "classic.vendor.sold").length).toBeGreaterThanOrEqual(30);
-    expect(ofType(ev, "classic.area.changed").length).toBeLessThanOrEqual(8);
+    // No bag-full ping-pong: one trip frees the bag (other area changes are normal play:
+    // stairs, retreats, a death).
+    const bagTrips = ofType(ev, "classic.auto.plan").filter((e) => e.note === "bag full");
+    expect(bagTrips.length).toBeLessThanOrEqual(2);
+    expect(ofType(ev, "classic.area.changed").length).toBeLessThanOrEqual(14);
     expect(sim.world.read(hero, Inventory).items.length).toBeLessThan(30);
     expect(heroKills(ev, hero)).toBeGreaterThan(10);
   }, 120_000);
@@ -209,36 +220,43 @@ describe("bosses", () => {
     for (let i = 1; i < ticks.length; i++) expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThan(200);
   }, 60_000);
 
-  it("summons once at 66 % and once at 33 % life, and slams on a cooldown", () => {
+  it("enters each boss phase once as its life drops (wave A phases replace the 66/33 % summons)", () => {
     const sim = start("classic.warrior", 2, "manual");
     const hero = readyHero(sim, 10, 4);
     sim.world.update(hero, Attributes, { vit: 500 });
     sim.step(2);
     sim.world.update(hero, Life, { hp: sim.world.read(hero, Life).max });
     const boss = liveBoss(sim);
+    const proto = sim.loaded.registry.get<MonsterProto>(
+      KIND.monster,
+      sim.world.read(boss, Monster).proto,
+    )!;
+    const phases = proto.phases ?? [];
+    expect(phases.length).toBeGreaterThanOrEqual(2);
     const bp = sim.world.read(boss, Pos);
     teleportHero(sim, hero, bp.x + 256, bp.y);
     const life = sim.world.read(boss, Life);
-    sim.world.update(boss, Life, { hp: Math.floor((life.max * 60) / 100) });
     sim.world.update(boss, Ai, { state: "chase", target: hero });
+    const entered = (ev: readonly ClassicEvent[]): number[] =>
+      ofType(ev, "classic.boss.phase")
+        .filter((e) => e.entity === boss)
+        .map((e) => e.phase);
 
-    const casts = (ev: readonly ClassicEvent[], skill: string): number =>
-      ofType(ev, "classic.cast").filter((e) => e.caster === boss && e.skill === skill).length;
+    // Just below the first threshold: exactly the first phase, once.
+    sim.world.update(boss, Life, { hp: Math.floor((life.max * (phases[0]!.atPct - 2)) / 100) });
     const first = play(sim, 200);
-    expect(casts(first, "classic.mskill.raise")).toBe(1);
+    expect(entered(first)).toEqual([1]);
     expect(sim.world.read(boss, Ai).count).toBe(1);
-    // No second summon while still above 33 %.
-    const quiet = play(sim, 200);
-    expect(casts(quiet, "classic.mskill.raise")).toBe(0);
-    // The slam has a cooldown: at most one every 120 ticks.
-    expect(casts([...first, ...quiet], "classic.mskill.boss_slam")).toBeLessThanOrEqual(4);
-    expect(casts([...first, ...quiet], "classic.mskill.claw")).toBeGreaterThan(0);
+    expect(entered(play(sim, 200))).toEqual([]);
 
-    sim.world.update(boss, Life, { hp: Math.floor((life.max * 30) / 100) });
+    // Below the second threshold: the second phase, once.
+    sim.world.update(boss, Life, { hp: Math.floor((life.max * (phases[1]!.atPct - 2)) / 100) });
     const second = play(sim, 200);
-    expect(casts(second, "classic.mskill.raise")).toBe(1);
+    expect(entered(second)).toEqual([2]);
     expect(sim.world.read(boss, Ai).count).toBe(2);
-    expect(bossPhase(sim.world.read(boss, Life).hp, life.max)).toBe(2);
+    // The boss keeps attacking through its phases (its basic attack and its skills).
+    const casts = ofType([...first, ...second], "classic.cast").filter((e) => e.caster === boss);
+    expect(casts.length).toBeGreaterThan(0);
   }, 60_000);
 
   it("keeps a boss's wounds when its level is left and entered again", () => {

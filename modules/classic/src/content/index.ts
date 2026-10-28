@@ -20,6 +20,13 @@ import { SKILLS } from "./skills.ts";
 import { STATUSES } from "./statuses.ts";
 import { THEMES } from "./themes.ts";
 import { UNIQUES } from "./uniques.ts";
+import { ACHIEVEMENTS } from "./achievements.ts";
+import { BOSS_SKILLS, BOSS_STATUSES } from "./boss.ts";
+import { ECONOMIES } from "./economy.ts";
+import { GEMS } from "./gems.ts";
+import { RIFTS } from "./rift.ts";
+import { SET_ITEMS, SETS } from "./sets.ts";
+import { TALENT_NODES, TALENT_TREES } from "./talents.ts";
 
 /** Defines every prototype of one table, in sorted id order. */
 function defineAll<T extends object>(reg: Registry, kind: string, table: Record<string, T>): void {
@@ -28,7 +35,7 @@ function defineAll<T extends object>(reg: Registry, kind: string, table: Record<
 
 export const classicContent = defineModule({
   id: MODULE.content,
-  version: "0.2.0",
+  version: "0.3.0",
   data(reg) {
     defineAll(reg, KIND.balance, BALANCES);
     defineAll(reg, KIND.class, CLASSES);
@@ -43,5 +50,17 @@ export const classicContent = defineModule({
     defineAll(reg, KIND.quest, QUESTS);
     defineAll(reg, KIND.theme, THEMES);
     defineAll(reg, KIND.names, NAMES);
+    // ---- wave A tables (docs/design/wave-A.md). A table may share a kind with
+    // another (gems are item bases, boss skills are skills); duplicate ids throw.
+    defineAll(reg, KIND.skill, BOSS_SKILLS);
+    defineAll(reg, KIND.status, BOSS_STATUSES);
+    defineAll(reg, KIND.itemBase, GEMS);
+    defineAll(reg, KIND.set, SETS);
+    defineAll(reg, KIND.setItem, SET_ITEMS);
+    defineAll(reg, KIND.talentTree, TALENT_TREES);
+    defineAll(reg, KIND.talent, TALENT_NODES);
+    defineAll(reg, KIND.economy, ECONOMIES);
+    defineAll(reg, KIND.rift, RIFTS);
+    defineAll(reg, KIND.achievement, ACHIEVEMENTS);
   },
 });

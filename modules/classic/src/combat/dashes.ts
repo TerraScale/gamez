@@ -3,6 +3,9 @@
  * toward (tx, ty), stopping at walls; on arrival (or timeout) the Dash ends,
  * damaging dashes hit their target (or the nearest enemy touching the
  * arrival point) with a one-tile knockback, and a classic.effect is emitted.
+ * Wave A: hero dashes apply the skill modifiers damagePct and durationPct;
+ * telegraphed dashes (line telegraphs, ./telegraphs.ts) already hit when the
+ * line fired, so their dash deals no arrival hit.
  */
 import type { SystemDef } from "@gamez/kernel";
 import { pushHit } from "../bus.ts";
@@ -16,6 +19,7 @@ import { getAreaMap, walkableSub } from "../world/maps.ts";
 import { canStand, inArea, isStunned } from "../core/units.ts";
 import {
   bodyRadius,
+  castMods,
   DASH_KNOCKBACK,
   enemiesInRadius,
   hitStatuses,
@@ -77,7 +81,7 @@ export const dashesSystem: SystemDef = {
       const skill = skillOf(ctx.registry, d.skill);
       if (!skill) continue;
       const team = teamOf(world, e) ?? "monster";
-      if (skill.weaponPct > 0 || skill.damage) {
+      if ((skill.weaponPct > 0 || skill.damage) && !skill.telegraph) {
         let t = 0;
         if (isEnemyOf(world, d.target, team, depth)) {
           const tp = world.read(d.target, Pos);
@@ -89,12 +93,13 @@ export const dashesSystem: SystemDef = {
         if (t === 0)
           t = enemiesInRadius(world, grid, p.x, p.y, r + MELEE_SLACK, team, depth)[0] ?? 0;
         if (t !== 0) {
+          const mods = castMods(world, ctx.registry, e, d.skill);
           pushHit(
             world,
-            makeHit(e, t, d.skill, rollDamage(world, ctx, e, skill, d.rank), {
+            makeHit(e, t, d.skill, rollDamage(world, ctx, e, skill, d.rank, mods?.damagePct ?? 0), {
               canMiss: false,
               crit: rollCrit(ctx.rng, world.get(e, CombatStats)),
-              statuses: hitStatuses(world, ctx.registry, e, skill, d.rank),
+              statuses: hitStatuses(world, ctx.registry, e, skill, d.rank, mods?.durationPct ?? 0),
               knockback: DASH_KNOCKBACK,
             }),
           );

@@ -6,9 +6,11 @@
  */
 import type { Entity, FrozenRegistry, Rng, SimContext, World } from "@gamez/kernel";
 import type { HitRequest, StatusApply } from "../bus.ts";
+import { skillModsOf } from "../bonus.ts";
 import {
   Ai,
   Body,
+  BonusStats,
   CombatStats,
   Dead,
   Faction,
@@ -22,7 +24,7 @@ import {
 } from "../components.ts";
 import { pct } from "../fixed.ts";
 import { heroOf } from "../resources.ts";
-import { effectiveRank, rollSkillDamage } from "../rules.ts";
+import { effectiveRank, rollSkillDamage, type SkillModTotals } from "../rules.ts";
 import type { SpatialGrid } from "../spatial.ts";
 import {
   ELEMENTS,
@@ -181,9 +183,51 @@ export function scaleDamage(d: Damage, percent: number): Damage {
 }
 
 /**
+ * Skill modifier totals of a cast (bonus.ts skillModsOf), or null when the
+ * caster has no BonusStats (monsters, summons, heroes without talents): the
+ * cheap path every monster cast takes.
+ */
+export function castMods(
+  world: World,
+  registry: FrozenRegistry,
+  caster: Entity,
+  skillId: string,
+): SkillModTotals | null {
+  if (caster === 0 || !world.exists(caster) || !world.has(caster, BonusStats)) return null;
+  return skillModsOf(world, registry, caster, skillId);
+}
+
+/** `v` grown by `percent` % (skill modifier fields; the result is never negative). */
+export function grow(v: number, percent: number): number {
+  return percent === 0 ? v : Math.max(0, pct(v, 100 + percent));
+}
+
+/**
+ * Element conversion for monster skills (wave A, local rule of
+ * classic.combat): a `users: "monster"` skill with weaponPct > 0 and a
+ * `damage` block whose min and max are both 0 deals its whole packet as
+ * `damage.element` instead of the monster's attack element (boss_meteor is
+ * fire and boss_frost_nova cold on any boss). Other skills are unchanged.
+ */
+export function convertsElement(skill: Readonly<SkillProto>): boolean {
+  const d = skill.damage;
+  return (
+    skill.users === "monster" &&
+    skill.weaponPct > 0 &&
+    d !== null &&
+    d.min === 0 &&
+    d.max === 0 &&
+    d.minPerRank === 0 &&
+    d.maxPerRank === 0
+  );
+}
+
+/**
  * One pre-defence damage packet of a skill for a caster:
  * rules.rollSkillDamage with the hero's attributes (monsters: none), plus
- * buff dmgPct for non-heroes (hero buffs are already in CombatStats).
+ * buff dmgPct for non-heroes (hero buffs are already in CombatStats), then
+ * the cast's skill modifier `damagePct` (heroes; 0 = none) and the monster
+ * element conversion (convertsElement).
  */
 export function rollDamage(
   world: World,
@@ -191,25 +235,37 @@ export function rollDamage(
   caster: Entity,
   skill: Readonly<SkillProto>,
   rank: number,
+  damagePct = 0,
 ): Damage {
   const stats = world.get(caster, CombatStats);
   if (!stats) return { phys: 0, fire: 0, cold: 0, lightning: 0, poison: 0 };
   const sheet = world.get(caster, HeroStats);
-  const d = rollSkillDamage(skill as SkillProto, rank, stats, sheet ? sheet.attrs : null, ctx.rng);
+  let d = rollSkillDamage(skill as SkillProto, rank, stats, sheet ? sheet.attrs : null, ctx.rng);
   if (!sheet) {
     const buff = buffStat(world, ctx.registry, caster, "dmgPct", ctx.tick);
-    if (buff !== 0) return scaleDamage(d, Math.max(0, 100 + buff));
+    if (buff !== 0) d = scaleDamage(d, Math.max(0, 100 + buff));
+    if (convertsElement(skill)) {
+      let total = 0;
+      for (const e of ELEMENTS) total += d[e];
+      d = { phys: 0, fire: 0, cold: 0, lightning: 0, poison: 0 };
+      d[skill.damage!.element] = total;
+    }
   }
+  if (damagePct !== 0) d = scaleDamage(d, Math.max(0, 100 + damagePct));
   return d;
 }
 
-/** Statuses a skill applies on hit (rank-scaled), plus monster mod on-hit statuses. */
+/**
+ * Statuses a skill applies on hit (rank-scaled; durations grown by the
+ * cast's skill modifier `durationPct`), plus monster mod on-hit statuses.
+ */
 export function hitStatuses(
   world: World,
   registry: FrozenRegistry,
   caster: Entity,
   skill: Readonly<SkillProto> | undefined,
   rank: number,
+  durationPct = 0,
 ): StatusApply[] {
   const out: StatusApply[] = [];
   const s = skill?.status;
@@ -217,7 +273,7 @@ export function hitStatuses(
     out.push({
       id: s.id,
       chancePct: s.chancePct,
-      duration: s.duration,
+      duration: grow(s.duration, durationPct),
       power: s.power + s.powerPerRank * Math.max(0, rank - 1),
     });
   }
@@ -227,6 +283,16 @@ export function hitStatuses(
     if (m?.onHitStatus) out.push({ ...m.onHitStatus });
   }
   return out;
+}
+
+/** durationPct of `owner`'s modifiers for `skillId` (0 without BonusStats); for delayed hits. */
+export function durationPctOf(
+  world: World,
+  registry: FrozenRegistry,
+  owner: Entity,
+  skillId: string,
+): number {
+  return castMods(world, registry, owner, skillId)?.durationPct ?? 0;
 }
 
 export function makeHit(

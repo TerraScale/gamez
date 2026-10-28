@@ -34,6 +34,9 @@ const DEFAULT_EFFECT_MS: Record<EffectKind, number> = {
   portal: 700,
   aoe: 600,
   slash: 400,
+  telegraph: 1500,
+  aura: 1200,
+  burst: 600,
 };
 
 /** Effect lifetime: the spec's value clamped to 150..3000 ms, or the kind's default. */
@@ -138,4 +141,122 @@ export function lightLayout(
   push(0, top, left, bottom - top);
   push(right, top, sw - right, bottom - top);
   return { scale, rects };
+}
+
+/** Largest frame step used by the simulation and visuals (ms). Matches the classic FixedLoop clamp (MAX_FRAME_MS); slow frames still lose time past this. */
+export const FRAME_DELTA_MAX_MS = 1000;
+
+/**
+ * Wall-clock frame step (ms) between two ticker callbacks. Pixi's deltaMS is
+ * clamped at 100 ms, which makes a slow frame lose sim time (Full Idle x8).
+ * `lastMs` and `nowMs` are performance.now() readings; `fallbackMs` (Pixi's
+ * deltaMS) is used for the first frame. Clamped to 0..FRAME_DELTA_MAX_MS.
+ */
+export function frameDeltaMs(nowMs: number, lastMs: number, fallbackMs: number): number {
+  const fallback = Number.isFinite(fallbackMs) && fallbackMs > 0 ? fallbackMs : 0;
+  if (!(lastMs > 0) || !Number.isFinite(nowMs)) return Math.min(FRAME_DELTA_MAX_MS, fallback);
+  const dt = nowMs - lastMs;
+  if (!(dt > 0)) return 0;
+  return Math.min(FRAME_DELTA_MAX_MS, dt);
+}
+
+/** Largest camera shake offset (px) at full strength. */
+export const SHAKE_MAX_PX = 14;
+
+/**
+ * Camera offset (px) of a shake that decays over `durationMs`. Quadratic
+ * decay, a fast oscillation whose direction turns with elapsed time, and
+ * zero once the duration has passed. Pure and deterministic.
+ */
+export function shakeOffset(
+  strength: number,
+  durationMs: number,
+  elapsedMs: number,
+): { dx: number; dy: number } {
+  if (!(strength > 0) || !(durationMs > 0) || !(elapsedMs >= 0) || elapsedMs >= durationMs) {
+    return { dx: 0, dy: 0 };
+  }
+  const left = 1 - elapsedMs / durationMs;
+  const amp = Math.min(SHAKE_MAX_PX, strength) * left * left;
+  const phase = elapsedMs * 0.09;
+  return { dx: amp * Math.cos(phase * 1.3), dy: amp * Math.sin(phase) };
+}
+
+/** A 5x4 colour matrix (row-major), the shape ColorMatrixFilter takes. */
+export type FlashMatrix = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
+
+/**
+ * ColorMatrixFilter matrix (5x4, row-major) that mixes an entity towards
+ * `colour` by `k` (0 = untouched, 1 = solid colour) and keeps its alpha. Used
+ * for the white hit flash in place of the old red multiply tint.
+ */
+export function flashMatrix(colour: number, k: number): FlashMatrix {
+  const t = clamp01(k);
+  const r = (((colour >> 16) & 0xff) / 255) * t;
+  const g = (((colour >> 8) & 0xff) / 255) * t;
+  const b = ((colour & 0xff) / 255) * t;
+  const keep = 1 - t;
+  return [keep, 0, 0, 0, r, 0, keep, 0, 0, g, 0, 0, keep, 0, b, 0, 0, 0, 1, 0];
+}
+
+/**
+ * Hit flash mix (0..1) of the white flash for a flash strength 0..1: it peaks
+ * at 0.7 and is zero when there is no flash.
+ */
+export const FLASH_PEAK = 0.7;
+export function flashMix(flash: number): number {
+  return clamp01(flash) * FLASH_PEAK;
+}
+
+/** Procedural and burst art uses 64 px per tile of radius (wave-A.md §10.1). */
+export const BURST_ART_PX_PER_TILE = 64;
+
+/**
+ * Scale of a `<sprite>.burst` animation for an effect of `radiusTiles` (a
+ * radius of one tile is half a tile width on screen, tileWidth / 2 px).
+ */
+export function burstScale(radiusTiles: number, tileWidthPx: number): number {
+  const r = Number.isFinite(radiusTiles) && radiusTiles > 0 ? radiusTiles : 1;
+  return (r * (tileWidthPx / 2)) / BURST_ART_PX_PER_TILE;
+}
+
+/** Suffix of the one-shot burst animation of an effect sprite (`<sprite>.burst`). */
+export const BURST_SUFFIX = ".burst";
+
+/**
+ * Manifest key of an effect's burst animation, or null for an effect without a
+ * sprite. The caller checks the manifest: a missing key means procedural art only.
+ */
+export function burstKey(sprite: string | undefined): string | null {
+  return sprite ? `${sprite}${BURST_SUFFIX}` : null;
+}
+
+/** The burst key of a sprite when `has` (the manifest's exact animation lookup) knows it, else null. */
+export function burstKeyIn(
+  sprite: string | undefined,
+  has: (key: string) => boolean,
+): string | null {
+  const key = burstKey(sprite);
+  return key !== null && has(key) ? key : null;
 }

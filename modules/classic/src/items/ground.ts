@@ -7,18 +7,13 @@ import { ERR, fail, OK, PICKUP_RANGE, type OpResult } from "../actions.ts";
 import { AreaTag, Belt, Inventory, Loot, Pos, Wallet } from "../components.ts";
 import { emit } from "../events.ts";
 import { pct, within } from "../fixed.ts";
-import { currentDepth, RES, type RunStats } from "../resources.ts";
-import { anyHero, balanceOf, baseOf, heroFind, liveHero } from "./common.ts";
+import { currentDepth } from "../resources.ts";
+import { addRunStat, anyHero, balanceOf, baseOf, heroFind, liveHero, noteFound } from "./common.ts";
 import { beltAccept } from "./belt.ts";
 import { fitsAt, placeItem, removeItem, sortEntries, type GridBag } from "./inventory.ts";
 import { rollItem } from "./generate.ts";
-import { stashOf } from "../resources.ts";
-import type { ItemInstance } from "../types.ts";
-
-function addRunStat(world: World, key: "goldEarned" | "itemsFound", n: number): void {
-  const stats = world.getResource<RunStats>(RES.stats);
-  if (stats) stats[key] += n;
-}
+import { stashAdd } from "./stash.ts";
+import type { ItemCategory, ItemInstance, ItemRarity } from "../types.ts";
 
 function bagOf(world: World, hero: Entity): GridBag | undefined {
   return world.get(hero, Inventory);
@@ -88,6 +83,7 @@ export function execPickup(world: World, ctx: SimContext, target: Entity): OpRes
   }
   world.update(hero, Inventory, { items: next.items });
   addRunStat(world, "itemsFound", 1);
+  noteFound(world, item);
   emit(ctx, {
     type: "classic.loot.picked",
     kind: "item",
@@ -176,8 +172,9 @@ export function execGrantGold(
 }
 
 /**
- * Rolls `count` items (rarity at least minRarity) into the stash or the bag.
- * Items that do not fit are sold at 10% of their value.
+ * Rolls `count` items (rarity at least minRarity, optionally one category)
+ * into the stash (first tab with room) or the bag. Items that do not fit are
+ * sold at 10% of their value.
  */
 export function execGrantItems(
   world: World,
@@ -185,7 +182,8 @@ export function execGrantItems(
   o: {
     count: number;
     ilvl: number;
-    minRarity: "normal" | "magic" | "rare" | "unique";
+    minRarity: ItemRarity;
+    category?: ItemCategory;
     toStash: boolean;
     reason: string;
   },
@@ -196,19 +194,18 @@ export function execGrantItems(
   const h = anyHero(world);
   const hero = "hero" in h ? h.hero : 0;
   const { magicFind } = heroFind(world);
-  const stashSize = balanceOf(ctx.registry).stashSize;
   for (let i = 0; i < o.count; i++) {
     const item: ItemInstance | null = rollItem(world, ctx, {
       ilvl: o.ilvl,
       rarity: null,
       magicFind,
       minRarity: o.minRarity,
+      ...(o.category !== undefined ? { category: o.category } : {}),
     });
     if (!item) continue;
     if (o.toStash) {
-      const stash = stashOf(world);
-      if (stash.items.length < stashSize) {
-        world.setResource(RES.stash, { items: [...stash.items, item] });
+      if (stashAdd(world, ctx.registry, item)) {
+        noteFound(world, item);
         emit(ctx, {
           type: "classic.loot.picked",
           kind: "item",
@@ -223,6 +220,7 @@ export function execGrantItems(
       const next = bag ? placeItem(ctx.registry, bag, item) : null;
       if (next) {
         world.update(hero, Inventory, { items: next.items });
+        noteFound(world, item);
         emit(ctx, {
           type: "classic.loot.picked",
           kind: "item",

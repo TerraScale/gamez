@@ -1,6 +1,7 @@
 /**
  * Equipment ops (OWNER: T5, design §11.4): equip, unequip and the
- * two-handed / ring / requirement rules. Shared by the actions and the
+ * two-handed / ring / requirement rules; classic.set.bonus on set threshold
+ * changes (wave A). Shared by the actions and the
  * command system.
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
@@ -10,6 +11,7 @@ import { emit } from "../events.ts";
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, type ItemBaseProto } from "../types.ts";
 import { baseOf, liveHero, heroAttrs } from "./common.ts";
 import { placeItem, type GridBag } from "./inventory.ts";
+import { emitSetChanges, setSnapshot } from "./sets.ts";
 
 export function emptyEquipment(): Record<EquipSlot, ItemInstance | null> {
   const out = {} as Record<EquipSlot, ItemInstance | null>;
@@ -95,6 +97,7 @@ export function execEquip(
     grid = next;
   }
 
+  const sets = setSnapshot(world, reg, hero);
   const nextEq = { ...eq };
   nextEq[target] = item;
   if (twoHanded) nextEq.offhand = null;
@@ -104,6 +107,7 @@ export function execEquip(
   for (const d of displaced)
     emit(ctx, { type: "classic.item.unequipped", uid: d.item.uid, slot: d.slot });
   emit(ctx, { type: "classic.item.equipped", uid, slot: target, name: item.name });
+  emitSetChanges(world, ctx, hero, sets);
   return OK;
 }
 
@@ -119,10 +123,12 @@ export function execUnequip(world: World, ctx: SimContext, slot: EquipSlot): OpR
   if (!item) return fail(ERR.empty, `nothing is equipped in the ${slot} slot`);
   const next = placeItem(ctx.registry, bag, item);
   if (!next) return fail(ERR.bagFull, "there is no room in the bag");
+  const sets = setSnapshot(world, ctx.registry, hero);
   const nextEq = { ...eq };
   nextEq[slot] = null;
   world.update(hero, Inventory, { items: next.items });
   world.update(hero, Equipment, nextEq);
   emit(ctx, { type: "classic.item.unequipped", uid: item.uid, slot });
+  emitSetChanges(world, ctx, hero, sets);
   return OK;
 }

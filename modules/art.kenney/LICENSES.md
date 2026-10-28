@@ -50,3 +50,38 @@ Source PNGs are copied unchanged into `src-art/`: the Phase-0 files in the root 
 `unit.monster.gnawling` (a quadruped) and `unit.monster.webskitter` (a spider) are drawn in `scripts/build.ts` from
 scratch, not from Kenney frames. Their idle, walk, attack, cast, hit and death clips are generated the same way as
 the other units. Licence: gamez procedural (drawn by scripts/build.ts), CC0-1.0.
+
+## Wave A additions (all procedural, drawn in `scripts/build.ts`)
+
+No new external asset was used in wave A. The Kenney Particle Pack page
+(https://kenney.nl/assets/particle-pack) was checked, but its download link is
+gated behind JavaScript and no archive could be fetched without it, so every
+particle texture below is drawn in code instead. Nothing was downloaded to
+`/tmp/gamez-downloads/waveA-art/` beyond that page, and nothing was executed.
+All additions are original designs under CC0-1.0 (gamez procedural, drawn by
+`scripts/build.ts`).
+
+- **Units.** Every unit now has `cast` and `hit` clips for all 8 facings (NPCs included),
+  and NPCs have the full clip set (their attack and death clips are never played in
+  game). `hit` is a 3-frame recoil and squash under a brief white flash. Classes
+  and NPCs are told apart by drawn silhouettes on the shared Kenney body: warrior (plate,
+  great helm, shield, sword), rogue (green cloak, hood, bow, quiver), sorcerer (robe, hat,
+  staff), healer (robe, staff), smith (apron, hammer, beard), alchemist (hat, satchel,
+  flask), junk buyer (hunched, sack), Captain Hale (plate, red cloak, gold pauldrons) and
+  the new `unit.npc.gambler` (tall hat, long dark coat, dice).
+- **Monsters.** `unit.monster.guardian_maw` (a huge toothed brute with a maw across its
+  chest) and `unit.monster.guardian_choir` (a hooded ember robe with two companions
+  drifting either side, ghost-faded legs), each with every clip and facing like the bosses.
+- **Effects.** Every `EFFECT_TABLE` id and the wave A effects have a one-shot
+  `<id>.burst` animation (6 to 10 frames, 16 to 24 fps, centre anchor, 128 px frames
+  where 64 px is one tile of radius) and a still sprite `<id>` (the burst's middle frame).
+  The projectile stills `fx.piercing_shot`, `fx.night_volley` and `fx.glacial_spike`
+  point right like `fx.arrow`.
+- **Particles.** `fx.particle.<style>` for spark, ember, frost, poison, arcane, holy,
+  shadow, blood, dust and gold (24 px soft dots with a core and a halo).
+- **Props and loot.** `prop.rift.obelisk` (a tall dark obelisk with a violet core),
+  `fx.rift.exit` (a looping violet-teal portal, 8 frames) and `loot.item.gem` (a faceted
+  cyan gem).
+- **Palette trim.** Visible channels are rounded to multiples of 4 (at most 2 levels off)
+  and fully transparent pixels get no colour; alpha in burst frames has 24 levels. This keeps
+  the atlas PNGs about 15 % above the pre-wave-A size (limit 20 %).

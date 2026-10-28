@@ -127,7 +127,7 @@ describe("area transitions", () => {
       .query(Interactable)
       .map((e) => sim.world.read(e, Interactable).kind)
       .sort();
-    expect(kinds).toEqual(["stairsDown", "stash", "waypoint"]);
+    expect(kinds).toEqual(["riftObelisk", "stairsDown", "stash", "waypoint"]);
     expect(exploredPct(exploreAreaOf(sim.world, 0)!)).toBe(100);
   });
 
@@ -441,6 +441,6 @@ describe("determinism", () => {
   });
 
   it("pins the hash after the fixed script", () => {
-    expect(runScript(7).hash).toBe("11b047066179571d");
+    expect(runScript(7).hash).toBe("b73fad0076edf2c6");
   });
 });

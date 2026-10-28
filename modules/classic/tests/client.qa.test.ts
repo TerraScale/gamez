@@ -38,6 +38,8 @@ describe("readDebugParams", () => {
       classId: "classic.rogue",
       autostart: true,
       name: "Ann",
+      cheats: false,
+      fresh: false,
     });
     expect(readDebugParams("")).toEqual({
       debug: false,
@@ -45,6 +47,8 @@ describe("readDebugParams", () => {
       classId: null,
       autostart: false,
       name: null,
+      cheats: false,
+      fresh: false,
     });
   });
 

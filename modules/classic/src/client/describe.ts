@@ -5,13 +5,14 @@
  * exhaustive over StatId, so a new stat cannot ship without a line.
  */
 import type { FrozenRegistry } from "@gamez/kernel";
-import { skillManaCost } from "../rules.ts";
+import { gemMods, isBroken, skillManaCost, upgradeMods } from "../rules.ts";
 import {
   KIND,
   type ItemBaseProto,
   type ItemInstance,
   type SkillProto,
   type StatId,
+  type StatMod,
 } from "../types.ts";
 import { fmtDuration } from "./hud/format.ts";
 
@@ -155,18 +156,76 @@ export function skillTooltip(skill: SkillProto, rank: number): string[] {
   return [...lines, ...skillDetailLines(skill, r)];
 }
 
-/** Stats an item grants in total (implicits plus rolled mods), for comparisons. */
+/**
+ * Stats an item grants in total (implicits, rolled mods and, when `registry` is
+ * given, smith upgrade and socketed gem mods), for comparisons. A broken item
+ * grants nothing (rules.isBroken). Set bonuses are not part of one item.
+ */
 export function statTotals(
   item: ItemInstance,
   base: ItemBaseProto | undefined,
+  registry?: FrozenRegistry,
 ): Partial<Record<StatId, number>> {
   const out: Partial<Record<StatId, number>> = {};
+  if (isBroken(item)) return out;
   const add = (stat: StatId, value: number): void => {
     out[stat] = (out[stat] ?? 0) + value;
   };
   for (const m of base?.implicit ?? []) add(m.stat, m.value);
   for (const m of item.mods) add(m.stat, m.value);
+  if (base && (item.upgrade ?? 0) > 0) {
+    for (const m of upgradeMods(base, item.upgrade ?? 0)) add(m.stat, m.value);
+  }
+  if (base && registry && item.sockets) {
+    for (const m of gemMods(registry, base, item.sockets)) add(m.stat, m.value);
+  }
   return out;
+}
+
+/** Player text of a list of stat mods, one line each ("+12 to Life"). */
+export function modLines(mods: readonly StatMod[]): string[] {
+  return mods.map((m) => statText(m.stat, m.value));
+}
+
+/** Lines a socketed gem adds to a host item of `group` (empty when the gem has no mods there). */
+export function gemLines(
+  gem: ItemBaseProto["gem"],
+  group: "weapon" | "armor" | "jewelry" | null,
+): string[] {
+  if (!gem || group === null) return [];
+  return modLines(gem[group]);
+}
+
+/** Lines of the smith upgrade bonus at `level` ("+6% Damage (upgrade +1)"); empty at level 0. */
+export function upgradeLines(base: ItemBaseProto, level: number): string[] {
+  if (level <= 0) return [];
+  return modLines(upgradeMods(base, level)).map((t) => `${t} (upgrade +${level})`);
+}
+
+/** Lines of one set bonus ("+10 to Strength", "+5% Critical Hit Chance"). */
+export function setBonusLines(mods: readonly StatMod[]): string[] {
+  return modLines(mods);
+}
+
+/**
+ * True when the item's name already shows its smith level ("Fiery Dagger +1"),
+ * so the "+L" badge is not repeated next to it.
+ */
+export function nameShowsUpgrade(name: string, level: number): boolean {
+  return level > 0 && name.endsWith(` +${level}`);
+}
+
+/** Gem grade word order used by gem names ("Chipped Ruby" = tier 1 .. "Radiant Ruby" = tier 5). */
+export const GEM_TIER_WORDS = ["Chipped", "Flawed", "Clear", "Flawless", "Radiant"] as const;
+
+/**
+ * Tier (1..5) of a gem from its name's first word, 0 when the name has no
+ * grade word. Used by the inventory cell badge (ItemView has no gem tier field).
+ */
+export function gemTierOf(name: string): number {
+  const first = name.split(" ")[0] ?? "";
+  const i = GEM_TIER_WORDS.indexOf(first as (typeof GEM_TIER_WORDS)[number]);
+  return i < 0 ? 0 : i + 1;
 }
 
 /**

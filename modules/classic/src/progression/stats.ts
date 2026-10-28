@@ -19,7 +19,8 @@ import {
 } from "../components.ts";
 import { pct } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
-import { addItemStats, type StatTotals, stat } from "../rules.ts";
+import { addItemStats, isBroken, type StatTotals, stat } from "../rules.ts";
+import { bonusMods } from "../bonus.ts";
 import { heroOf } from "../resources.ts";
 import {
   ATTRS,
@@ -33,6 +34,7 @@ import {
   type EquipSlot,
   type ItemBaseProto,
   type ItemInstance,
+  type StatMod,
   type StatusProto,
 } from "../types.ts";
 import { put } from "./util.ts";
@@ -47,6 +49,8 @@ export interface HeroStatsInput {
   equipment: Partial<Record<EquipSlot, ItemInstance | null>> | null;
   /** Active status ids with their power (statuses with `mods` add mods x power). */
   buffs: { id: string; power: number }[];
+  /** Wave A: BonusStats mods (talents...). Optional: absent = none. */
+  bonus?: StatMod[];
 }
 
 export interface HeroStatsResult {
@@ -71,11 +75,17 @@ export function computeHeroStats(registry: FrozenRegistry, input: HeroStatsInput
   const cls = registry.require<ClassProto>(KIND.class, input.classId);
   const bal = registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
   const level = Math.max(1, input.level);
-  const eq = input.equipment ?? {};
+  // Broken items (wave A durability) count as not equipped: no stats, no base damage or armor.
+  const eq: Partial<Record<EquipSlot, ItemInstance | null>> = {};
+  for (const s of EQUIP_SLOTS) {
+    const it = input.equipment?.[s] ?? null;
+    eq[s] = it && !isBroken(it) ? it : null;
+  }
   const equipped: (ItemInstance | null)[] = EQUIP_SLOTS.map((s) => eq[s] ?? null);
 
-  // T: items (implicits + rolled mods) plus buff mods (StatusProto.mods x power).
+  // T: items (implicits + rolled mods) plus buff mods (StatusProto.mods x power) plus bonus sources.
   const T: StatTotals = addItemStats(registry, equipped);
+  for (const m of input.bonus ?? []) T[m.stat] = (T[m.stat] ?? 0) + m.value;
   for (const b of input.buffs) {
     const st = registry.get<StatusProto>(KIND.status, b.id);
     for (const m of st?.mods ?? []) T[m.stat] = (T[m.stat] ?? 0) + m.perPower * b.power;
@@ -185,6 +195,7 @@ export function heroStatsInput(world: World, hero: Entity, tick: number): HeroSt
     base: { str: base.str, dex: base.dex, mag: base.mag, vit: base.vit },
     equipment,
     buffs: list.filter((s) => s.until > tick).map((s) => ({ id: s.id, power: s.power })),
+    bonus: bonusMods(world, hero),
   };
 }
 

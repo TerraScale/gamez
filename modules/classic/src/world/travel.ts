@@ -35,6 +35,7 @@ import { noteManual } from "../control.ts";
 import { emit } from "../events.ts";
 import { dist2, tileCenter, within } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
+import { isRiftDepth } from "../rules.ts";
 import { currentDepth, dungeonOf, heroOf } from "../resources.ts";
 import { getMap } from "./maps.ts";
 import { closePortal, spawnInteractableSub } from "./transition.ts";
@@ -90,6 +91,7 @@ export function execTownPortal(world: World, ctx: SimContext): OpResult {
   const hero = heroOf(world);
   const depth = currentDepth(world);
   if (depth === TOWN) return fail(ERR.inTown, "the town portal opens from the dungeon");
+  if (isRiftDepth(depth)) return fail(ERR.inRift, "no town portal inside a rift");
   const supplies = world.get(hero, Supplies);
   if (!supplies || supplies.tpScrolls < 1) return fail(ERR.noScroll, "no town portal scroll");
 
@@ -121,6 +123,7 @@ export function execUsePortal(world: World): OpResult {
   const ready = checkHero(world);
   if (!ready.ok) return ready;
   const hero = heroOf(world);
+  if (isRiftDepth(currentDepth(world))) return fail(ERR.inRift, "no portals inside a rift");
   const portal = dungeonOf(world).portal;
   if (!portal) return fail(ERR.noPortal, "no town portal is open");
   if (nearestInReach(world, hero, PORTALS) === 0) {
@@ -146,6 +149,7 @@ export function execStairs(world: World, target: Entity): OpResult {
   }
   const it = world.read(target, Interactable);
   if (!STAIRS.includes(it.kind)) return fail(ERR.badTarget, "that is not a staircase");
+  if (isRiftDepth(currentDepth(world))) return fail(ERR.inRift, "no stairs inside a rift");
   if (world.read(target, AreaTag).depth !== currentDepth(world)) {
     return fail(ERR.badTarget, "that staircase is in another area");
   }
@@ -164,6 +168,7 @@ export function execWaypoint(world: World, depth: number): OpResult {
   const ready = checkHero(world);
   if (!ready.ok) return ready;
   const hero = heroOf(world);
+  if (isRiftDepth(currentDepth(world))) return fail(ERR.inRift, "no waypoints inside a rift");
   if (!dungeonOf(world).waypoints.includes(depth)) {
     return fail(ERR.noWaypoint, `waypoint ${depth} is not unlocked`);
   }

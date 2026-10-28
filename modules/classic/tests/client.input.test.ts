@@ -261,3 +261,18 @@ describe("PointerInput", () => {
     expect(input.hovered).toBe(0);
   });
 });
+
+describe("wave A panel keys", () => {
+  it("maps N to talents and Y to achievements (any letter case)", () => {
+    expect(keyCommand("n")).toEqual({ kind: "panel", panel: "talents" });
+    expect(keyCommand("N")).toEqual({ kind: "panel", panel: "talents" });
+    expect(keyCommand("y")).toEqual({ kind: "panel", panel: "achievements" });
+    expect(keyCommand("Y")).toEqual({ kind: "panel", panel: "achievements" });
+  });
+
+  it("keeps the older bindings (no clash with N or Y)", () => {
+    expect(keyCommand("c")).toEqual({ kind: "panel", panel: "character" });
+    expect(keyCommand("l")).toEqual({ kind: "panel", panel: "quests" });
+    expect(keyCommand("Tab")).toEqual({ kind: "automap" });
+  });
+});

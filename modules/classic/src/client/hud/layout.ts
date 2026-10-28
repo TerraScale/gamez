@@ -29,6 +29,12 @@ export const PANEL_IDS: readonly PanelId[] = [
   "settings",
   "log",
   "map",
+  "talents",
+  "craft",
+  "gamble",
+  "rift",
+  "achievements",
+  "lootFilter",
 ];
 
 export function panelSlot(id: PanelId): string {
@@ -153,6 +159,21 @@ export const BOTTOM_BAR_HEIGHT: Record<HudLayout, number> = {
 /** Toasts: at most this many visible, at this width. */
 export const TOAST_MAX: Record<HudLayout, number> = { desktop: 3, compact: 2, short: 2 };
 
+/** Width of the desktop toast column (its right edge sits HUD_EDGE from the viewport edge). */
+export const TOAST_WIDTH = 280;
+
+/**
+ * Right inset of the panel row. Desktop: the toast column plus the gap on both sides, so an open
+ * panel always ends left of the toasts and never covers a toast or a panel button under it
+ * (QA major 2: a toast covered the junk buyer's first Sell button). Phones show full-screen
+ * sheets and hide toasts while one is open, so they reserve nothing.
+ */
+export const PANEL_ROW_RIGHT: Record<HudLayout, number> = {
+  desktop: TOAST_WIDTH + HUD_EDGE * 2,
+  compact: 0,
+  short: 0,
+};
+
 export interface ToastLayout {
   visible: boolean;
   max: number;
@@ -180,7 +201,7 @@ export function toastLayout(
     return {
       visible: true,
       max: TOAST_MAX.desktop,
-      style: { position: "absolute", top, right: HUD_EDGE, width: 280 },
+      style: { position: "absolute", top, right: HUD_EDGE, width: TOAST_WIDTH },
     };
   }
   if (panelOpen) return { visible: false, max: 0, style: {} };
@@ -239,10 +260,48 @@ export function bottomOrderFor(layout: HudLayout, id: BottomId): number {
  * the measured bottom bar. Phone portrait: just under the top region, centred,
  * so it never covers the toast column, the Log row or the belt and skill bar.
  */
-export function errorFlashStyle(layout: HudLayout, insets: HudInsets): CSSProperties {
+export function errorFlashStyle(
+  layout: HudLayout,
+  insets: HudInsets,
+  panelOpen = false,
+): CSSProperties {
+  // A phone sheet covers the top region and its header, so the flash goes to the sheet's foot.
+  if (layout !== "desktop" && panelOpen) return { bottom: HUD_EDGE * 2 };
   if (layout === "compact") {
     return { top: insets.top + HUD_EDGE * 2 };
   }
   if (layout === "desktop") return { bottom: 190 };
   return { bottom: bottomBarInset("short", insets.bottom) + 30 };
+}
+
+/**
+ * Onboarding tip card (overlay). Above the measured bottom bar, never over a panel (hidden while
+ * any panel is open), never over the phone toast column (hidden while toasts show), and clear of
+ * the phone's left column. Null = hidden.
+ */
+export function tipLayout(
+  layout: HudLayout,
+  measuredBottom: number,
+  panelOpen: boolean,
+  toastsShown: boolean,
+): CSSProperties | null {
+  if (panelOpen) return null;
+  const bottom = bottomBarInset(layout, measuredBottom) + HUD_EDGE + 4;
+  if (layout === "desktop") {
+    return {
+      position: "absolute",
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: 360,
+      maxWidth: `calc(100% - ${HUD_EDGE * 4}px)`,
+      bottom,
+    };
+  }
+  if (toastsShown) return null;
+  return {
+    position: "absolute",
+    left: LEFT_WIDTH[layout] + HUD_EDGE * 2,
+    right: HUD_EDGE,
+    bottom,
+  };
 }

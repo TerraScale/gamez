@@ -151,6 +151,8 @@ export function PanelFrame({
         display: "flex",
         flexDirection: "column",
         width: compact ? "100%" : width,
+        // minWidth 0 lets a desktop panel shrink inside the row that stops at the toast column.
+        minWidth: 0,
         maxWidth: compact ? "100%" : "100%",
         height: compact ? "100%" : undefined,
         // Desktop: the PanelHost box already stops above the bottom bar, so the panel fills it.

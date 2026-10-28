@@ -6,6 +6,9 @@
 import type { EntityAction, EntityKind, Facing, ResolutionKind } from "@gamez/ui-host";
 import { appearanceCandidates } from "./appearance.ts";
 
+/** How an effect was drawn (effectsSeen values). */
+export type EffectArtKind = "anim" | "sprite" | "procedural";
+
 /** Frames kept for the frame-time window. */
 const WINDOW = 240;
 
@@ -75,7 +78,7 @@ export class DebugTracker {
   floatsShown = 0;
   /** "appearance|action|facing" -> "key (kind)". */
   readonly anims = new Map<string, string>();
-  /** "kind|sprite" -> "sprite" | "procedural". */
+  /** "kind|sprite" -> "anim" | "sprite" | "procedural". */
   readonly effects = new Map<string, string>();
   /** Entity appearances that did not resolve to their own art. */
   readonly entityMissing = new Set<string>();
@@ -112,9 +115,15 @@ export class DebugTracker {
     }
   }
 
-  effect(kind: string, sprite: string | undefined, hasSprite: boolean): void {
+  /**
+   * Records one effect. `art` is how it was drawn: "anim" (its `.burst`
+   * animation), "sprite" (a static sprite) or "procedural"; a boolean means
+   * sprite (true) or procedural (false).
+   */
+  effect(kind: string, sprite: string | undefined, art: boolean | EffectArtKind): void {
     this.effectsPlayed++;
-    this.effects.set(`${kind}|${sprite ?? ""}`, hasSprite ? "sprite" : "procedural");
+    const v: EffectArtKind = art === true ? "sprite" : art === false ? "procedural" : art;
+    this.effects.set(`${kind}|${sprite ?? ""}`, v);
   }
 }
 

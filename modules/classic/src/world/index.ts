@@ -18,6 +18,10 @@
  *   classic.useStairs, classic.useWaypoint.
  * - Generation (./generate.ts, ./town.ts, ./dungeon.ts) and population
  *   planning (./populate.ts) are pure functions of their inputs.
+ * - Wave A: rift levels (./riftMap.ts, RiftProto shape, no stairs), the town
+ *   Rift obelisk (./riftObelisk.ts, placed by setup and lazily by the
+ *   transition system), depth 16 without a staircase down, and rift guards on
+ *   the travel ops (no town portal, waypoint or portal use inside a rift).
  */
 import { defineModule } from "@gamez/kernel";
 import { MODULE } from "../ids.ts";
@@ -35,7 +39,7 @@ import {
 
 export const classicWorld = defineModule({
   id: MODULE.world,
-  version: "0.2.0",
+  version: "0.3.0",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   setup: setupWorld,

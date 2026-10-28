@@ -6,8 +6,9 @@
  * soon as the hero's intent went idle.
  *
  * Priority (first that applies wins):
- *  1 dead -> respawn   2 busy   3 potions   4 retreat   5 fight   6 loot
- *  7 equip (side action)   8 go to town   9 town routine   10 descend   11 explore
+ *  1 dead -> respawn   2 busy   3 potions   3b dodge telegraphs   4 retreat
+ *  5 fight   6 loot   7 equip (side action)   8 go to town   9 town routine
+ *  10 descend (or the rift loop)   11 explore
  *
  * Once descend or toTown is chosen the hero is leaving the level (AutoLeave):
  * until it gets there, step 5 only fights foes within LEAVE_FIGHT_RANGE or
@@ -40,21 +41,28 @@ import { emit } from "../events.ts";
 import {
   currentDepth,
   heroOf,
+  lootFilterOf,
   RES,
   type AreaState,
   type QuestState,
   type RunStats,
 } from "../resources.ts";
-import { rarityRank } from "../rules.ts";
+import { lootVisible } from "../loot.ts";
+import { isRiftDepth, rarityRank, repairCost } from "../rules.ts";
 import { KIND, type ItemBaseProto, type NpcProto, type QuestProto } from "../types.ts";
 import { getAreaMap } from "../world/maps.ts";
-import { dungeonStep, giveUpFrontier, travel } from "./explore.ts";
+import { brokenGear, wornGear } from "./craft.ts";
+import { dodgeStep } from "./dodge.ts";
+import { econOf, goldOf, hasCraftingSmith } from "./econ.ts";
+import { dungeonStep, giveUpFrontier, travel } from "./dungeon.ts";
 import { engagedFoes, fightStep, isStunned, scanFoes, type Foe } from "./fight.ts";
 import { pickEquip } from "./gear.ts";
 import { walkTo } from "./route.ts";
 import { restockPrice, skipTownStep, townFreesBag, townStep } from "./town.ts";
+import { tileDist } from "./route.ts";
 import {
   addIgnore,
+  AutoLeave,
   bagFits,
   balanceOf,
   beltCount,
@@ -73,6 +81,7 @@ import {
   LOOT_RANGE,
   LOOT_SAFE_RANGE,
   manaPct,
+  noteRetreat,
   nearestInteractable,
   potionAmount,
   potionOf,
@@ -197,8 +206,14 @@ function trackCaution(c: AutoCtx): void {
   const level = c.world.get(c.hero, Level)?.level ?? 1;
   if (level > st.levelSeen) st.caution = Math.max(0, st.caution - (level - st.levelSeen));
   st.levelSeen = level;
+  // Caution also wears off with time alive (a slow class levels slowly: 3 deaths used to
+  // hold a warrior back for 3 whole levels).
+  const since = c.tick - st.deathAt;
+  if (st.caution > 0 && !dead && since > 0 && since % CAUTION_DECAY_TICKS === 0) st.caution--;
 }
 const MAX_CAUTION = 3;
+/** One caution step wears off after this long without a death: 5 minutes. */
+export const CAUTION_DECAY_TICKS = 6000;
 
 /** True while a watchdog stall is active. */
 export function stalled(c: AutoCtx): boolean {
@@ -273,15 +288,31 @@ function potionStep(c: AutoCtx, foes: readonly Foe[]): void {
   }
 }
 
+/**
+ * Below this life % with the belt on cooldown (or empty) the hero leaves
+ * through a town portal at once: a champion hitting for a fifth of the
+ * hero's life per second outpaces a potion every second (wave A playtest:
+ * many deaths with full belts).
+ */
+export const EMERGENCY_PCT = 15;
+
 function retreatStep(c: AutoCtx): boolean {
-  if (c.depth === 0 || lifePct(c) >= c.cfg.retreatPct) return false;
-  if (beltCount(c, "life") > 0) return false;
+  if (c.depth === 0) return false;
+  const life = lifePct(c);
+  if (life >= c.cfg.retreatPct) return false;
+  // Town portals do not work in a rift (ERR.inRift).
+  if (isRiftDepth(c.depth)) return false;
+  const belt = c.world.get(c.hero, Belt);
+  const potionLate = (belt?.readyAt ?? 0) > c.tick + 2;
+  const emergency = life < Math.min(EMERGENCY_PCT, c.cfg.retreatPct) && potionLate;
+  if (beltCount(c, "life") > 0 && !emergency) return false;
   if ((c.world.get(c.hero, Supplies)?.tpScrolls ?? 0) <= 0) return false;
   // A travel command went out less than REPLAN_TICKS ago (travel sets thinkAt 20 ahead).
   if (c.st.thinkAt - c.tick > REPLAN_TICKS) return false;
   c.due = true;
   if (!travel(c, { op: "townPortal" })) return false;
   setPlan(c, "toTown", "retreat");
+  noteRetreat(c);
   return true;
 }
 
@@ -297,6 +328,7 @@ function retreatStep(c: AutoCtx): boolean {
  */
 export function pickLoot(c: AutoCtx): Entity {
   const pickRank = rarityRank(c.cfg.pickupRarity);
+  const filter = lootFilterOf(c.world);
   const keep = c.st.plan === "loot" ? c.st.focus : 0;
   const leave = leaving(c);
   let best = 0;
@@ -309,13 +341,16 @@ export function pickLoot(c: AutoCtx): Entity {
     if (d > range * range || d >= bestD) continue;
     if (isIgnored(c.st, p.x >> 8, p.y >> 8)) continue;
     const l = c.world.read(e, Loot);
+    // Loot hidden by the player's loot filter is never picked up by Auto (wave A).
+    if (!lootVisible(filter, c.reg, l)) continue;
     let ok = false;
     if (l.kind === "gold") ok = c.cfg.pickupGold;
     else if (l.kind === "potion") ok = c.cfg.pickupPotions && beltHasRoom(c, l.potion);
     else if (l.item) {
       const base = c.reg.get<ItemBaseProto>(KIND.itemBase, l.item.base);
-      ok =
-        rarityRank(l.item.rarity) >= pickRank && bagFits(c, base?.size.w ?? 1, base?.size.h ?? 1);
+      // Gems are always worth the 1x1 cell (smith sockets), whatever pickupRarity says.
+      const wanted = base?.gem !== undefined || rarityRank(l.item.rarity) >= pickRank;
+      ok = wanted && bagFits(c, base?.size.w ?? 1, base?.size.h ?? 1);
     }
     if (!ok) continue;
     best = e;
@@ -405,20 +440,75 @@ export function questAcceptWaiting(c: AutoCtx): boolean {
   return false;
 }
 
+/**
+ * Stairs this close (tiles) while descending: no voluntary trip (the stairs
+ * come first; the trip happens on the next level).
+ */
+export const TRIP_STAIRS_TILES = 30;
+
+/** True while the hero walks to the stairs down and they are within TRIP_STAIRS_TILES. */
+function nearStairsDown(c: AutoCtx): boolean {
+  if (c.st.plan !== "descend" && !leavingFor(c, "descend")) return false;
+  const s = c.map.stairsDown;
+  return s !== null && tileDist(s.x, s.y, c.tx, c.ty) <= TRIP_STAIRS_TILES;
+}
+
+function leavingFor(c: AutoCtx, plan: "descend" | "toTown"): boolean {
+  if (!leaving(c)) return false;
+  return c.st.plan === plan || c.world.get(c.hero, AutoLeave)?.plan === plan;
+}
+
 /** Why a voluntary town trip is due now ("" = none). */
-export function townTripReason(c: AutoCtx): "" | "bag full" | "quest" | "restock" {
+export function townTripReason(c: AutoCtx): "" | "bag full" | "quest" | "restock" | "repair" {
   if (c.depth === 0 || c.tick < c.st.tripAt || stalled(c)) return "";
+  // No town portal in a rift; the run ends at its exit.
+  if (isRiftDepth(c.depth)) return "";
+  // A broken weapon or armor piece adds nothing: repair it (wave A), even near the stairs.
+  if (repairDue(c)) return "repair";
+  if (nearStairsDown(c)) return "";
   if (!bagFits(c, 2, 3) && townFreesBag(c)) return "bag full";
   if (questTurnInWaiting(c) || questAcceptWaiting(c)) return "quest";
   const gold = c.world.get(c.hero, Wallet)?.gold ?? 0;
-  if (beltCount(c, "life") === 0 && gold >= restockPrice(c)) return "restock";
+  const life = beltCount(c, "life");
+  const price = restockPrice(c);
+  if (life === 0 && gold >= price) return "restock";
+  // Running low with gold to spare: restock before the belt is empty.
+  if (life <= RESTOCK_LOW && price < Number.MAX_SAFE_INTEGER && gold >= RESTOCK_LOW_GOLD * price)
+    return "restock";
   return "";
 }
+/** Life potions left that count as running low. */
+export const RESTOCK_LOW = 2;
+/** A low-belt restock trip needs gold for this many potions. */
+export const RESTOCK_LOW_GOLD = 8;
+
+/**
+ * A repair trip is due: autoRepair, a crafting smith exists, some equipped
+ * item is broken (or two are worn below 10 %), and the gold covers at least
+ * the cheapest of those repairs.
+ */
+export function repairDue(c: AutoCtx): boolean {
+  if (!(c.cfg.autoRepair ?? true) || !hasCraftingSmith(c.reg)) return false;
+  const econ = econOf(c.reg);
+  if (!econ) return false;
+  const worn = wornGear(c).filter((it) => it.dur !== undefined && it.dur.cur * 10 <= it.dur.max);
+  if (!brokenGear(c) && worn.length < 2) return false;
+  const gold = goldOf(c);
+  return worn.some((it) => repairCost(econ, it) <= gold);
+}
+
+/**
+ * Scrolls a voluntary trip leaves in the pack: the last scroll is kept for a
+ * retreat (only restock and repair trips, which fix survival, may use it).
+ */
+export const KEEP_SCROLLS = 1;
 
 function toTownStep(c: AutoCtx): boolean {
   const note = townTripReason(c);
   if (note === "") return false;
-  if ((c.world.get(c.hero, Supplies)?.tpScrolls ?? 0) > 0) {
+  const scrolls = c.world.get(c.hero, Supplies)?.tpScrolls ?? 0;
+  const keep = note === "restock" || note === "repair" ? 0 : KEEP_SCROLLS;
+  if (scrolls > keep) {
     if (!travel(c, { op: "townPortal" })) return false;
     setPlan(c, "toTown", note);
     return true;
@@ -514,6 +604,8 @@ function thinkTick(c: AutoCtx): void {
     return;
   }
   trackStuck(c);
+  // Telegraphs fire on a fixed tick: stepping out comes before everything but potions.
+  if (dodgeStep(c)) return;
   if (retreatStep(c)) return;
   // While leaving the level only close foes and attackers are fought (see engagedFoes).
   const targets = engagedFoes(c, foes);
@@ -552,6 +644,7 @@ function arriveAt(c: AutoCtx): void {
   if (c.st.plan === "descend" && (kind === "stairsDown" || kind === "stairsUp"))
     travel(c, { op: "stairs", target: e });
   else if (c.st.plan === "toTown" && kind === "waypoint") travel(c, { op: "waypoint", depth: 0 });
+  else if (c.st.plan === "toTown" && kind === "riftExit") travel(c, { op: "leaveRift" });
 }
 
 export const thinkSystem: SystemDef = {

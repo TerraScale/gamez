@@ -20,6 +20,7 @@ const ITEM_PATHS: Record<ItemCategory, string[]> = {
   ring: ["M9 18 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0"],
   amulet: ["M8 4 Q16 16 24 4", "M11 14 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0"],
   potion: ["M13 4 H19 V10 L24 20 V26 Q24 28 22 28 H10 Q8 28 8 26 V20 L13 10 Z"],
+  gem: ["M10 6 H22 L27 13 L16 27 L5 13 Z", "M5 13 H27", "M12 6 L16 13 L20 6"],
 };
 
 export function ItemIcon({
@@ -137,6 +138,58 @@ export const SKILL_GLYPHS: Readonly<Record<string, SkillGlyph>> = {
     stroke: [
       "M8 27 V14 A8 8 0 0 1 24 14 V27 L20 23 L16 27 L12 23 L8 27",
       "M13 14 H13.5 M19 14 H19.5",
+    ],
+  },
+  // Wave A skills (one distinct glyph each; see classic.skill.* in content/skills.ts)
+  // Warrior
+  "classic.skill.quake_stomp": {
+    stroke: [
+      "M4 26 H28",
+      "M8 26 L12 20 L16 26 L20 20 L24 26",
+      "M16 6 V13",
+      "M11 8 L13 12",
+      "M21 8 L19 12",
+    ],
+  },
+  "classic.skill.iron_skin": {
+    fill: ["M16 4 L27 8 V17 C27 23 22 27 16 29 C10 27 5 23 5 17 V8 Z"],
+    stroke: [
+      "M16 4 L27 8 V17 C27 23 22 27 16 29 C10 27 5 23 5 17 V8 Z",
+      "M11 13 H21",
+      "M11 19 H21",
+    ],
+  },
+  "classic.skill.sky_leap": {
+    stroke: ["M5 27 Q12 22 17 14 Q21 8 27 6", "M22 6 H27 V11", "M4 30 H12"],
+  },
+  // Rogue
+  "classic.skill.piercing_shot": {
+    stroke: ["M3 16 H28", "M22 10 L28 16 L22 22", "M9 10 V22", "M13 10 V22"],
+  },
+  "classic.skill.caltrops": {
+    stroke: ["M16 5 V16", "M7 23 L16 16 L25 23", "M10 29 L16 16 L22 29"],
+  },
+  "classic.skill.night_volley": {
+    stroke: ["M4 28 L24 8", "M4 28 L27 16", "M4 28 L17 4", "M22 6 L26 10", "M24 14 L28 18"],
+  },
+  // Sorcerer
+  "classic.skill.glacial_spike": {
+    fill: ["M16 3 L22 16 L16 29 L10 16 Z"],
+    stroke: ["M16 3 L22 16 L16 29 L10 16 Z", "M10 16 H22"],
+  },
+  "classic.skill.storm_call": {
+    fill: ["M8 20 H24 A5 5 0 0 0 24 10 A8 8 0 0 0 10 12 A5 5 0 0 0 8 20 Z"],
+    stroke: [
+      "M8 20 H24 A5 5 0 0 0 24 10 A8 8 0 0 0 10 12 A5 5 0 0 0 8 20 Z",
+      "M17 20 L13 25 H18 L15 30",
+    ],
+  },
+  "classic.skill.falling_star": {
+    fill: ["M21 4 L23.5 10 L30 10 L25 14 L27 20 L21 16 L15 20 L17 14 L12 10 L18.5 10 Z"],
+    stroke: [
+      "M21 4 L23.5 10 L30 10 L25 14 L27 20 L21 16 L15 20 L17 14 L12 10 L18.5 10 Z",
+      "M4 28 L12 20",
+      "M7 27 L10 22",
     ],
   },
 };

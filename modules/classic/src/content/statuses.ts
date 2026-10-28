@@ -48,4 +48,15 @@ export const STATUSES: Record<string, StatusProto> = {
     icon: "icon.status.rally",
     tint: 0xffd27a,
   },
+  "classic.status.iron_skin": {
+    name: "Iron Skinned",
+    kind: "buff",
+    mods: [
+      { stat: "armorPct", perPower: 2 },
+      { stat: "resAll", perPower: 1 },
+    ],
+    stacks: false,
+    icon: "icon.status.iron_skin",
+    tint: 0xb8c4d0,
+  },
 };

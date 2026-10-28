@@ -101,6 +101,125 @@ export function bfs(
   };
 }
 
+/**
+ * Scored BFS: visits tiles in step order and keeps the tile with the lowest
+ * `score(x, y, steps)` (-1 = not a goal). The score must be >= steps, so the
+ * search stops once the step count passes the best score found (nothing
+ * farther can beat it). Ties keep the first tile found (fewest steps, then
+ * BFS order). `complete` as in bfs().
+ */
+export function bfsBest(
+  map: ClassicMap,
+  sx: number,
+  sy: number,
+  score: (x: number, y: number, steps: number) => number,
+  maxNodes = BFS_MAX_NODES,
+  leg = LEG_TILES,
+): BfsOutcome {
+  const w = map.width;
+  const h = map.height;
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return { hit: null, complete: true, visited: 0 };
+  const parent = new Int32Array(w * h).fill(-1);
+  const queue = new Int32Array(maxNodes);
+  const steps = new Int32Array(maxNodes);
+  const start = sy * w + sx;
+  parent[start] = start;
+  queue[0] = start;
+  let head = 0;
+  let tail = 1;
+  let best = -1;
+  let bestSteps = 0;
+  let bestScore = Number.MAX_SAFE_INTEGER;
+  let capped = false;
+  while (head < tail) {
+    const i = queue[head]!;
+    const d = steps[head++]!;
+    if (d > bestScore) break;
+    const x = i % w;
+    const y = (i - x) / w;
+    const s = score(x, y, d);
+    if (s >= 0 && s < bestScore) {
+      best = i;
+      bestSteps = d;
+      bestScore = s;
+    }
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX[k]!;
+      const ny = y + DY[k]!;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (parent[ni] !== -1 || !walkableAt(map, nx, ny)) continue;
+      if (tail >= maxNodes) {
+        capped = true;
+        continue;
+      }
+      parent[ni] = i;
+      queue[tail] = ni;
+      steps[tail++] = d + 1;
+    }
+  }
+  if (best < 0) return { hit: null, complete: !capped, visited: tail };
+  let n = best;
+  for (let k = bestSteps - Math.min(leg, bestSteps); k > 0; k--) n = parent[n]!;
+  return {
+    hit: {
+      x: best % w,
+      y: Math.floor(best / w),
+      steps: bestSteps,
+      next: { x: n % w, y: Math.floor(n / w) },
+    },
+    complete: false,
+    visited: tail,
+  };
+}
+
+/**
+ * Walking distance (4-neighbour steps) from every tile to (gx, gy); -1 =
+ * unreachable or blocked. A pure function of the map, memoised per map
+ * object and goal (maps are immutable and shared), so it is computed once
+ * per level.
+ */
+export function distanceField(map: ClassicMap, gx: number, gy: number): Int32Array {
+  let perMap = FIELDS.get(map);
+  if (!perMap) {
+    perMap = new Map();
+    FIELDS.set(map, perMap);
+  }
+  const key = gy * map.width + gx;
+  const hit = perMap.get(key);
+  if (hit) return hit;
+  const w = map.width;
+  const h = map.height;
+  const dist = new Int32Array(w * h).fill(-1);
+  if (walkableAt(map, gx, gy)) {
+    const queue = new Int32Array(w * h);
+    let head = 0;
+    let tail = 0;
+    dist[key] = 0;
+    queue[tail++] = key;
+    while (head < tail) {
+      const i = queue[head++]!;
+      const x = i % w;
+      const y = (i - x) / w;
+      const d = dist[i]! + 1;
+      for (let k = 0; k < 4; k++) {
+        const nx = x + DX[k]!;
+        const ny = y + DY[k]!;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (dist[ni] !== -1 || !walkableAt(map, nx, ny)) continue;
+        dist[ni] = d;
+        queue[tail++] = ni;
+      }
+    }
+  }
+  // A few goals per map at most (stairs down / up); keep the newest.
+  if (perMap.size >= 4) perMap.delete(perMap.keys().next().value as number);
+  perMap.set(key, dist);
+  return dist;
+}
+const FIELDS = new WeakMap<ClassicMap, Map<number, Int32Array>>();
+
 /** Chebyshev distance in tiles. */
 export function tileDist(ax: number, ay: number, bx: number, by: number): number {
   return Math.max(Math.abs(ax - bx), Math.abs(ay - by));

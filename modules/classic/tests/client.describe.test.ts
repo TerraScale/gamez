@@ -11,7 +11,14 @@ import {
   statText,
   statTotals,
   ticksToSeconds,
+  gemLines,
+  gemTierOf,
+  nameShowsUpgrade,
+  modLines,
+  setBonusLines,
+  upgradeLines,
 } from "../src/client/describe.ts";
+import { itemsSim, GEM_RUBY_1 } from "./model.items.fixture.ts";
 import {
   BALANCE_ID,
   KIND,
@@ -186,5 +193,95 @@ describe("skill tooltips", () => {
   it("uses the registry balance id constant", () => {
     expect(BALANCE_ID).toBe("classic.balance");
     expect(TEST_BALANCE.maxLevel).toBe(60);
+  });
+});
+
+describe("wave A item text", () => {
+  it("modLines and setBonusLines use the stat text of each mod", () => {
+    expect(
+      modLines([
+        { stat: "life", value: 12 },
+        { stat: "dmgPct", value: -3 },
+      ]),
+    ).toEqual(["+12 to Life", "-3% Damage"]);
+    expect(setBonusLines([{ stat: "str", value: 5 }])).toEqual(["+5 to Strength"]);
+  });
+
+  it("gemLines picks the host group of the gem; no group or no mods gives no lines", () => {
+    const gem = {
+      kind: "ruby" as const,
+      tier: 1,
+      weapon: [{ stat: "fireDmg" as const, value: 3 }],
+      armor: [{ stat: "life" as const, value: 10 }],
+      jewelry: [],
+    };
+    expect(gemLines(gem, "weapon")).toEqual(["+3 Fire Damage"]);
+    expect(gemLines(gem, "armor")).toEqual(["+10 to Life"]);
+    expect(gemLines(gem, "jewelry")).toEqual([]);
+    expect(gemLines(gem, null)).toEqual([]);
+    expect(gemLines(undefined, "weapon")).toEqual([]);
+  });
+
+  it("upgradeLines reads the level's bonus and says which upgrade it is; level 0 gives nothing", () => {
+    const sword = itemsSim().loaded.registry.get<ItemBaseProto>(KIND.itemBase, "test.item.sword")!;
+    expect(upgradeLines(sword, 0)).toEqual([]);
+    expect(upgradeLines(sword, 2)).toEqual(["+12% Damage (upgrade +2)"]);
+  });
+
+  it("gemTierOf reads the grade word of the gem's name (0 when there is none)", () => {
+    expect(gemTierOf("Chipped Ruby")).toBe(1);
+    expect(gemTierOf("Clear Topaz")).toBe(3);
+    expect(gemTierOf("Radiant Diamond")).toBe(5);
+    expect(gemTierOf("Ruby")).toBe(0);
+    expect(gemTierOf("")).toBe(0);
+  });
+});
+
+describe("statTotals with the registry and broken items", () => {
+  it("adds smith upgrade mods always, and socketed gem mods only when the registry is given", () => {
+    const sim = itemsSim();
+    const reg = sim.loaded.registry;
+    const sword = reg.get<ItemBaseProto>(KIND.itemBase, "test.item.sword")!;
+    const item: ItemInstance = {
+      uid: 1,
+      base: "test.item.sword",
+      rarity: "normal",
+      ilvl: 3,
+      name: "Test Sword",
+      mods: [],
+      affixes: [],
+      value: 30,
+      upgrade: 2,
+      sockets: [GEM_RUBY_1],
+    };
+    expect(statTotals(item, sword)).toEqual({ dmgPct: 12 });
+    expect(statTotals(item, sword, reg)).toEqual({ dmgPct: 12, fireDmg: 3 });
+  });
+
+  it("gives a broken item no stats at all", () => {
+    const sim = itemsSim();
+    const reg = sim.loaded.registry;
+    const sword = reg.get<ItemBaseProto>(KIND.itemBase, "test.item.sword")!;
+    const broken: ItemInstance = {
+      uid: 2,
+      base: "test.item.sword",
+      rarity: "magic",
+      ilvl: 3,
+      name: "Keen Test Sword",
+      mods: [{ stat: "dmgPct", value: 20 }],
+      affixes: [],
+      value: 30,
+      dur: { cur: 0, max: 60 },
+    };
+    expect(statTotals(broken, sword)).toEqual({});
+  });
+});
+
+describe("upgrade badge", () => {
+  it("nameShowsUpgrade is true only when the name already ends with the level", () => {
+    expect(nameShowsUpgrade("Fiery Dagger +1", 1)).toBe(true);
+    expect(nameShowsUpgrade("Fiery Dagger", 1)).toBe(false);
+    expect(nameShowsUpgrade("Fiery Dagger +1", 0)).toBe(false);
+    expect(nameShowsUpgrade("Fiery Dagger +2", 1)).toBe(false);
   });
 });

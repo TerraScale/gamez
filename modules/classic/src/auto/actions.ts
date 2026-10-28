@@ -62,6 +62,10 @@ const CONFIG_FIELDS: Record<keyof AutoConfig, FieldKind> = {
   maxDepth: "depth",
   buyPotions: "bool",
   manaReservePct: "pct",
+  autoRepair: "bool",
+  autoCraft: "bool",
+  autoGamble: "bool",
+  autoRift: "bool",
 };
 /** Highest maxDepth accepted (0 = no limit). */
 export const MAX_DEPTH_LIMIT = 999;

@@ -22,7 +22,7 @@ import { classicAuto } from "../src/auto/index.ts";
 import { allocCycle, skillPlan, statPlan } from "../src/auto/allocate.ts";
 import { computeOffline } from "../src/auto/offline.ts";
 import { itemScore } from "../src/auto/score.ts";
-import { AutoLeave, ensureAutoState } from "../src/auto/util.ts";
+import { AutoLeave, ensureAutoState, TOWN_STEPS } from "../src/auto/util.ts";
 import { busOf } from "../src/bus.ts";
 import {
   Ai,
@@ -807,6 +807,10 @@ describe("loot and gear", () => {
 describe("explore and descend", () => {
   it("walks toward the nearest frontier", () => {
     const { sim, map, hero } = dungeon();
+    // Without autoDescend there is no stairs bias: the nearest frontier wins.
+    expect(sim.dispatch("classic.setAutoConfig", { config: { autoDescend: false } }, null).ok).toBe(
+      true,
+    );
     setExplored(sim, map, (x) => x <= 10);
     const events = sim.step(1);
     expect(intentOf(sim, hero)).toMatchObject({ kind: "move", source: "auto", x: 10, y: 5 });
@@ -814,8 +818,23 @@ describe("explore and descend", () => {
     expect(events).toContainEqual({ type: "classic.auto.plan", plan: "explore", note: "10,5" });
   });
 
+  it("grows exploration toward the stairs down (QA major #1)", () => {
+    const { sim, map, hero } = dungeon();
+    expect(map.stairsDown).not.toBeNull();
+    setExplored(sim, map, (x) => x <= 10);
+    sim.step(1);
+    const st = stateOf(sim, hero);
+    expect(st.plan).toBe("explore");
+    expect(st.frontierX).toBe(10);
+    // The frontier tile nearest to the stairs (walking distance), not the one next to the hero.
+    expect(st.frontierY).toBe(map.stairsDown!.y);
+  });
+
   it("gives up an unreachable frontier when stuck and picks another", () => {
     const { sim, map, hero } = dungeon();
+    expect(sim.dispatch("classic.setAutoConfig", { config: { autoDescend: false } }, null).ok).toBe(
+      true,
+    );
     setExplored(sim, map, (x) => x <= 10);
     sim.step(45); // no movement system: the hero never leaves its tile
     const st = stateOf(sim, hero);
@@ -1076,16 +1095,16 @@ describe("town routine", () => {
     setMode(sim, "auto");
     sim.step(15);
     const list = cmds(sim).map(({ tick: _t, ...c }) => c);
-    // 2 scrolls first, potions (belt full), then up to 5 scrolls with what is left (175 - 100 = 75).
-    expect(list[0]).toEqual({ op: "buy", npc: alch, index: 0, potion: "tp", count: 2 });
-    expect(list[1]).toEqual({ op: "buy", npc: alch, index: 0, potion: "tp", count: 1 });
+    // 2 scrolls first, potions (belt full), then up to 5 scrolls with what is left (175 - 100 = 75):
+    // consecutive scroll purchases are one op.
+    expect(list[0]).toEqual({ op: "buy", npc: alch, index: 0, potion: "tp", count: 3 });
     // Level 1 hero: depth 5 (monster level 7) is too deep, waypoint 1 it is.
-    expect(list[2]).toEqual({ op: "waypoint", depth: 1 });
+    expect(list[1]).toEqual({ op: "waypoint", depth: 1 });
     expect(stateOf(sim, hero).focus).toBe(wp);
   });
 });
 
-const TOWN_TODO = ["heal", "sell", "stash", "buy", "smith", "quests", "return"];
+const TOWN_TODO = [...TOWN_STEPS];
 
 // ---------------------------------------------------------------------------
 // Allocation
@@ -1307,6 +1326,7 @@ describe("determinism", () => {
   });
 
   it("pins the hash after a fixed script", () => {
-    expect(scripted(1).hash()).toBe("256d9c93f081c722");
+    // Wave A (T-auto): stairs-biased exploration, new town steps.
+    expect(scripted(1).hash()).toBe("f687cd34a49746a9");
   });
 });

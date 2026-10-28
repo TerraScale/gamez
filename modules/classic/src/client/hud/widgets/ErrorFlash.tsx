@@ -10,6 +10,7 @@ export function ErrorFlash({ api }: SlotProps) {
   const layout = useHudLayout(api);
   const insets = useHudInsets();
   const visible = useVisibleUntil(error ? error.until : null);
+  const panelOpen = useSelect(api.ui, (u) => u.panels.length > 0);
   if (!error || !visible) return null;
   return (
     <div
@@ -20,7 +21,7 @@ export function ErrorFlash({ api }: SlotProps) {
         left: "50%",
         transform: "translateX(-50%)",
         // Phones: under the top region, clear of the toasts and Log row. Desktop and short: above the bar.
-        ...errorFlashStyle(layout, insets),
+        ...errorFlashStyle(layout, insets, panelOpen),
         maxWidth: "calc(100% - 32px)",
         padding: "8px 14px",
         borderRadius: 8,

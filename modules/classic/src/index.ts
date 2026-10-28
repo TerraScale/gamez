@@ -12,6 +12,11 @@ import { classicItems } from "./items/index.ts";
 import { classicMonsters } from "./monsters/index.ts";
 import { classicProgression } from "./progression/index.ts";
 import { classicWorld } from "./world/index.ts";
+import { classicAchievements } from "./achievements/index.ts";
+import { classicCrafting } from "./crafting/index.ts";
+import { classicDebug } from "./debug/index.ts";
+import { classicRift } from "./rift/index.ts";
+import { classicTalents } from "./talents/index.ts";
 
 export const modules: ModuleSpec[] = [
   classicContent,
@@ -22,7 +27,20 @@ export const modules: ModuleSpec[] = [
   classicItems,
   classicProgression,
   classicAuto,
+  // wave A (docs/design/wave-A.md)
+  classicTalents,
+  classicCrafting,
+  classicRift,
+  classicAchievements,
 ];
+
+/**
+ * QA-only modules (never in `modules`): the cheat module behind
+ * `?debug=1&cheats=1`. Load with loadMode({...mode, modules: [...mode.modules]},
+ * [...modules, ...debugModules]) — mode "classic.*" picks it up, so the
+ * contentHash differs from the real mode.
+ */
+export const debugModules: ModuleSpec[] = [classicDebug];
 
 export const CLASSIC_HZ = 20;
 
@@ -46,3 +64,5 @@ export * from "./ids.ts";
 export * from "./fixed.ts";
 export { busOf, type Bus, type DeathRecord, type HitRequest, type SpawnRequest } from "./bus.ts";
 export { getAreaMap, getMap, mapFor, type ClassicMap } from "./world/maps.ts";
+export * from "./bonus.ts";
+export * from "./loot.ts";

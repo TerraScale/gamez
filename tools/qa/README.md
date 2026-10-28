@@ -18,14 +18,15 @@ for checking gamez in a real (headless) browser. It runs with plain `node`
 node tools/qa/src/run.ts picker                       # mode list, layout, touch targets
 node tools/qa/src/run.ts classic-start warrior         # autostarted hero in town: art, labels, sim ticking
 node tools/qa/src/run.ts classic-create rogue          # new-hero screen through the real UI
-node tools/qa/src/run.ts classic-idle warrior 1 8      # Idle mode x8 for 1 minute: samples + screenshots
+node tools/qa/src/run.ts classic-idle warrior 1 8      # Idle mode x8 for 1 minute: samples + screenshots, data.descents
+node tools/qa/src/run.ts classic-features warrior      # wave A systems with cheats: talents, smith, gambler, stash, filter, rift
 node tools/qa/src/run.ts panels [class]                # every HUD panel, every NPC/station panel
 node tools/qa/src/run.ts gallery [--all-facings]       # ?qa=gallery: every appearance/item/effect/tile/prop
 node tools/qa/src/run.ts steps | duel | plaza          # the other modes: load, a few inputs, screenshots
 ```
 
 Options: `--viewport desktop|phone` (1366x768, or 390x844 with mobile and touch
-emulation at dpr 2), `--out <dir>` (default `/tmp/gamez-qa/<scenario>-<args>[-phone]`, whose old PNGs are cleared at the start of a run),
+emulation at dpr 2; every scenario accepts it, for example `classic-features warrior --viewport phone`), `--out <dir>` (default `/tmp/gamez-qa/<scenario>-<args>[-phone]`, whose old PNGs are cleared at the start of a run),
 `--url <base>` (or `GAMEZ_QA_URL`), `--seed <n>` (classic seed, default 4242),
 `--strict` (console errors fail the run), `--verbose` (page console to stderr).
 
@@ -33,15 +34,40 @@ emulation at dpr 2), `--out <dir>` (default `/tmp/gamez-qa/<scenario>-<args>[-ph
 so pass a fresh directory when you compare runs: the numbering moves when a
 section gains a page.
 
+### classic-features (cheats)
+
+`classic-features <class>` opens `?debug=1&cheats=1` (the QA module `classic.debug`,
+with its own local save slot) and grants late-game content through
+`controls.cheat` (gold, 10 levels, 5 talent points, rare items, gems). It then
+walks the wave A systems and screenshots each:
+
+| Shot                                                                         | What                                                                                                                                                      |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `talents`, `talents-learned`                                                 | N opens the talent tree; the first learnable node is learned (`classic.learnTalent`)                                                                      |
+| `smith-vendor`, `smith-craft`, `smith-after`                                 | the smith (vendor), the craft panel, repair everything, upgrade and socket the first bag item                                                             |
+| `gambler`                                                                    | the gambler (`gamble` panel)                                                                                                                              |
+| `stash-tabs`, `loot-filter`, `settings`, `character`                         | stash, loot filter, settings, character                                                                                                                   |
+| `achievements`                                                               | Y opens achievements                                                                                                                                      |
+| `rift-locked`, `rift-unlocked`, `rift-level-1`, `rift-guardian`, `rift-left` | the obelisk locked, unlocked (`unlockRift`), level 1 opened (`classic.openRift`), the guardian reached on auto (up to 150 s), leave (`classic.leaveRift`) |
+
+Action checks pass when the action is accepted or refused by a game rule (for
+example `no_repair_needed`); an unknown action, `internal` or `client` error fails.
+`data.features` records the outcome of each action. The guardian check is a warning.
+Use `--viewport phone` for the phone layout of the same run.
+
 ### Totals (`classic-idle`)
 
 `classic-idle` reads `window.__gamez.counters` at the start and at the end.
 `data.counters` holds `{start, end, totals}`; `totals` is
-`{ticks, slain, heroDeaths, events}` for the run, where `events` lists only the
+`{ticks, slain, heroDeaths, descents, events}` for the run, where `events` lists only the
 types that changed (for example `classic.loot.picked`). Totals are `null` when
 the page reloaded during the run (the probe restarts with the page). The warn
 check `cumulative counters advanced with the sim` compares `totals.ticks` with
-the sim's own tick progress. Use these totals rather than counting `lastEvents`,
+the sim's own tick progress.
+
+`data.descents` is the number of stairs-down descents in the run (counted from
+`classic.area.changed` with `via: "stairsDown"`, never ring-dropped). The warn
+check `descended at least once` reads it. Use these totals rather than counting `lastEvents`,
 which is a 60-entry ring.
 
 ### Perf signal (`classic-start`, `classic-idle`)
@@ -116,9 +142,9 @@ is installed and the game pays nothing for the hooks.
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mode`               | `"classic"`, or `"classic.gallery"` in the gallery                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `sim` (classic)      | live getter: `tick, phase, depth, area{…}, hero{class, level, xp, life, mana, gold, potions, belt, skillBar, statuses, x, y}, counts{monstersAlive, bossesAlive, summons, corpses, slain, lootOnGround, projectiles, heroDeaths}, runStats, control{mode, speed}, autoState{plan, todo, focus, frontier}, eventCounts, casts, effects, lastEvents[]`                                                                                                                                                            |
-| `counters` (classic) | cumulative totals that the ring buffer of `sim` cannot drop: `tick` (current sim), `ticksTotal` (ticks of every sim on this page, carried across newHero/newGame), `events{type: n}` (every event since the last new hero), `slain`, `heroDeaths`, `ringDropped` (events the 60-entry ring has pushed out). Read with `ticksTotal`, not `sim.tick`, for a run's tick count                                                                                                                                      |
+| `counters` (classic) | cumulative totals that the ring buffer of `sim` cannot drop: `tick` (current sim), `ticksTotal` (ticks of every sim on this page, carried across newHero/newGame), `events{type: n}` (every event since the last new hero), `slain`, `heroDeaths`, `ringDropped` (events the 60-entry ring has pushed out), `descents` (stairs-down area changes). Read with `ticksTotal`, not `sim.tick`, for a run's tick count                                                                                               |
 | `hud`, `ui`, `log`   | the client stores: the full HUD snapshot, UI state (panels, toasts, error, settings, perf), and the last 40 log lines                                                                                                                                                                                                                                                                                                                                                                                           |
-| `controls` (classic) | `setMode(m)`, `setSpeed(x)`, `newHero(class, name?)`, `setClass(class)`, `seed`, `act(name, payload)`, `interact("smith"\|"alchemist"\|"junk"\|"healer"\|"quest"\|"stash"\|"waypoint"\|"stairsDown"\|"stairsUp"\|"portal")`, `openPanel/closePanel/togglePanel/closeAll`, `castSlot(n)`, `drink(n)`, `respawn()`, `updateSettings(patch)`                                                                                                                                                                       |
+| `controls` (classic) | `setMode(m)`, `setSpeed(x)`, `newHero(class, name?)`, `setClass(class)`, `seed`, `act(name, payload)`, `interact("smith"\|"alchemist"\|"junk"\|"healer"\|"quest"\|"gambler"\|"stash"\|"waypoint"\|"stairsDown"\|"stairsUp"\|"portal"\|"obelisk"\|"riftExit")`, `openPanel/closePanel/togglePanel/closeAll`, `castSlot(n)`, `drink(n)`, `respawn()`, `updateSettings(patch)`, `cheat(payload)` (only with `cheats=1`: `classic.debug.grant`, see below)                                                          |
 | `render` (any mode)  | renderer getter: `fps, frameMs{avg,p95,max}` (wall clock), `tickMs, zoom, entities, entitiesDrawn, primitivesDrawn, chunks, chunksBuilt, props, missingIds[] (art and icon.* ids; the report also splits them into missingArtIds and missingIconIds), animationsSeen{"appearance\|action\|facing": "key (kind)"}, labelsVisible{nameplate,npc,loot,sign,damage,healthbar, and marker/subtitle when the renderer exposes them}, effectsSeen{"kind\|sprite": "sprite"\|"procedural"}, effectsPlayed, floatsShown` |
 | `gallery`            | see below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
@@ -134,6 +160,16 @@ URL parameters (classic, independent of `?debug`):
   read nor written.
 - `?class=<warrior|rogue|sorcerer>&autostart=1[&name=…]` skips the new-hero
   screen.
+- `?debug=1&cheats=1` loads the QA module `classic.debug` (action
+  `classic.debug.grant`). Its mode has another content hash and its own save
+  slot (`gamez.classic.save.v1.cheats`), so cheat saves never mix with real ones.
+  `controls.cheat(payload)` takes `gold`, `levels`, `items: {count, rarity, ilvl, category?}`,
+  `gems`, `unlockRift`, `bossesKilled: [depth]`, `deepest`, `talentPoints`. Unknown
+  or out-of-range fields are rejected (`bad_payload`) and change nothing.
+- `?fresh=1` skips the save carry-over. A save of another content version whose
+  modules all still exist is restored under the new hash, stepped 20 ticks as a
+  check, and kept with the notice "Save carried over"; a save that fails starts a
+  new game.
 
 ## Gallery (`?qa=gallery`)
 
@@ -184,8 +220,11 @@ not reachable from the normal UI. Its sections:
 
 - heroes, monsters (bosses included) and NPCs, in idle, walk, attack, cast,
   hit and death, cycling all 8 facings
+- an effects section: every `EFFECT_TABLE` row (captions show kind and particle
+  style) and the three telegraph shapes (circle, cone, line), played through the planner
 - monster mod tints, rarity label colours, status tints and the hover ring
-- every loot sprite with its rarity label, and the uniques
+- every loot sprite with its rarity label, the uniques, the gems (tinted by kind)
+  and a set-rarity sample
 - every skill effect and projectile, plus weapon projectiles
 - float texts and event effects, played through the real `effects.ts` planner
 - every tile and prop that the generated maps, themes and manifest use, and

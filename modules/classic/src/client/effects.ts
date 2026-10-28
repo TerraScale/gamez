@@ -6,17 +6,20 @@
  * fractional tiles.
  */
 import type { Entity, FrozenRegistry, GameEvent, World } from "@gamez/kernel";
-import type { EffectKind, EffectSpec } from "@gamez/ui-host";
+import type { EffectKind, EffectSpec, ParticleStyle } from "@gamez/ui-host";
 import type { ClassicEvent } from "../events.ts";
 import { ERR } from "../actions.ts";
-import { Hero, Monster } from "../components.ts";
+import { Hero, Monster, Talents } from "../components.ts";
 import { SUB } from "../fixed.ts";
 import {
   KIND,
   type ClassProto,
+  type ItemBaseProto,
   type MonsterProto,
+  type SetProto,
   type SkillProto,
   type NpcProto,
+  type TalentNodeProto,
 } from "../types.ts";
 import {
   ELEMENT_COLOR,
@@ -27,6 +30,7 @@ import {
   type PanelId,
   type Toast,
 } from "./contract.ts";
+import { depthLabel } from "./hud/format.ts";
 
 /** What the planner needs from the outside (no DOM, no renderer). */
 export interface EffectEnv {
@@ -40,6 +44,8 @@ export interface EffectEnv {
   showDamageNumbers: boolean;
   /** Manual mode: command failures are shown as errors (auto failures only log). */
   manual: boolean;
+  /** Sim speed (1, 2, 4 or 8). Telegraph fills last ticks x 50 / speed ms. Default 1. */
+  speed?: number;
 }
 
 export type Visual =
@@ -49,6 +55,10 @@ export type Visual =
   | { kind: "toast"; toastKind: Toast["kind"]; title: string; body: string; ms: number }
   | { kind: "panel"; panel: PanelId }
   | { kind: "vendor"; npc: Entity }
+  /** The gambler NPC opened: the gamble panel follows it (closed when the hero walks away). */
+  | { kind: "gambler"; npc: Entity }
+  /** Camera shake (renderer.shake?.(strength, ms)), e.g. boss phase changes. */
+  | { kind: "shake"; strength: number; ms: number }
   | { kind: "error"; code: string; message: string };
 
 /**
@@ -92,45 +102,68 @@ interface EffectRow {
   kind: EffectKind;
   color: number;
   radius: number;
+  /** Particle preset of the effect's burst (renderer style, wave A). */
+  style: ParticleStyle;
 }
 
-/** Effect id -> renderer effect (docs/design/classic.md §12.3). */
+/** Effect id -> renderer effect (docs/design/classic.md §12.3, wave-A.md §10.1). */
 export const EFFECT_TABLE: Readonly<Record<string, EffectRow>> = {
-  "fx.frost_ring": { kind: "nova", color: ELEMENT_COLOR.cold, radius: 3 },
-  "fx.cinder_orb": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 1.5 },
-  "fx.arc_chain": { kind: "chain", color: ELEMENT_COLOR.lightning, radius: 0 },
-  "fx.phase_step": { kind: "blink", color: 0xb8c4ff, radius: 0.5 },
-  "fx.tumble": { kind: "blink", color: 0x8a6bd1, radius: 0.5 },
-  "fx.mend": { kind: "heal", color: HEAL_COLOR, radius: 0.8 },
-  "fx.whirl": { kind: "nova", color: 0xb8d4ff, radius: 1.5 },
-  "fx.slam": { kind: "nova", color: 0xc8873a, radius: 2 },
-  "fx.burst": { kind: "explosion", color: ELEMENT_COLOR.poison, radius: 1.5 },
-  "fx.rally": { kind: "nova", color: GOLD_COLOR, radius: 1.5 },
-  "fx.charge": { kind: "slash", color: 0xffd27a, radius: 1 },
+  "fx.frost_ring": { kind: "nova", color: ELEMENT_COLOR.cold, radius: 3, style: "frost" },
+  "fx.cinder_orb": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 1.5, style: "ember" },
+  "fx.arc_chain": { kind: "chain", color: ELEMENT_COLOR.lightning, radius: 0, style: "spark" },
+  "fx.phase_step": { kind: "blink", color: 0xb8c4ff, radius: 0.5, style: "arcane" },
+  "fx.tumble": { kind: "blink", color: 0x8a6bd1, radius: 0.5, style: "shadow" },
+  "fx.mend": { kind: "heal", color: HEAL_COLOR, radius: 0.8, style: "holy" },
+  "fx.whirl": { kind: "nova", color: 0xb8d4ff, radius: 1.5, style: "dust" },
+  "fx.slam": { kind: "nova", color: 0xc8873a, radius: 2, style: "dust" },
+  "fx.burst": { kind: "explosion", color: ELEMENT_COLOR.poison, radius: 1.5, style: "poison" },
+  "fx.rally": { kind: "nova", color: GOLD_COLOR, radius: 1.5, style: "gold" },
+  "fx.charge": { kind: "slash", color: 0xffd27a, radius: 1, style: "dust" },
   // Hero skills.
-  "fx.attack": { kind: "slash", color: ELEMENT_COLOR.phys, radius: 0.8 },
-  "fx.cleave": { kind: "slash", color: 0xffd28a, radius: 1.5 },
-  "fx.multishot": { kind: "cast", color: 0xd9c08a, radius: 0.6 },
-  "fx.venom_shot": { kind: "hit", color: ELEMENT_COLOR.poison, radius: 0.8 },
-  "fx.spark_sentry": { kind: "cast", color: ELEMENT_COLOR.lightning, radius: 0.8 },
-  "fx.ember_bolt": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 0.8 },
+  "fx.attack": { kind: "slash", color: ELEMENT_COLOR.phys, radius: 0.8, style: "dust" },
+  "fx.cleave": { kind: "slash", color: 0xffd28a, radius: 1.5, style: "dust" },
+  "fx.multishot": { kind: "cast", color: 0xd9c08a, radius: 0.6, style: "dust" },
+  "fx.venom_shot": { kind: "hit", color: ELEMENT_COLOR.poison, radius: 0.8, style: "poison" },
+  "fx.spark_sentry": { kind: "cast", color: ELEMENT_COLOR.lightning, radius: 0.8, style: "spark" },
+  "fx.ember_bolt": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 0.8, style: "ember" },
   // Monster and boss skills.
-  "fx.claw": { kind: "slash", color: 0xd9534f, radius: 0.8 },
-  "fx.bite": { kind: "slash", color: 0xc84040, radius: 0.6 },
-  "fx.gore": { kind: "slash", color: 0xe0a060, radius: 1 },
-  "fx.arrow": { kind: "hit", color: ELEMENT_COLOR.phys, radius: 0.5 },
-  "fx.firebolt": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 0.8 },
-  "fx.frostbolt": { kind: "nova", color: ELEMENT_COLOR.cold, radius: 1 },
-  "fx.shadebolt": { kind: "hit", color: 0x9a7bd8, radius: 0.8 },
-  "fx.raise": { kind: "portal", color: 0x8fbf7a, radius: 1 },
-  "fx.ember_burst": { kind: "nova", color: ELEMENT_COLOR.fire, radius: 2 },
-  "fx.sentry_bolt": { kind: "hit", color: ELEMENT_COLOR.lightning, radius: 0.6 },
-  "fx.boss_slam": { kind: "nova", color: 0xc8873a, radius: 3 },
-  "fx.boss_nova": { kind: "nova", color: ELEMENT_COLOR.fire, radius: 4 },
-  "fx.boss_volley": { kind: "cast", color: 0xff9a5a, radius: 1 },
-  "fx.boss_summon": { kind: "portal", color: 0x8a5a3a, radius: 1.5 },
+  "fx.claw": { kind: "slash", color: 0xd9534f, radius: 0.8, style: "blood" },
+  "fx.bite": { kind: "slash", color: 0xc84040, radius: 0.6, style: "blood" },
+  "fx.gore": { kind: "slash", color: 0xe0a060, radius: 1, style: "blood" },
+  "fx.arrow": { kind: "hit", color: ELEMENT_COLOR.phys, radius: 0.5, style: "dust" },
+  "fx.firebolt": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 0.8, style: "ember" },
+  "fx.frostbolt": { kind: "nova", color: ELEMENT_COLOR.cold, radius: 1, style: "frost" },
+  "fx.shadebolt": { kind: "hit", color: 0x9a7bd8, radius: 0.8, style: "shadow" },
+  "fx.raise": { kind: "portal", color: 0x8fbf7a, radius: 1, style: "poison" },
+  "fx.ember_burst": { kind: "nova", color: ELEMENT_COLOR.fire, radius: 2, style: "ember" },
+  "fx.sentry_bolt": { kind: "hit", color: ELEMENT_COLOR.lightning, radius: 0.6, style: "spark" },
+  "fx.boss_slam": { kind: "nova", color: 0xc8873a, radius: 3, style: "dust" },
+  "fx.boss_nova": { kind: "nova", color: ELEMENT_COLOR.fire, radius: 4, style: "ember" },
+  "fx.boss_volley": { kind: "cast", color: 0xff9a5a, radius: 1, style: "ember" },
+  "fx.boss_summon": { kind: "portal", color: 0x8a5a3a, radius: 1.5, style: "shadow" },
+  // Wave A skills and boss moves (docs/design/wave-A.md §4, §6).
+  "fx.quake_stomp": { kind: "nova", color: 0xb08a5a, radius: 2, style: "dust" },
+  "fx.iron_skin": { kind: "aura", color: 0xcfd6dd, radius: 0.8, style: "gold" },
+  "fx.sky_leap": { kind: "blink", color: 0x9fd3ff, radius: 0.8, style: "arcane" },
+  "fx.piercing_shot": { kind: "hit", color: 0xf2f2f2, radius: 0.5, style: "spark" },
+  "fx.caltrops": { kind: "aura", color: 0x8a7a5a, radius: 1.2, style: "blood" },
+  "fx.night_volley": { kind: "cast", color: 0x6b5ba8, radius: 0.8, style: "shadow" },
+  "fx.glacial_spike": { kind: "hit", color: 0x9fe6ff, radius: 0.7, style: "frost" },
+  "fx.storm_call": {
+    kind: "explosion",
+    color: ELEMENT_COLOR.lightning,
+    radius: 1.5,
+    style: "spark",
+  },
+  "fx.falling_star": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 1.2, style: "ember" },
+  "fx.boss_quake": { kind: "nova", color: 0xa0703a, radius: 4, style: "dust" },
+  "fx.boss_cleave": { kind: "slash", color: 0xe0604a, radius: 2, style: "blood" },
+  "fx.boss_rush": { kind: "slash", color: 0xd9a050, radius: 1.5, style: "dust" },
+  "fx.boss_meteor": { kind: "explosion", color: 0xff6a3d, radius: 3, style: "ember" },
+  "fx.boss_frost_nova": { kind: "nova", color: ELEMENT_COLOR.cold, radius: 4, style: "frost" },
+  "fx.telegraph": { kind: "telegraph", color: 0xff5a3d, radius: 1, style: "arcane" },
 };
-const DEFAULT_EFFECT: EffectRow = { kind: "cast", color: 0xffffff, radius: 0.6 };
+const DEFAULT_EFFECT: EffectRow = { kind: "cast", color: 0xffffff, radius: 0.6, style: "dust" };
 
 /** How float texts are thinned out at a sim speed (Full Idle x2-x8). */
 export interface FloatPolicy {
@@ -190,7 +223,52 @@ export function effectSpec(effect: string, x: number, y: number, radiusSub = 0):
     radius,
     color: row.color,
     sprite: effect,
+    style: row.style,
   };
+}
+
+/** One telegraph step (classic angles are 0..63 steps of a full turn) in radians. */
+export const STEP_RAD = (2 * Math.PI) / 64;
+/** Telegraph colour when the effect has no table row. */
+export const TELEGRAPH_COLOR = 0xff5a3d;
+/** Crafting and gambling floats and log colours (smith and gambler services). */
+export const CRAFT_COLOR = 0x9fd8ff;
+/** Durability warnings (worn items). */
+export const WORN_COLOR = 0xffb84d;
+/** Broken items and failed crafts. */
+const BROKEN_COLOR = 0xff5a5a;
+
+/**
+ * Danger-zone effect of a telegraph (renderer kind "telegraph"): a circle
+ * (radius), a cone (radius = length, angle, arc) or a line (angle, length,
+ * width). Fill time = ticks x 50 ms / speed, so x8 fills in an eighth of the time.
+ */
+export function telegraphSpec(
+  ev: Extract<ClassicEvent, { type: "classic.telegraph" }>,
+  speed: number,
+): EffectSpec {
+  const row = EFFECT_TABLE[ev.effect];
+  const sp = speed >= 1 ? speed : 1;
+  const spec: EffectSpec = {
+    kind: "telegraph",
+    x: tile(ev.x),
+    y: tile(ev.y),
+    radius: tile(ev.radius),
+    color: row?.color ?? TELEGRAPH_COLOR,
+    durationMs: Math.round((Math.max(1, ev.ticks) * 50) / sp),
+    sprite: "fx.telegraph",
+    style: row?.style ?? "arcane",
+  };
+  if (ev.shape === "cone") {
+    spec.radius = ev.length > 0 ? tile(ev.length) : tile(ev.radius);
+    spec.angle = ev.angle * STEP_RAD;
+    spec.arc = ev.arc * STEP_RAD;
+  } else if (ev.shape === "line") {
+    spec.angle = ev.angle * STEP_RAD;
+    spec.length = tile(ev.length);
+    spec.width = tile(ev.width);
+  }
+  return spec;
 }
 
 const tile = (sub: number): number => sub / SUB;
@@ -226,6 +304,10 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
   };
   const toast = (toastKind: Toast["kind"], title: string, body: string, ms = TOAST_MS): void => {
     out.push({ kind: "toast", toastKind, title, body, ms });
+  };
+  /** Short float above the hero (crafting results). */
+  const floatAtHero = (text: string, color: number): void => {
+    out.push({ kind: "float", x: env.heroX, y: env.heroY, text, color, size: "m" });
   };
 
   switch (ev.type) {
@@ -465,13 +547,13 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       return out;
     }
     case "classic.area.changed": {
-      toast("area", ev.name, ev.depth === 0 ? "Back in town" : `Depth ${ev.depth}`);
+      toast("area", ev.name, ev.depth === 0 ? "Back in town" : depthLabel(ev.depth));
       log("system", `Entering ${ev.name}`, LOG_COLOR.system);
       return out;
     }
     case "classic.level.cleared": {
-      toast("info", "Level cleared", `Depth ${ev.depth} is clear.`);
-      log("level", `Depth ${ev.depth} cleared`, LOG_COLOR.level);
+      toast("info", "Level cleared", `${depthLabel(ev.depth)} is clear.`);
+      log("level", `${depthLabel(ev.depth)} cleared`, LOG_COLOR.level);
       return out;
     }
     case "classic.boss.spawned": {
@@ -499,6 +581,9 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       if (ev.role === "smith" || ev.role === "alchemist" || ev.role === "junk") {
         out.push({ kind: "vendor", npc: ev.npc });
         out.push({ kind: "panel", panel: "vendor" });
+      } else if (ev.role === "gambler") {
+        out.push({ kind: "gambler", npc: ev.npc });
+        out.push({ kind: "panel", panel: "gamble" });
       } else if (ev.role === "quest") {
         out.push({ kind: "panel", panel: "quests" });
       }
@@ -537,6 +622,160 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
     case "classic.command.failed": {
       if (env.manual) out.push({ kind: "error", code: ev.code, message: ev.message });
       log("system", ev.message, LOG_COLOR.system);
+      return out;
+    }
+    // ======================= wave A (docs/design/wave-A.md §10.1) =======================
+    case "classic.telegraph": {
+      out.push({ kind: "effect", spec: telegraphSpec(ev, env.speed ?? 1) });
+      return out;
+    }
+    case "classic.boss.phase": {
+      const m = env.registry.get<MonsterProto>(KIND.monster, ev.monster);
+      const name = m?.name ?? ev.monster;
+      const body = ev.message !== "" ? ev.message : `Phase ${ev.phase}`;
+      toast("info", ev.enraged ? `${name} is enraged` : name, body, TOAST_LONG_MS);
+      log("system", `${name}: ${body}`, MONSTER_COLOR.boss);
+      out.push({ kind: "shake", strength: 6, ms: 400 });
+      return out;
+    }
+    case "classic.item.broken": {
+      log("death", `${ev.name} broke. Repair it at the smith.`, BROKEN_COLOR);
+      out.push({ kind: "error", code: "broken", message: `${ev.name} broke` });
+      return out;
+    }
+    case "classic.item.worn": {
+      log("system", `${ev.name} is worn (10% durability or less)`, WORN_COLOR);
+      return out;
+    }
+    case "classic.gambled": {
+      log("loot", `Gambled: ${ev.name} for ${ev.price} gold`, RARITY_COLOR[ev.rarity]);
+      if (ev.rarity === "unique" || ev.rarity === "set") {
+        toast("loot", ev.rarity === "unique" ? "Unique item" : "Set item", ev.name, TOAST_LONG_MS);
+      }
+      return out;
+    }
+    case "classic.set.bonus": {
+      const set = env.registry.get<SetProto>(KIND.set, ev.set);
+      const name = set?.name ?? ev.name;
+      toast("loot", "Set bonus", `${name}: ${ev.active} pieces worn`);
+      log("loot", `${name} set: ${ev.active} pieces worn`, RARITY_COLOR.set);
+      return out;
+    }
+    case "classic.repaired": {
+      const n = ev.uids.length;
+      floatAtHero("Repaired", CRAFT_COLOR);
+      log(
+        "system",
+        `Repaired ${n === 1 ? "an item" : `${n} items`} for ${ev.cost} gold`,
+        CRAFT_COLOR,
+      );
+      return out;
+    }
+    case "classic.upgraded": {
+      if (ev.success) {
+        floatAtHero(`+${ev.level}!`, GOLD_COLOR);
+        log("system", `${ev.name} upgraded to +${ev.level} for ${ev.cost} gold`, CRAFT_COLOR);
+      } else {
+        floatAtHero("Upgrade failed", BROKEN_COLOR);
+        log("death", `Upgrade of ${ev.name} failed (${ev.cost} gold)`, BROKEN_COLOR);
+      }
+      return out;
+    }
+    case "classic.rerolled": {
+      floatAtHero("Rerolled", CRAFT_COLOR);
+      log("system", `Rerolled ${ev.name} for ${ev.cost} gold`, CRAFT_COLOR);
+      return out;
+    }
+    case "classic.socket.added": {
+      floatAtHero("Socket added", CRAFT_COLOR);
+      log("system", `Socket added (${ev.sockets} total) for ${ev.cost} gold`, CRAFT_COLOR);
+      return out;
+    }
+    case "classic.gem.socketed": {
+      const gem = env.registry.get<ItemBaseProto>(KIND.itemBase, ev.gem)?.name ?? ev.gem;
+      floatAtHero("Socketed", CRAFT_COLOR);
+      log("system", `Socketed ${gem}`, CRAFT_COLOR);
+      return out;
+    }
+    case "classic.gems.removed": {
+      floatAtHero("Gems removed", CRAFT_COLOR);
+      log("system", `Removed ${ev.gems.length} gem(s) for ${ev.cost} gold`, CRAFT_COLOR);
+      return out;
+    }
+    case "classic.gems.combined": {
+      const from = env.registry.get<ItemBaseProto>(KIND.itemBase, ev.from)?.name ?? ev.from;
+      const to = env.registry.get<ItemBaseProto>(KIND.itemBase, ev.to)?.name ?? ev.to;
+      floatAtHero("Combined!", GOLD_COLOR);
+      log("system", `Combined three ${from} into ${to} (${ev.cost} gold)`, CRAFT_COLOR);
+      return out;
+    }
+    case "classic.talent.points": {
+      // Auto/Idle may spend the point in the same step: toast only what is still unspent.
+      const t = env.hero !== 0 ? env.world.get(env.hero, Talents) : undefined;
+      const left = t ? t.points : ev.points;
+      if (left > 0) toast("info", `Talent point (${left})`, "Press N to spend it");
+      return out;
+    }
+    case "classic.talent.learned": {
+      const node = env.registry.get<TalentNodeProto>(KIND.talent, ev.node);
+      log("level", `Learned ${node?.name ?? ev.node} (rank ${ev.rank})`, LOG_COLOR.level);
+      return out;
+    }
+    case "classic.talents.reset": {
+      log(
+        "system",
+        `Talents reset: ${ev.refunded} points refunded for ${ev.cost} gold`,
+        LOG_COLOR.system,
+      );
+      return out;
+    }
+    case "classic.rift.panel": {
+      out.push({ kind: "panel", panel: "rift" });
+      return out;
+    }
+    case "classic.rift.unlocked": {
+      toast("info", "Rift unlocked", "Use the obelisk in town to open a rift level", TOAST_LONG_MS);
+      log("system", "The Rift is unlocked", LOG_COLOR.level);
+      return out;
+    }
+    case "classic.rift.opened": {
+      toast("info", `Rift level ${ev.level}`, "Slay monsters to draw out the guardian");
+      log("system", `Entered rift level ${ev.level}`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.rift.progress": {
+      log("system", `Rift ${ev.pct}% cleared`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.rift.guardian": {
+      toast("info", "Guardian awakened", ev.name, TOAST_LONG_MS);
+      log("system", `${ev.name} guards the rift exit`, MONSTER_COLOR.boss);
+      return out;
+    }
+    case "classic.rift.completed": {
+      toast(
+        "loot",
+        "Rift complete",
+        `Score ${ev.record.score}: +${ev.gold} gold, ${ev.items} items`,
+        TOAST_LONG_MS,
+      );
+      log(
+        "level",
+        `Rift level ${ev.record.level} complete (score ${ev.record.score})`,
+        LOG_COLOR.level,
+      );
+      return out;
+    }
+    case "classic.rift.failed": {
+      const why = ev.record.reason === "death" ? "You fell in the rift" : "You left the rift";
+      toast("death", "Rift failed", why, TOAST_LONG_MS);
+      log("death", `Rift level ${ev.record.level} failed: ${why.toLowerCase()}`, LOG_COLOR.death);
+      return out;
+    }
+    case "classic.achievement.unlocked": {
+      const title = ev.title !== null ? ` - title "${ev.title}"` : "";
+      toast("loot", `Achievement: ${ev.name}`, `+${ev.gold} gold${title}`, TOAST_LONG_MS);
+      log("quest", `Achievement unlocked: ${ev.name}`, LOG_COLOR.quest);
       return out;
     }
     default:

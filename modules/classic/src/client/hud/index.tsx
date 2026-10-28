@@ -45,6 +45,7 @@ import { PanelButtons } from "./widgets/PanelButtons.tsx";
 import { NewHeroScreen } from "./widgets/NewHeroScreen.tsx";
 import { DeathScreen } from "./widgets/DeathScreen.tsx";
 import { Toasts } from "./widgets/Toasts.tsx";
+import { Tips } from "./widgets/Tips.tsx";
 import { Tooltip } from "./widgets/Tooltip.tsx";
 import { ErrorFlash } from "./widgets/ErrorFlash.tsx";
 import { PanelHost } from "./panels/PanelHost.tsx";
@@ -58,6 +59,12 @@ import { WaypointPanel } from "./panels/WaypointPanel.tsx";
 import { SettingsPanel } from "./panels/SettingsPanel.tsx";
 import { LogPanel } from "./panels/LogPanel.tsx";
 import { MapPanel } from "./panels/MapPanel.tsx";
+import { TalentsPanel } from "./panels/TalentsPanel.tsx";
+import { CraftPanel } from "./panels/CraftPanel.tsx";
+import { GamblePanel } from "./panels/GamblePanel.tsx";
+import { RiftPanel } from "./panels/RiftPanel.tsx";
+import { AchievementsPanel } from "./panels/AchievementsPanel.tsx";
+import { LootFilterPanel } from "./panels/LootFilterPanel.tsx";
 
 export interface ClassicHudProps {
   api: ClassicClientApi;
@@ -91,6 +98,7 @@ export const DEFAULT_WIDGETS: readonly WidgetSpec[] = [
   { slot: SLOT.overlay, id: "classic.newHeroScreen", order: 10, component: NewHeroScreen },
   { slot: SLOT.overlay, id: "classic.deathScreen", order: 20, component: DeathScreen },
   { slot: SLOT.overlay, id: "classic.toasts", order: 30, component: Toasts },
+  { slot: SLOT.overlay, id: "classic.tips", order: 35, component: Tips },
   { slot: SLOT.overlay, id: "classic.tooltip", order: 40, component: Tooltip },
   { slot: SLOT.overlay, id: "classic.errorFlash", order: 50, component: ErrorFlash },
 ];
@@ -107,6 +115,12 @@ export const PANEL_COMPONENTS: Record<PanelId, SlotComponent> = {
   settings: SettingsPanel,
   log: LogPanel,
   map: MapPanel,
+  talents: TalentsPanel,
+  craft: CraftPanel,
+  gamble: GamblePanel,
+  rift: RiftPanel,
+  achievements: AchievementsPanel,
+  lootFilter: LootFilterPanel,
 };
 
 /** Registers the default HUD widgets and panels into `slots` (see §13 slot table). Call once per registry. */

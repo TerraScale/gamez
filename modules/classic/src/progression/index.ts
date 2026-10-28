@@ -31,7 +31,7 @@ export { addXp } from "./level.ts";
 
 export const classicProgression = defineModule({
   id: MODULE.progression,
-  version: "0.2.0",
+  version: "0.3.0",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content, MODULE.items],
   setup(world) {

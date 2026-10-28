@@ -1,8 +1,9 @@
 /**
  * Town vendors (OWNER: T5, design §11.4 and §20): restock on town entry,
  * buy (smith items, alchemist potions and town portal scrolls), sell to the
- * junk buyer, and the stash (put / take). Town-only ops need the NPC or chest
- * within INTERACT_RANGE.
+ * junk buyer. Town-only ops need the NPC within INTERACT_RANGE. The stash is
+ * in stash.ts, the gambler in gamble.ts (wave A). Purchases add
+ * RunStats.goldSpent (wave A).
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, INTERACT_RANGE, OK, type OpResult } from "../actions.ts";
@@ -22,7 +23,6 @@ import { within } from "../fixed.ts";
 import {
   currentDepth,
   RES,
-  stashOf,
   type AreaState,
   type VendorStock,
   type VendorState,
@@ -30,9 +30,9 @@ import {
 } from "../resources.ts";
 import { monsterLevel, potionUnlocked, sellPrice } from "../rules.ts";
 import { KIND, type ItemInstance, type ItemRarity, type NpcProto } from "../types.ts";
-import { balanceOf, baseOf, liveHero } from "./common.ts";
+import { addRunStat, balanceOf, baseOf, liveHero, noteFound } from "./common.ts";
 import { beltAccept } from "./belt.ts";
-import { placeItem, removeItem, type GridBag } from "./inventory.ts";
+import { placeItem, removeItem } from "./inventory.ts";
 import { rollItem } from "./generate.ts";
 
 /** Rolls every vendor stock with sells.count > 0 (design §20): on the first town visit, or when the hero enters town. */
@@ -63,10 +63,10 @@ export function restockVendors(world: World, ctx: SimContext): void {
   world.setResource(RES.vendors, { stocks });
 }
 
-type NpcRef = { id: string; proto: Readonly<NpcProto> } | OpResult;
+export type NpcRef = { id: string; proto: Readonly<NpcProto> } | OpResult;
 
 /** The NPC entity as a prototype, when it is within INTERACT_RANGE of the hero. */
-function npcInReach(world: World, ctx: SimContext, hero: Entity, npc: Entity): NpcRef {
+export function npcInReach(world: World, ctx: SimContext, hero: Entity, npc: Entity): NpcRef {
   if (!world.has(npc, Npc) || !world.has(npc, Pos)) return fail(ERR.badTarget, "no such npc");
   const id = world.read(npc, Npc).proto;
   const proto = ctx.registry.get<NpcProto>(KIND.npc, id);
@@ -90,7 +90,7 @@ export function stashInReach(world: World, hero: Entity): Entity {
   return 0;
 }
 
-function townOnly(world: World): OpResult | null {
+export function townOnly(world: World): OpResult | null {
   return currentDepth(world) === 0 ? null : fail(ERR.notInTown, "this is only possible in town");
 }
 
@@ -133,6 +133,7 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
       if (wallet.gold < total) return fail(ERR.noGold, `need ${total} gold`);
       world.update(hero, Wallet, { gold: wallet.gold - total });
       world.update(hero, Supplies, { tpScrolls: supplies.tpScrolls + o.count });
+      addRunStat(world, "goldSpent", total);
       emit(ctx, {
         type: "classic.vendor.bought",
         npc: npc.id,
@@ -157,6 +158,7 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
     if (wallet.gold < total) return fail(ERR.noGold, `need ${total} gold`);
     world.update(hero, Wallet, { gold: wallet.gold - total });
     world.update(hero, Belt, { slots: accepted.slots });
+    addRunStat(world, "goldSpent", total);
     emit(ctx, { type: "classic.vendor.bought", npc: npc.id, name: base.name, price: total });
     return OK;
   }
@@ -176,6 +178,8 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
   if (!next) return fail(ERR.bagFull, "there is no room in the bag");
   world.update(hero, Wallet, { gold: wallet.gold - item.value });
   world.update(hero, Inventory, { items: next.items });
+  addRunStat(world, "goldSpent", item.value);
+  noteFound(world, item);
   const stocks = vendors!.stocks.map((s, i) =>
     i === stockIdx ? { ...s, items: s.items.filter((_, j) => j !== o.index) } : s,
   );
@@ -203,46 +207,5 @@ export function execSell(world: World, ctx: SimContext, npcEntity: Entity, uid: 
   world.update(hero, Inventory, { items: removed.bag.items });
   world.update(hero, Wallet, { gold: wallet.gold + price });
   emit(ctx, { type: "classic.vendor.sold", npc: npc.id, name: removed.item.name, price });
-  return OK;
-}
-
-/** Stores a bag item in the town stash. */
-export function execStashPut(world: World, ctx: SimContext, uid: number): OpResult {
-  const town = townOnly(world);
-  if (town) return town;
-  const h = liveHero(world);
-  if (!("hero" in h)) return h;
-  const hero = h.hero;
-  if (stashInReach(world, hero) === 0) return fail(ERR.tooFar, "stand next to the stash");
-  const bag = world.get(hero, Inventory);
-  if (!bag) return fail(ERR.noHero, "the hero has no inventory yet");
-  const stash = stashOf(world);
-  if (stash.items.length >= balanceOf(ctx.registry).stashSize)
-    return fail(ERR.stashFull, "the stash is full");
-  const removed = removeItem(bag, uid);
-  if (!removed) return fail(ERR.unknownId, `item ${uid} is not in the bag`);
-  world.update(hero, Inventory, { items: removed.bag.items });
-  world.setResource(RES.stash, { items: [...stash.items, removed.item] });
-  return OK;
-}
-
-/** Takes an item out of the town stash into the bag. */
-export function execStashTake(world: World, ctx: SimContext, uid: number): OpResult {
-  const town = townOnly(world);
-  if (town) return town;
-  const h = liveHero(world);
-  if (!("hero" in h)) return h;
-  const hero = h.hero;
-  if (stashInReach(world, hero) === 0) return fail(ERR.tooFar, "stand next to the stash");
-  const bag: GridBag | undefined = world.get(hero, Inventory);
-  if (!bag) return fail(ERR.noHero, "the hero has no inventory yet");
-  const stash = stashOf(world);
-  const at = stash.items.findIndex((it) => it.uid === uid);
-  if (at < 0) return fail(ERR.unknownId, `item ${uid} is not in the stash`);
-  const item = stash.items[at]!;
-  const next = placeItem(ctx.registry, bag, item);
-  if (!next) return fail(ERR.bagFull, "there is no room in the bag");
-  world.update(hero, Inventory, { items: next.items });
-  world.setResource(RES.stash, { items: stash.items.filter((_, i) => i !== at) });
   return OK;
 }

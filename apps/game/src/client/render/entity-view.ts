@@ -1,5 +1,6 @@
 import {
   AnimatedSprite,
+  ColorMatrixFilter,
   Container,
   Graphics,
   GraphicsContext,
@@ -12,8 +13,6 @@ import type { ArpgRenderEntity, EntityAction, EntityKind, Facing, LabelKind } fr
 import {
   clampAnimRate,
   frameFromProgress,
-  HIT_FLASH_MIX,
-  HIT_FLASH_TINT,
   hitKnockback,
   projectileAngle,
   visibleHeight,
@@ -26,7 +25,7 @@ import {
   shouldFlip,
 } from "./appearance.ts";
 import type { DebugTracker } from "./debug.ts";
-import { entityTint, barFill, mixTint, pulseAmount } from "./fx-math.ts";
+import { clamp01, entityTint, barFill, flashMatrix, flashMix, pulseAmount } from "./fx-math.ts";
 import {
   clampOffset,
   deoverlapLabels,
@@ -70,6 +69,10 @@ const VIEW_PAD = 4;
 /** Marker bob: amplitude (px) and period factor (ms per radian). */
 const BOB_PX = 2.5;
 const BOB_MS = 230;
+/** Cast glow: the unit rises this much (px) at full glow. */
+const GLOW_LIFT_PX = 3;
+/** Hit flash colour mix is quantised to this many steps (so the filter only changes a few times per flash). */
+const FLASH_STEPS = 16;
 
 export type Resolved =
   | { kind: "anim"; anim: AnimVisual }
@@ -125,6 +128,19 @@ export interface EntityView {
   highlight: boolean;
   statusTint: number;
   hitFlash: number;
+  /** Colour of the white hit flash (0xffffff by default). */
+  flashColour: number;
+  /** Quantised flash mix currently applied (0 = none). */
+  flashK: number;
+  /** Colour filter on the body during a hit flash; created on first flash. */
+  flashFilter: ColorMatrixFilter | null;
+  flashOn: boolean;
+  /** Additive cast-glow halo (created on first glow) and its state. */
+  glow: Graphics | null;
+  glowColour: number;
+  glowAmt: number;
+  /** Lift from zLift (projectiles) and from the cast glow; body.y = -(zLift + glow lift). */
+  zLift: number;
   /** Dead without a death clip (faded and squashed). */
   corpse: boolean;
   flip: boolean;
@@ -166,6 +182,14 @@ export interface EntityView {
 
 export class EntityLayer {
   private readonly views = new Map<string, EntityView>();
+  /** Cast glow halos on or off (graphics quality low turns them off). */
+  glowOn = true;
+  /**
+   * Makes the hit-flash colour filter (created on the first hit of a view). A
+   * seam for tests: the default needs a WebGL context, and a null result draws
+   * no flash.
+   */
+  makeFlashFilter: () => ColorMatrixFilter | null = () => new ColorMatrixFilter();
   /** Entities with a status tint; their tint pulses every frame. */
   private readonly pulsing = new Set<EntityView>();
   /** Entities with a quest marker; it bobs every frame. */
@@ -217,12 +241,14 @@ export class EntityLayer {
     if (!v) return;
     this.views.delete(id);
     this.forget(v);
+    v.flashFilter?.destroy();
     v.root.destroy({ children: true });
     v.tag?.destroy({ children: true });
   }
 
   clear(): void {
     for (const v of this.views.values()) {
+      v.flashFilter?.destroy();
       v.root.destroy({ children: true });
       v.tag?.destroy({ children: true });
     }
@@ -466,6 +492,14 @@ export class EntityLayer {
       highlight: false,
       statusTint: 0,
       hitFlash: 0,
+      flashColour: 0xffffff,
+      flashK: 0,
+      flashFilter: null,
+      flashOn: false,
+      glow: null,
+      glowColour: -1,
+      glowAmt: 0,
+      zLift: 0,
       corpse: false,
       flip: false,
       rotation: 0,
@@ -567,14 +601,12 @@ export class EntityLayer {
       v.body.scale.set(flip ? -scale : scale, corpse ? scale * CORPSE_SQUASH : scale);
       v.shadow.scale.set(scale);
     }
-    const lift = e.zLift ?? 0;
-    if (v.lift !== lift) {
-      v.lift = lift;
-      v.body.y = -lift;
-    }
+    v.zLift = e.zLift ?? 0;
+    this.updateGlow(v, e.castGlow ?? 0, e.glowColor ?? 0xffffff);
 
     const hitFlash = e.hitFlash !== undefined && e.hitFlash > 0 ? Math.min(1, e.hitFlash) : 0;
     v.hitFlash = hitFlash;
+    this.updateFlash(v, hitFlash, e.hitFlashColor ?? 0xffffff);
     const knock = hitKnockback(hitFlash, flip);
     if (v.knock !== knock) {
       v.knock = knock;
@@ -728,6 +760,76 @@ export class EntityLayer {
     } else if (v.manual) {
       v.manual = false;
       sp.gotoAndPlay(0);
+    }
+  }
+
+  /**
+   * Cast glow: an additive halo in the skill's colour at the feet and around the
+   * head, and a slight lift, while `castGlow` > 0. The halo is drawn once per
+   * colour; changing the strength only changes alpha and lift.
+   */
+  private updateGlow(v: EntityView, castGlow: number, colour: number): void {
+    const amt = this.glowOn ? clamp01(castGlow) : 0;
+    if (amt > 0) {
+      if (!v.glow) {
+        const g = new Graphics();
+        g.blendMode = "add";
+        v.root.addChildAt(g, 1);
+        v.glow = g;
+        v.glowColour = -1;
+      }
+      if (v.glowColour !== colour) {
+        v.glowColour = colour;
+        v.glow
+          .clear()
+          .ellipse(0, 0, 15, 6)
+          .fill({ color: colour, alpha: 0.3 })
+          .ellipse(0, -12, 18, 14)
+          .fill({ color: colour, alpha: 0.18 })
+          .ellipse(0, -12, 11, 9)
+          .fill({ color: colour, alpha: 0.28 })
+          .ellipse(0, -12, 18, 14)
+          .stroke({ width: 1.5, color: colour, alpha: 0.7 });
+      }
+      v.glow.visible = true;
+      v.glow.alpha = amt;
+    } else if (v.glow) {
+      v.glow.visible = false;
+    }
+    v.glowAmt = amt;
+    const lift = v.zLift + GLOW_LIFT_PX * amt;
+    if (v.lift !== lift) {
+      v.lift = lift;
+      // No -0: a zero lift leaves the body at exactly 0.
+      v.body.y = lift === 0 ? 0 : -lift;
+    }
+  }
+
+  /**
+   * White (or coloured) hit flash: a colour-matrix filter on the body that mixes
+   * it towards `colour`, keeping alpha. The filter exists only while flashing;
+   * the mix is quantised so the matrix changes a few times per flash.
+   */
+  private updateFlash(v: EntityView, flash: number, colour: number): void {
+    const k = Math.round(flashMix(flash) * FLASH_STEPS) / FLASH_STEPS;
+    if (k <= 0) {
+      if (v.flashOn) {
+        v.body.filters = null;
+        v.flashOn = false;
+        v.flashK = 0;
+      }
+      return;
+    }
+    if (!v.flashFilter) v.flashFilter = this.makeFlashFilter();
+    if (!v.flashFilter) return;
+    if (!v.flashOn) {
+      v.body.filters = [v.flashFilter];
+      v.flashOn = true;
+    }
+    if (v.flashK !== k || v.flashColour !== colour) {
+      v.flashK = k;
+      v.flashColour = colour;
+      v.flashFilter.matrix = flashMatrix(colour, k);
     }
   }
 
@@ -998,10 +1100,9 @@ function hideSprite(s: { visible: boolean }): void {
   s.visible = false;
 }
 
-/** Body tint: base, highlight, status pulse, then the hit flash on top. */
+/** Body tint: base, highlight, status pulse. The hit flash is a filter (updateFlash), not a tint. */
 function bodyTint(v: EntityView, pulse01: number): number {
-  const t = entityTint(v.tint, v.highlight, v.statusTint, pulse01);
-  return v.hitFlash > 0 ? mixTint(t, HIT_FLASH_TINT, v.hitFlash * HIT_FLASH_MIX) : t;
+  return entityTint(v.tint, v.highlight, v.statusTint, pulse01);
 }
 
 function paint(v: EntityView, colour: number): void {

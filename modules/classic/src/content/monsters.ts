@@ -2,7 +2,10 @@
  * Monsters and bosses (design §8.1). Stats are at monster level 1 and are
  * scaled by rules.scaleMonster. Speeds are sub per tick, ranges are in tiles
  * through tiles(). Bosses have themes [] and a `boss` block; `sentry` is the
- * hero summon used by Spark Sentry (never placed by population).
+ * hero summon used by Spark Sentry (never placed by population). Wave A:
+ * bosses fight in phases with telegraphed skills (content/boss.ts) and the
+ * two rift guardians (guardian: true, no `boss` block) are spawned only by
+ * classic.rift.
  */
 import { tiles } from "../fixed.ts";
 import type { MonsterProto } from "../types.ts";
@@ -368,6 +371,31 @@ function boss(key: string, p: BossBody): MonsterProto {
   });
 }
 
+type Phase = NonNullable<MonsterProto["phases"]>[number];
+
+/** A boss phase (wave A, docs/design/wave-A.md §6.2). */
+function phase(
+  atPct: number,
+  message: string,
+  o: { skills?: string[]; summon?: boolean; enragePct?: number } = {},
+): Phase {
+  return {
+    atPct,
+    message,
+    skills: o.skills ?? [],
+    summon: o.summon ?? false,
+    enragePct: o.enragePct ?? 0,
+  };
+}
+
+const QUAKE = "classic.mskill.boss_quake";
+const CLEAVE = "classic.mskill.boss_cleave";
+const RUSH = "classic.mskill.boss_rush";
+const METEOR = "classic.mskill.boss_meteor";
+const FROST_NOVA = "classic.mskill.boss_frost_nova";
+const PYRE_RING = "classic.mskill.boss_pyre_ring";
+const VOLLEY = "classic.mskill.boss_volley";
+
 const BOSSES: Record<string, MonsterProto> = {
   "classic.monster.boss_warden": boss("boss_warden", {
     name: "Morrow, the Grave Warden",
@@ -383,7 +411,21 @@ const BOSSES: Record<string, MonsterProto> = {
     resist: { fire: 0, cold: 30, lightning: 0, poison: 60 },
     xp: 400,
     moveSpeed: 36,
-    skills: ["classic.mskill.claw", "classic.mskill.boss_slam", "classic.mskill.raise"],
+    skills: ["classic.mskill.claw", CLEAVE, QUAKE],
+    phases: [
+      phase(
+        70,
+        'Morrow strikes his spade on the flagstones: "Up, my wards. The dead keep their posts."',
+        {
+          summon: true,
+        },
+      ),
+      phase(35, "Morrow's lantern gutters out, and the Warden stops holding back.", {
+        skills: [RUSH],
+        summon: true,
+        enragePct: 25,
+      }),
+    ],
     depth: 4,
     title: "the Grave Warden",
     minions: "classic.monster.husk",
@@ -403,7 +445,17 @@ const BOSSES: Record<string, MonsterProto> = {
     resist: { fire: 0, cold: 0, lightning: 0, poison: 80 },
     xp: 900,
     moveSpeed: 40,
-    skills: ["classic.mskill.gore", "classic.mskill.charge", "classic.mskill.boss_summon"],
+    skills: ["classic.mskill.gore", RUSH, QUAKE],
+    phases: [
+      phase(65, "Skarn shrieks and the walls answer: her brood pours out of the tunnels.", {
+        summon: true,
+      }),
+      phase(30, "Skarn tears through her own nest in a blind frenzy.", {
+        skills: [CLEAVE],
+        summon: true,
+        enragePct: 30,
+      }),
+    ],
     depth: 8,
     title: "the Tunnel Mother",
     minions: "classic.monster.gnawling",
@@ -423,7 +475,15 @@ const BOSSES: Record<string, MonsterProto> = {
     resist: { fire: 80, cold: 0, lightning: 0, poison: 0 },
     xp: 1600,
     moveSpeed: 38,
-    skills: ["classic.mskill.firebolt", "classic.mskill.boss_volley", "classic.mskill.boss_nova"],
+    skills: ["classic.mskill.firebolt", VOLLEY, METEOR, PYRE_RING],
+    phases: [
+      phase(70, "Vessa sings her seers up out of the ash.", { summon: true }),
+      phase(40, "The Ninth Flame burns brighter, and the floor begins to smoulder.", {
+        skills: [QUAKE],
+        enragePct: 20,
+      }),
+      phase(15, "Vessa becomes a pillar of white fire.", { summon: true, enragePct: 50 }),
+    ],
     depth: 12,
     title: "of the Ninth Flame",
     minions: "classic.monster.ash_seer",
@@ -443,11 +503,20 @@ const BOSSES: Record<string, MonsterProto> = {
     resist: { fire: 0, cold: 75, lightning: 0, poison: 50 },
     xp: 3000,
     moveSpeed: 36,
-    skills: [
-      "classic.mskill.claw",
-      "classic.mskill.boss_slam",
-      "classic.mskill.boss_volley",
-      "classic.mskill.raise",
+    skills: ["classic.mskill.claw", CLEAVE, QUAKE, VOLLEY],
+    phases: [
+      phase(75, "The Hollow King lifts one hand, and his wraiths come to kneel.", {
+        summon: true,
+      }),
+      phase(50, "Frost cracks across the throne room floor.", {
+        skills: [FROST_NOVA],
+        enragePct: 15,
+      }),
+      phase(25, "The crown blazes cold: the Hollow King will not fall quietly.", {
+        skills: [RUSH],
+        summon: true,
+        enragePct: 40,
+      }),
     ],
     depth: 16,
     title: "the Hollow King",
@@ -456,4 +525,88 @@ const BOSSES: Record<string, MonsterProto> = {
   }),
 };
 
-export const MONSTERS: Record<string, MonsterProto> = { ...REGULAR, ...BOSSES };
+type GuardianBody = Omit<
+  Body,
+  | "behaviour"
+  | "radius"
+  | "aggroRange"
+  | "packSize"
+  | "themes"
+  | "minDepth"
+  | "weight"
+  | "keepDistance"
+  | "guardian"
+>;
+
+/**
+ * Rift guardian (wave A §6.2, §7): behaviour boss with phases, never placed
+ * by population or world (themes [], no `boss` block): classic.rift spawns
+ * it when the rift's progress bar fills (RiftProto.guardians).
+ */
+function guardian(key: string, p: GuardianBody): MonsterProto {
+  return monster(key, {
+    ...p,
+    behaviour: "boss",
+    radius: 140,
+    aggroRange: tiles(14),
+    keepDistance: 0,
+    packSize: [1, 1],
+    themes: [],
+    minDepth: 1,
+    weight: 1,
+    guardian: true,
+  });
+}
+
+const GUARDIANS: Record<string, MonsterProto> = {
+  "classic.monster.guardian_maw": guardian("guardian_maw", {
+    name: "The Gnashing Maw",
+    family: "aberration",
+    description: "A wall of teeth on legs that the Rift grows to guard its heart.",
+    tint: 0xa8325e,
+    scale: 150,
+    life: 2000,
+    armor: 26,
+    toHit: 55,
+    dmgMin: 14,
+    dmgMax: 24,
+    element: "phys",
+    resist: { fire: 20, cold: 20, lightning: 20, poison: 40 },
+    xp: 2500,
+    moveSpeed: 40,
+    skills: ["classic.mskill.claw", CLEAVE, QUAKE],
+    phases: [
+      phase(60, "The Maw's teeth grind faster, and it lowers its head to charge.", {
+        skills: [RUSH],
+        enragePct: 20,
+      }),
+      phase(25, "The Gnashing Maw howls and snaps at everything around it.", { enragePct: 45 }),
+    ],
+  }),
+  "classic.monster.guardian_choir": guardian("guardian_choir", {
+    name: "Choir of Cinders",
+    family: "spirit",
+    description: "A knot of burning voices that sings the Rift shut behind its visitors.",
+    tint: 0xffa64d,
+    scale: 150,
+    life: 1700,
+    armor: 18,
+    toHit: 55,
+    dmgMin: 13,
+    dmgMax: 22,
+    element: "fire",
+    resist: { fire: 60, cold: 20, lightning: 20, poison: 20 },
+    xp: 2500,
+    moveSpeed: 36,
+    skills: ["classic.mskill.firebolt", VOLLEY, FROST_NOVA],
+    phases: [
+      phase(60, "The Choir's voices rise into a roar of falling embers.", {
+        skills: [METEOR],
+        enragePct: 20,
+      }),
+      phase(25, "Every voice of the Choir screams at once.", { enragePct: 45 }),
+    ],
+  }),
+};
+
+export const MONSTERS: Record<string, MonsterProto> = { ...REGULAR, ...BOSSES, ...GUARDIANS };

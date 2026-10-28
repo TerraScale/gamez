@@ -1030,6 +1030,6 @@ describe("classic.monsters determinism", () => {
   });
 
   it("the hash after the fixed script is pinned", () => {
-    expect(script(7).hash()).toBe("7420c08e3f54b393");
+    expect(script(7).hash()).toBe("04598ea76249b630");
   });
 });

@@ -1,8 +1,10 @@
 import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
-import type { EffectSpec, FloatTextSpec } from "@gamez/ui-host";
-import { FLOAT_STAGGER_NEAR_PX, floatStagger } from "./anim-math.ts";
-import { effectDuration, floatFontSize, floatPose } from "./fx-math.ts";
+import { DEFAULT_ISO, tileToScreen } from "@gamez/world";
+import type { EffectSpec, FloatTextSpec, GraphicsQualityLevel } from "@gamez/ui-host";
+import { FLOAT_STAGGER_NEAR_PX, floatStagger, frameFromProgress } from "./anim-math.ts";
+import { burstScale, effectDuration, floatFontSize, floatPose } from "./fx-math.ts";
 import { LINE_MIN_PX, planEffect, UNDER_COLOUR, underStroke, type FxOp } from "./fx-plan.ts";
+import { ParticleLayer } from "./particles.ts";
 import { Pool } from "./pool.ts";
 
 const MAX_FLOATS = 48;
@@ -28,25 +30,52 @@ interface FloatItem {
 interface EffectItem {
   g: Graphics;
   sprite: Sprite | null;
+  /** One-shot `<sprite>.burst` animation, when the manifest has it. */
+  burst: Sprite | null;
+  burstFrames: Texture[] | null;
   spec: EffectSpec | null;
   elapsed: number;
   life: number;
 }
 
+/** Share of a burst's life at which its art starts to fade. */
+const BURST_FADE_FROM = 0.7;
+
+/** Keys of the effect layer: what a playEffect drew with. */
+export type EffectArt = "anim" | "sprite" | "procedural";
+
+/** Chains, beams and blinks also burst at their end point. */
+const END_BURST_KINDS = new Set<EffectSpec["kind"]>(["chain", "beam", "blink"]);
+
 /**
  * Float texts and one-shot effects, both from capped pools. Effects live in
- * `layer` and floats in `floatLayer`; the renderer stacks both above the name
- * labels (floats on top), so nothing is allocated in the steady state beyond
- * the small op lists the planner returns.
+ * `layer` (with the particle layer on top of them) and floats in `floatLayer`;
+ * the renderer stacks both above the name labels (floats on top), so nothing
+ * is allocated in the steady state beyond the small op lists the planner returns.
  */
 export class FxLayer {
   readonly layer = new Container();
   /** Float texts: above effects and name labels. */
   readonly floatLayer = new Container();
+  /** Pooled particles (wave A), drawn above the effect graphics. */
+  readonly particles: ParticleLayer;
   private readonly floats: Pool<FloatItem>;
   private readonly effects: Pool<EffectItem>;
+  private quality: GraphicsQualityLevel = "high";
 
-  constructor(private readonly spriteFor: (id: string) => Texture | null) {
+  /**
+   * `spriteFor` returns an exact static sprite (or null); `animFor` an exact
+   * animation's frames (or null); `particleTexture` the manifest texture of a
+   * particle style (or null for the procedural one).
+   */
+  constructor(
+    private readonly spriteFor: (id: string) => Texture | null,
+    private readonly animFor: (id: string) => Texture[] | null = () => null,
+    particleTexture: (style: string) => Texture | null = () => null,
+  ) {
+    this.layer.sortableChildren = true;
+    this.particles = new ParticleLayer(particleTexture);
+    this.layer.addChild(this.particles.container);
     this.floats = new Pool<FloatItem>(
       () => {
         const text = new Text({
@@ -75,12 +104,14 @@ export class FxLayer {
         const g = new Graphics();
         g.visible = false;
         this.layer.addChild(g);
-        return { g, sprite: null, spec: null, elapsed: 0, life: 1 };
+        return { g, sprite: null, burst: null, burstFrames: null, spec: null, elapsed: 0, life: 1 };
       },
       (item) => {
         item.g.clear();
         item.g.visible = false;
         if (item.sprite) item.sprite.visible = false;
+        if (item.burst) item.burst.visible = false;
+        item.burstFrames = null;
         item.spec = null;
         item.elapsed = 0;
       },
@@ -127,7 +158,16 @@ export class FxLayer {
     t.visible = true;
   }
 
-  effect(spec: EffectSpec, origin: { sx: number; sy: number }): void {
+  /**
+   * Plays a one-shot effect at `origin`. `burstFrames` are the frames of the
+   * `<sprite>.burst` animation when the manifest has it; the static sprite is
+   * then not drawn. Returns how the effect was drawn (for QA).
+   */
+  effect(
+    spec: EffectSpec,
+    origin: { sx: number; sy: number },
+    burstFrames: Texture[] | null = null,
+  ): EffectArt {
     const item = this.effects.spawn();
     item.spec = spec;
     item.elapsed = 0;
@@ -135,6 +175,23 @@ export class FxLayer {
     item.g.position.set(origin.sx, origin.sy);
     item.g.visible = true;
     const tex = spec.sprite ? this.spriteFor(spec.sprite) : null;
+    let art: EffectArt = "procedural";
+    if (burstFrames && burstFrames.length > 0) {
+      if (!item.burst) {
+        item.burst = new Sprite();
+        item.burst.anchor.set(0.5);
+        this.layer.addChild(item.burst);
+      }
+      item.burstFrames = burstFrames;
+      item.burst.texture = burstFrames[0]!;
+      item.burst.position.set(origin.sx, origin.sy);
+      item.burst.scale.set(burstScale(spec.radius ?? 1, DEFAULT_ISO.tileWidth));
+      item.burst.alpha = 1;
+      item.burst.visible = true;
+      art = "anim";
+    } else if (item.burst) {
+      item.burst.visible = false;
+    }
     if (tex) {
       if (!item.sprite) {
         item.sprite = new Sprite();
@@ -143,11 +200,24 @@ export class FxLayer {
       }
       item.sprite.texture = tex;
       item.sprite.position.set(origin.sx, origin.sy);
-      item.sprite.visible = true;
+      item.sprite.visible = art !== "anim";
+      if (art === "procedural") art = "sprite";
     } else if (item.sprite) {
       item.sprite.visible = false;
     }
     this.draw(item, 0);
+    this.emitParticles(spec, origin);
+    return art;
+  }
+
+  /** Quality: particle caps, glow and the segment count of the shapes. */
+  setQuality(q: GraphicsQualityLevel): void {
+    this.quality = q;
+    this.particles.setQuality(q);
+  }
+
+  get currentQuality(): GraphicsQualityLevel {
+    return this.quality;
   }
 
   update(dtMs: number): void {
@@ -173,6 +243,7 @@ export class FxLayer {
       }
       this.draw(item, item.elapsed / item.life);
     }
+    this.particles.update(dtMs);
   }
 
   get activeFloats(): number {
@@ -188,7 +259,17 @@ export class FxLayer {
     this.effects.drain((item) => {
       item.g.destroy();
       item.sprite?.destroy();
+      item.burst?.destroy();
     });
+    this.particles.destroy();
+  }
+
+  private emitParticles(spec: EffectSpec, origin: { sx: number; sy: number }): void {
+    this.particles.emit(spec, origin.sx, origin.sy);
+    if (END_BURST_KINDS.has(spec.kind) && spec.x2 !== undefined && spec.y2 !== undefined) {
+      const end = tileToScreen(spec.x2 - spec.x, spec.y2 - spec.y);
+      this.particles.emit(spec, origin.sx + end.sx, origin.sy + end.sy);
+    }
   }
 
   private draw(item: EffectItem, p: number): void {
@@ -196,7 +277,13 @@ export class FxLayer {
     if (!spec) return;
     const g = item.g;
     g.clear();
-    for (const op of planEffect(spec, p)) drawOp(g, op);
+    for (const op of planEffect(spec, p, this.quality)) drawOp(g, op);
+    const frames = item.burstFrames;
+    const bs = item.burst;
+    if (frames && bs && bs.visible) {
+      bs.texture = frames[frameFromProgress(p, frames.length)] ?? frames[0]!;
+      bs.alpha = p < BURST_FADE_FROM ? 1 : 1 - (p - BURST_FADE_FROM) / (1 - BURST_FADE_FROM);
+    }
     const sp = item.sprite;
     if (sp && sp.visible) {
       sp.alpha = 1 - p;

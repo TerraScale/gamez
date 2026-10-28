@@ -17,7 +17,7 @@ import {
   type ClientServices,
   type WorldRenderer,
 } from "@gamez/ui-host";
-import { mode, modules } from "../index.ts";
+import { debugModules, mode, modules } from "../index.ts";
 import { ACTION } from "../actions.ts";
 import { RES, type ControlState } from "../resources.ts";
 import { ClassicHud, registerDefaultHud } from "./hud/index.tsx";
@@ -26,7 +26,15 @@ import { labelInsetsFor } from "./scene.ts";
 import type { ClassicClientApi, Settings } from "./contract.ts";
 import { createClassicGame, type ClassicGame } from "./game.ts";
 import { bindKeyboard, nextMode, stepSpeed, type KeyCommand } from "./input.ts";
-import { browserStorage, createSaveStore, DEFAULT_SETTINGS, type SaveRecord } from "./persist.ts";
+import {
+  browserStorage,
+  CHEATS_SAVE_KEY,
+  createSaveStore,
+  DEFAULT_SETTINGS,
+  restoreCarried,
+  SAVE_KEY,
+  type SaveRecord,
+} from "./persist.ts";
 import {
   defaultHeroName,
   EventProbe,
@@ -36,6 +44,13 @@ import {
 } from "./debug.ts";
 
 export { classicGalleryView } from "./gallery.ts";
+
+/** Notice shown after a save of another content version was carried over. */
+export const CARRY_TOAST = {
+  title: "Save carried over",
+  body: "Your hero was carried over to the new version",
+  ms: 7000,
+} as const;
 
 /** Absences longer than this (ms) are credited as offline progress. */
 export const OFFLINE_MIN_MS = 60_000;
@@ -214,15 +229,33 @@ export const classicView: ClientModeView = {
       renderer = created;
       await created.init(worldLayer, services.manifest, services.assetBaseUrl);
 
-      const loaded = loadMode(mode, modules);
       const params = readDebugParams(globalThis.location?.search ?? "");
+      // ?debug=1&cheats=1 loads the QA cheat module too: a different content hash and its own save slot.
+      const cheats = params.debug && params.cheats;
+      const loaded = cheats
+        ? loadMode({ ...mode }, [...modules, ...debugModules])
+        : loadMode(mode, modules);
       // A seeded run is a throwaway: it neither restores nor overwrites the local save.
-      const store = createSaveStore(params.seed === null ? browserStorage() : null);
+      const store = createSaveStore(
+        params.seed === null ? browserStorage() : null,
+        cheats ? CHEATS_SAVE_KEY : SAVE_KEY,
+      );
       const saved = store.load(loaded.contentHash);
+      // A save of another content version whose modules all still exist is carried over (dev convenience).
+      const carriedRecord =
+        saved === null && !params.fresh && params.seed === null
+          ? store.loadCarryable(
+              loaded.contentHash,
+              loaded.modules.map((m) => m.id),
+            )
+          : null;
+      const carriedSim = carriedRecord !== null ? restoreCarried(loaded, carriedRecord) : null;
+      const base = saved ?? (carriedSim !== null ? carriedRecord : null);
       let seed = params.seed ?? randomSeed();
-      const { sim, fresh } = startSim(loaded, saved, seed);
+      const { sim, fresh } =
+        carriedSim !== null ? { sim: carriedSim, fresh: false } : startSim(loaded, saved, seed);
       const probe = params.debug ? new EventProbe() : null;
-      const settings: Settings = saved?.settings ?? { ...DEFAULT_SETTINGS };
+      const settings: Settings = base?.settings ?? { ...DEFAULT_SETTINGS };
       const wall = Date.now();
 
       game = createClassicGame({
@@ -242,11 +275,17 @@ export const classicView: ClientModeView = {
         onEvents: probe ? (events) => probe.push(events, game?.currentSim().tick ?? 0) : undefined,
       });
 
+      if (carriedSim !== null) {
+        // Write it back under the new content hash, then tell the player.
+        game.save();
+        game.notify("info", CARRY_TOAST.title, CARRY_TOAST.body, CARRY_TOAST.ms);
+      }
+
       // Offline progress for a long absence, when the hero is in play and the controller drives it.
-      if (!fresh && saved && wall - saved.savedAt > OFFLINE_MIN_MS) {
+      if (!fresh && base && wall - base.savedAt > OFFLINE_MIN_MS) {
         const control = sim.world.getResource<ControlState>(RES.control);
         if (control && control.mode !== "manual" && game.api.hud.getSnapshot().phase === "play") {
-          const elapsedMs = Math.min(wall - saved.savedAt, OFFLINE_MAX_MS);
+          const elapsedMs = Math.min(wall - base.savedAt, OFFLINE_MAX_MS);
           game.api.act(ACTION.offlineProgress, { elapsedMs });
         }
       }

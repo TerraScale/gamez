@@ -335,5 +335,13 @@ function interactWith(world: World, ctx: SimContext, t: Entity): void {
     case "stash":
       emit(ctx, { type: "classic.stash.opened" });
       break;
+    // Wave A: the obelisk opens the Rift panel (the player picks a level; the
+    // auto controller queues openRift itself); the rift exit leaves the rift.
+    case "riftObelisk":
+      emit(ctx, { type: "classic.rift.panel" });
+      break;
+    case "riftExit":
+      pushCommand(world, { op: "leaveRift" });
+      break;
   }
 }

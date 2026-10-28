@@ -11,6 +11,13 @@
  * - Actions: classic.equip, unequip, moveItem, dropItem, drinkPotion, buy,
  *   sell, stashPut, stashTake.
  * - rollItem() (generate.ts) is the item factory for every module.
+ *
+ * Wave A (docs/design/wave-A.md §5): set pieces, gems and dropped sockets,
+ * durability on generated equipment; classic.items.wear (post 110);
+ * gambling (gamble.ts, op + action classic.gamble), stash tabs (stash.ts,
+ * classic.stashMove, stashPut {tab?}), the loot filter (lootFilter.ts,
+ * classic.setLootFilter), set bonus events (sets.ts) and RunStats counters
+ * (goldSpent, uniquesFound, setItemsFound, gambles).
  */
 import { defineModule } from "@gamez/kernel";
 import { MODULE } from "../ids.ts";
@@ -19,10 +26,11 @@ import { commandsSystem } from "./commands.ts";
 import { dropsSystem } from "./drops.ts";
 import { heroInitSystem } from "./heroInit.ts";
 import { itemActions } from "./actions.ts";
+import { wearSystem } from "./wear.ts";
 
 export const classicItems = defineModule({
   id: MODULE.items,
-  version: "1.1.1",
+  version: "1.2.0",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   setup(world) {
@@ -33,11 +41,24 @@ export const classicItems = defineModule({
       world.setResource(RES.stash, { items: [] });
     }
   },
-  systems: [heroInitSystem, commandsSystem, dropsSystem],
+  systems: [heroInitSystem, commandsSystem, dropsSystem, wearSystem],
   actions: itemActions,
 });
 
-export { rollItem, rollRarity, type RollItemOptions } from "./generate.ts";
+export {
+  baseCandidates,
+  gemBaseFor,
+  gemBaseOf,
+  gemTierFor,
+  makeGemItem,
+  rollAffixes,
+  rollDropSockets,
+  rollItem,
+  rollRarity,
+  rollRarityFrom,
+  type RolledAffixes,
+  type RollItemOptions,
+} from "./generate.ts";
 export { findSpace, placeItem, removeItem, sortEntries, type GridBag } from "./inventory.ts";
 export { beltAccept, execDrink, type BeltSlot } from "./belt.ts";
 export { emptyEquipment, execEquip, execUnequip } from "./equip.ts";
@@ -45,12 +66,39 @@ export { execDrop, execGrantGold, execGrantItems, execMoveItem, execPickup } fro
 export {
   execBuy,
   execSell,
-  execStashPut,
-  execStashTake,
+  npcInReach,
   restockVendors,
   stashInReach,
+  townOnly,
   type BuyOrder,
 } from "./vendor.ts";
+export {
+  execStashMove,
+  execStashPut,
+  execStashTake,
+  firstTabWithRoom,
+  stashAdd,
+  tabCounts,
+  tabOf,
+} from "./stash.ts";
+export { execGamble, GAMBLE_BASE_ILVL_BONUS } from "./gamble.ts";
+export {
+  execSetLootFilter,
+  mergeLootFilter,
+  parseLootFilterPatch,
+  type LootFilterPatch,
+} from "./lootFilter.ts";
+export { applyWear, clearWarned, wearOf, WEAR_RES, type WearState } from "./wear.ts";
+export { activeBonuses, emitSetChanges, equippedItems, setSnapshot } from "./sets.ts";
+export {
+  addRunStat,
+  balanceOf,
+  baseOf,
+  economyOf,
+  liveHero,
+  noteFound,
+  type RunCounter,
+} from "./common.ts";
 export { initHeroKit } from "./heroInit.ts";
 export { freeSpot, potionFor } from "./drops.ts";
 export { runItemCommand, ITEM_OPS } from "./commands.ts";

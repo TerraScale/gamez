@@ -10,7 +10,7 @@
 import type { FrozenRegistry, SimContext } from "@gamez/kernel";
 import type { SpawnRequest } from "../bus.ts";
 import { tileCenter, type TilePos } from "../fixed.ts";
-import { bossDisplayName, isBossDepth, monsterLevel } from "../rules.ts";
+import { bossDisplayName, isBossDepth, isRiftDepth, monsterLevel } from "../rules.ts";
 import type { GameState } from "../resources.ts";
 import {
   KIND,
@@ -23,6 +23,7 @@ import {
 } from "../types.ts";
 import { balanceOf, tileKey } from "./common.ts";
 import type { ClassicMap } from "./maps.ts";
+import { riftProtoOf } from "./riftMap.ts";
 
 /** Packs never start closer than this many tiles to the arrival point. */
 const MIN_SPAWN_TILES = 12;
@@ -162,8 +163,12 @@ export function planPopulation(
   }
 
   // 3. Normal and champion packs.
-  const packCount =
-    ctx.rng.int(Math.min(packs[0], packs[1]), Math.max(packs[0], packs[1])) + Math.floor(depth / 2);
+  // Rift levels (wave A) use RiftProto.packs and no depth growth; the rest of the rules are the same.
+  const riftPacks = isRiftDepth(depth) ? riftProtoOf(registry)?.packs : undefined;
+  const packCount = riftPacks
+    ? ctx.rng.int(Math.min(riftPacks[0], riftPacks[1]), Math.max(riftPacks[0], riftPacks[1]))
+    : ctx.rng.int(Math.min(packs[0], packs[1]), Math.max(packs[0], packs[1])) +
+      Math.floor(depth / 2);
   for (let p = 0; p < packCount; p++) {
     if (out.length >= cap) break;
     const leader = freeLeader();

@@ -22,11 +22,14 @@ export type KeyCommand =
   | { kind: "minimap" }
   | { kind: "automap" };
 
+/** Panel keys (letters are case-insensitive). N = talents, Y = achievements (wave A; no clash with the bindings below). */
 const PANEL_KEYS: Readonly<Record<string, PanelId>> = {
   c: "character",
   i: "inventory",
   s: "skills",
   l: "quests",
+  n: "talents",
+  y: "achievements",
 };
 const DRINK_KEYS: Readonly<Record<string, number>> = { q: 0, w: 1, e: 2, r: 3 };
 

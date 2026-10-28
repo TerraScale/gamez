@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { ACTION } from "../../../actions.ts";
 import type { NpcRole } from "../../../types.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, PanelFrame, Section, type SlotProps } from "../common.tsx";
+import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
 import { fmtInt, rarityHex } from "../format.ts";
 import { ItemIcon } from "../icons.tsx";
 import { C, labelStyle } from "../styles.ts";
@@ -17,6 +17,7 @@ export const ROLE_TEXT: Record<NpcRole, string> = {
   smith: "Smith",
   alchemist: "Alchemist",
   junk: "Junk buyer",
+  gambler: "Gambler",
   quest: "Quest giver",
 };
 
@@ -78,6 +79,23 @@ export function VendorPanel({ api }: SlotProps) {
       <p
         style={{ margin: "0 0 4px", fontStyle: "italic", color: C.muted }}
       >{`"${vendor.greeting}"`}</p>
+      {vendor.role === "smith" ? (
+        <Row>
+          <Btn
+            label="Smithing: repair, upgrade and socket items"
+            onClick={() => api.openPanel("craft")}
+          >
+            Smithing
+          </Btn>
+        </Row>
+      ) : null}
+      {vendor.role === "gambler" ? (
+        <Row>
+          <Btn label="Gamble: buy a random item" onClick={() => api.openPanel("gamble")}>
+            Gamble
+          </Btn>
+        </Row>
+      ) : null}
       {vendor.role === "smith" ? (
         <Section title="For sale">
           {vendor.stock.length === 0 ? (

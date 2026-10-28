@@ -39,8 +39,8 @@ import {
 } from "../types.ts";
 import { mapFor } from "../world/maps.ts";
 import { ELEMENT_COLOR, GOLD_COLOR, MONSTER_COLOR, RARITY_COLOR } from "./contract.ts";
-import { planEvent, type EffectEnv } from "./effects.ts";
-import { itemSprite, multiplyTint, STATION_APPEARANCE, STATION_NAME } from "./scene.ts";
+import { EFFECT_TABLE, planEvent, type EffectEnv } from "./effects.ts";
+import { itemSprite, lootTintOf, multiplyTint, STATION_APPEARANCE, STATION_NAME } from "./scene.ts";
 
 export const GALLERY_ACTIONS: readonly EntityAction[] = [
   "idle",
@@ -376,12 +376,37 @@ function lootSection(reg: FrozenRegistry): GallerySection {
         kind: "loot",
         moving: false,
         isSelf: false,
+        // Gems are tinted by their kind (the ground look of a socketable gem).
+        tint: lootTintOf(reg, id),
         labelColor: RARITY_COLOR[rarity],
         showLabel: true,
       },
       extra: { icon: b.icon },
     });
   });
+  // Set rarity label (set pieces are rolled from SetItemProto; this shows the colour on a gear sample).
+  const setSample = gear.find(([, b]) => b.category !== "gem") ?? gear[0];
+  if (setSample) {
+    const [sid, sb] = setSample;
+    const s = itemSprite(reg, sid);
+    cells.push({
+      key: "loot:set-sample",
+      kind: "loot",
+      title: `${short(sid)} [set]`,
+      ref: s.appearance,
+      entity: {
+        name: `${sb.name} (set)`,
+        appearance: s.appearance,
+        fallbackAppearance: "loot.item",
+        kind: "loot",
+        moving: false,
+        isSelf: false,
+        labelColor: RARITY_COLOR.set,
+        showLabel: true,
+      },
+      extra: { icon: sb.icon },
+    });
+  }
   for (const [id, u] of reg.all<UniqueProto>(KIND.unique)) {
     const s = itemSprite(reg, u.base);
     const icon = reg.get<ItemBaseProto>(KIND.itemBase, u.base)?.icon ?? "";
@@ -654,6 +679,91 @@ function floatsSection(): GallerySection {
   };
 }
 
+/** Chain polyline for a gallery cell (same shape the chain skills emit). */
+function chainPoints(x: number, y: number): { x: number; y: number }[] {
+  return [
+    { x, y },
+    { x: x + SUB, y: y - SUB },
+    { x: x + 2 * SUB, y },
+    { x: x + 2 * SUB, y: y + SUB },
+  ];
+}
+
+/**
+ * Every EFFECT_TABLE row, played through the real planner with its particle
+ * style (kind and colour in the caption), then the three telegraph shapes
+ * (circle, cone, line) at a boss-sized timing.
+ */
+function effectsSection(): GallerySection {
+  const cells: GalleryCell[] = [];
+  for (const [fx, row] of Object.entries(EFFECT_TABLE)) {
+    if (row.kind === "telegraph") continue;
+    const radius = Math.min(row.radius, GALLERY_EFFECT_RADIUS) * SUB;
+    cells.push({
+      key: `effect:${fx}`,
+      kind: "effect",
+      title: `${short(fx)} ${row.kind}/${row.style}`,
+      ref: fx,
+      effectId: fx,
+      event: (x, y) => ({
+        type: "classic.effect",
+        effect: fx,
+        x,
+        y,
+        radius,
+        points: row.kind === "chain" ? chainPoints(x, y) : [],
+      }),
+    });
+  }
+  const telegraph = (
+    key: string,
+    title: string,
+    shape: "circle" | "cone" | "line",
+    extra: Record<string, number>,
+  ): void => {
+    cells.push({
+      key: `telegraph:${key}`,
+      kind: "effect",
+      title,
+      ref: "fx.telegraph",
+      effectId: "fx.telegraph",
+      event: (x, y) => ({
+        type: "classic.telegraph",
+        entity: 0,
+        caster: 0,
+        skill: "",
+        effect: "fx.boss_quake",
+        shape,
+        x,
+        y,
+        radius: 0,
+        angle: 0,
+        arc: 0,
+        length: 0,
+        width: 0,
+        ticks: 20,
+        fireAt: 0,
+        ...extra,
+      }),
+    });
+  };
+  telegraph("circle", "telegraph circle", "circle", { radius: SUB });
+  telegraph("cone", "telegraph cone", "cone", { length: SUB, angle: 16, arc: 6 });
+  telegraph("line", "telegraph line", "line", { angle: 0, length: SUB, width: SUB / 2 });
+  return {
+    id: "effects",
+    title: "Effects & telegraphs",
+    cols: 6,
+    colStep: 2,
+    rowStep: 3,
+    rowsPerPage: 4,
+    ground: "tile.crypt.floor",
+    rowHeaders: null,
+    colHeaders: null,
+    cells,
+  };
+}
+
 /** Every ground and object id the maps, themes and manifest use. */
 function collectIds(
   reg: FrozenRegistry,
@@ -753,6 +863,7 @@ export function buildGallerySections(
     lootSection(reg),
     skillsSection(reg),
     floatsSection(),
+    effectsSection(),
     tilesSection(tiles),
     propsSection(props),
   ];

@@ -693,7 +693,7 @@ describe("determinism and pinned hash", () => {
     expect(questsOf(sim.world).completed).toEqual(["test.quest.hunt"]);
     expect(runStatsOf(sim.world)).toMatchObject({ kills: 4, deaths: 1 });
     expect(sim.world.has(hero, Dead)).toBe(false);
-    expect(sim.hash()).toBe("1df654ac986ced6f");
+    expect(sim.hash()).toBe("d5dc2da21fc54e6c");
   });
 });
 

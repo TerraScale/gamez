@@ -88,7 +88,11 @@ export type TransitionVia =
   | "waypoint"
   | "townPortal"
   | "portal"
-  | "respawn";
+  | "respawn"
+  /** wave A: town -> a rift level (`to` = rules.riftDepth(level, run)), pushed by classic.rift. */
+  | "rift"
+  /** wave A: rift level -> town (completed, abandoned), pushed by classic.rift. */
+  | "riftExit";
 
 export interface TransitionRequest {
   to: number;

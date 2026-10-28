@@ -1122,7 +1122,33 @@ type Cue =
   /** Icy shards that jut out from the body. */
   | { kind: "shards"; color: number }
   /** A long cloak falling from the shoulders, behind the body. */
-  | { kind: "cloak"; color: number };
+  | { kind: "cloak"; color: number }
+  /** Breastplate: a fluted steel torso with rivets. */
+  | { kind: "plate"; color: number }
+  /** Great helm with a visor slit. */
+  | { kind: "helm"; color: number }
+  /** Sword held in the right hand. */
+  | { kind: "sword"; color: number }
+  /** Round shield on the left arm. */
+  | { kind: "shield"; color: number }
+  /** Long staff topped by a glowing orb. */
+  | { kind: "staff"; color: number }
+  /** Smith's hammer resting on the shoulder. */
+  | { kind: "hammer"; color: number }
+  /** Full beard under the face. */
+  | { kind: "beard"; color: number }
+  /** Leather satchel: a strap and a bag at the hip. */
+  | { kind: "satchel"; color: number }
+  /** Round potion flask in the left hand. */
+  | { kind: "flask"; color: number }
+  /** Lumpy sack over the back. */
+  | { kind: "sack"; color: number }
+  /** Two dice in the left hand. */
+  | { kind: "dice"; color: number }
+  /** A huge toothed mouth across the chest. */
+  | { kind: "maw"; color: number }
+  /** Two robed companions floating either side of the body. */
+  | { kind: "trio"; color: number };
 
 /** Silhouette plan. `humanoid` recolours and reshapes the Kenney figure; the others are drawn from scratch. */
 type Plan = "humanoid" | "quadruped" | "spider";
@@ -1165,14 +1191,25 @@ const UNITS: UnitDef[] = [
     look: { tint: 0xc8d4e8, tintMix: 0.15 },
     wide: 1.08,
     bulge: [{ t: 0.78, w: 0.1, amt: 0.12 }],
-    cues: [{ kind: "pauldrons", color: 0xb8c4d4 }],
+    cues: [
+      { kind: "plate", color: 0x9aa6b4 },
+      { kind: "pauldrons", color: 0xb8c4d4 },
+      { kind: "helm", color: 0xc4ccd8 },
+      { kind: "shield", color: 0x8a3a2a },
+      { kind: "sword", color: 0xd6dde6 },
+    ],
   },
   {
     id: "unit.hero.rogue",
     role: "hero",
     look: { hue: 100, sat: 0.9, light: -0.05 },
     wide: 0.94,
-    cues: [{ kind: "hood", color: 0x2f4a2a }],
+    cues: [
+      { kind: "cloak", color: 0x2a3e26 },
+      { kind: "hood", color: 0x2f4a2a },
+      { kind: "quiver", color: 0x5a3e24 },
+      { kind: "bow", color: 0x8a6034 },
+    ],
   },
   {
     id: "unit.hero.sorcerer",
@@ -1181,6 +1218,7 @@ const UNITS: UnitDef[] = [
     cues: [
       { kind: "robe", color: 0x34407a, hem: 1.35 },
       { kind: "hat", color: 0x22357a, tall: 1 },
+      { kind: "staff", color: 0x9fd8ff },
     ],
     castColor: 0x9fd8ff,
   },
@@ -1188,20 +1226,31 @@ const UNITS: UnitDef[] = [
     id: "unit.npc.healer",
     role: "npc",
     look: { sat: 0.3, light: 0.1, tint: 0xa8ffd0, tintMix: 0.2 },
-    cues: [{ kind: "robe", color: 0xdfe8e0, hem: 1.4 }],
+    cues: [
+      { kind: "robe", color: 0xdfe8e0, hem: 1.4 },
+      { kind: "staff", color: 0xa8ffd0 },
+    ],
   },
   {
     id: "unit.npc.smith",
     role: "npc",
     look: { tint: 0xffa060, tintMix: 0.25 },
     wide: 1.12,
-    cues: [{ kind: "apron", color: 0x5a3a22 }],
+    cues: [
+      { kind: "apron", color: 0x5a3a22 },
+      { kind: "hammer", color: 0x5a6068 },
+      { kind: "beard", color: 0x7a5630 },
+    ],
   },
   {
     id: "unit.npc.alchemist",
     role: "npc",
     look: { hue: 260, sat: 0.8 },
-    cues: [{ kind: "hat", color: 0x5b2d7a, tall: 0.8 }],
+    cues: [
+      { kind: "hat", color: 0x5b2d7a, tall: 0.8 },
+      { kind: "satchel", color: 0x7a4a22 },
+      { kind: "flask", color: 0xb070e8 },
+    ],
   },
   {
     id: "unit.npc.junk",
@@ -1209,12 +1258,28 @@ const UNITS: UnitDef[] = [
     look: { hue: 20, sat: 0.4, light: -0.05 },
     hunch: 0.08,
     squat: 0.95,
+    cues: [{ kind: "sack", color: 0x8a7a4a }],
   },
   {
     id: "unit.npc.quest",
     role: "npc",
     look: { hue: 190, sat: 0.9, light: 0.05 },
-    cues: [{ kind: "hood", color: 0x2c5a6a }],
+    cues: [
+      { kind: "plate", color: 0x7f8c9a },
+      { kind: "cloak", color: 0x8a2a2a },
+      { kind: "pauldrons", color: 0xc89a40 },
+    ],
+  },
+  {
+    // Mirelle: a tall hat, a long dark coat and dice in hand.
+    id: "unit.npc.gambler",
+    role: "npc",
+    look: { hue: 300, sat: 0.35, light: -0.02 },
+    cues: [
+      { kind: "hat", color: 0x2a2a30, tall: 0.6 },
+      { kind: "robe", color: 0x4a1f2e, hem: 1.2 },
+      { kind: "dice", color: 0xf2f0e6 },
+    ],
   },
   {
     // Shambling corpse: hunched, lopsided, with long arms that drag and torn rags.
@@ -1404,6 +1469,43 @@ const UNITS: UnitDef[] = [
     ],
     outline: 0x80fff0,
     castColor: 0xa0fff0,
+    walkFps: 8,
+  },
+  {
+    // Huge toothed brute: a maw across the chest, spiked shoulders and a stooped head.
+    id: "unit.monster.guardian_maw",
+    role: "monster",
+    look: { hue: -20, sat: 0.6, light: -0.05 },
+    scale: 1.6,
+    wide: 1.35,
+    hunch: 0.14,
+    squat: 0.95,
+    bulge: [{ t: 0.7, w: 0.14, amt: 0.25 }],
+    cues: [
+      { kind: "spikes", color: 0x3a2a22 },
+      { kind: "pauldrons", color: 0x5a4a40 },
+      { kind: "maw", color: 0x8a4a3a },
+    ],
+    outline: 0xff5a40,
+    castColor: 0xff8a50,
+    walkFps: 8,
+  },
+  {
+    // Floating choir: an ember-hooded robe in the centre with two companions drifting either side.
+    id: "unit.monster.guardian_choir",
+    role: "monster",
+    look: { hue: 15, sat: 1.1, light: -0.05 },
+    scale: 1.45,
+    wide: 0.9,
+    ghost: true,
+    cues: [
+      { kind: "robe", color: 0x5a1f14, hem: 1.6, short: 0.1 },
+      { kind: "hood", color: 0x3a1410 },
+      { kind: "trio", color: 0xff7a3a },
+      { kind: "glow", color: 0xffb060 },
+    ],
+    outline: 0xffa050,
+    castColor: 0xffb060,
     walkFps: 8,
   },
   // `steps` monsters.
@@ -1626,6 +1728,8 @@ function behind(cue: Cue, b: Body): boolean {
     case "quiver":
     case "wisp":
     case "cloak":
+    case "sack":
+    case "trio":
       return true;
     case "tail":
     case "wings":
@@ -2122,6 +2226,245 @@ function drawCue(c: Canvas, cue: Cue, b: Body): void {
       c.line(hipX, b.shY, hipX + s0(vx) * hr * 0.2, hem - 2, Math.max(1, hr * 0.25), dark);
       break;
     }
+    case "plate": {
+      // Breastplate: a fluted steel torso, a light edge and rivets.
+      const top = b.shY - hr * 0.1;
+      const bottom = hipY + hr * 0.5;
+      const topHalf = ((b.shR - b.shL) / 2) * 0.92;
+      const botHalf = Math.max(hipW / 2, topHalf * 0.8);
+      c.poly(
+        [
+          [hx - topHalf, top],
+          [hx + topHalf, top],
+          [hx + botHalf, bottom],
+          [hx - botHalf, bottom],
+        ],
+        col,
+      );
+      c.line(hx, top + 1, hx, bottom - 1, Math.max(1, hr * 0.22), dark);
+      c.line(
+        hx - topHalf,
+        top + hr * 0.35,
+        hx + topHalf,
+        top + hr * 0.35,
+        Math.max(1, hr * 0.2),
+        light,
+      );
+      for (const x of [hx - topHalf * 0.5, hx + topHalf * 0.5]) {
+        c.ellipse(x, top + hr * 1.1, hr * 0.14, hr * 0.14, WHITE);
+      }
+      break;
+    }
+    case "helm": {
+      // Great helm: a rounded steel dome over the head with a visor slit.
+      c.ellipse(hx, hy - hr * 0.1, hr * 1.42, hr * 1.5, col);
+      c.ellipse(hx - hr * 0.35, hy - hr * 0.5, hr * 0.5, hr * 0.45, light);
+      if (!away) {
+        c.line(
+          hx - hr * 1.0,
+          hy + hr * 0.25,
+          hx + hr * 1.0,
+          hy + hr * 0.25,
+          Math.max(1, hr * 0.35),
+          dark,
+        );
+      }
+      c.line(hx, hy - hr * 1.5, hx, hy + hr * 0.5, Math.max(1, hr * 0.2), dark);
+      break;
+    }
+    case "sword": {
+      // Blade up and out from the right hand, with a gold crossguard and a dark grip.
+      const x0 = b.shR + hr * 0.5;
+      const y0 = hipY + hr * 0.6;
+      const tipX = x0 + hr * 0.7;
+      const tipY = y0 - hf * 0.62;
+      c.line(x0, y0, tipX, tipY, Math.max(1.2, hr * 0.32), col);
+      c.line(x0, y0, tipX, tipY, Math.max(0.6, hr * 0.1), WHITE);
+      c.line(
+        x0 - hr * 0.6,
+        y0 + hr * 0.1,
+        x0 + hr * 0.6,
+        y0 - hr * 0.1,
+        Math.max(1, hr * 0.35),
+        GOLD,
+      );
+      c.line(x0, y0 + hr * 0.1, x0 - hr * 0.2, y0 + hr * 0.9, Math.max(1, hr * 0.3), dark);
+      break;
+    }
+    case "shield": {
+      // Round shield on the left arm: a dark rim, a coloured field and a gold boss.
+      const sx = b.shL - hr * 0.6;
+      const sy = b.shY + hf * 0.2;
+      c.ellipse(sx, sy, hr * 1.5, hr * 1.85, dark);
+      c.ellipse(sx, sy, hr * 1.25, hr * 1.6, col);
+      c.line(sx, sy - hr * 1.2, sx, sy + hr * 1.2, Math.max(1, hr * 0.25), dark);
+      c.ellipse(sx, sy, hr * 0.45, hr * 0.45, GOLD);
+      break;
+    }
+    case "staff": {
+      // A long staff in the right hand, topped by a glowing orb in the cue colour.
+      const x = b.shR + hr * 0.7;
+      const top = hy - hr * 2.4;
+      c.line(x, fy - 1, x + hr * 0.2, top, Math.max(1, hr * 0.32), WOOD);
+      c.glow(x + hr * 0.2, top, hr * 1.9, rgba(cue.color, 220), 2.2);
+      c.ellipse(x + hr * 0.2, top, hr * 0.5, hr * 0.5, light);
+      break;
+    }
+    case "hammer": {
+      // A smith's hammer on the right shoulder: a wooden haft and a square iron head.
+      const x0 = b.shR + hr * 0.2;
+      const y0 = b.shY + hr * 0.3;
+      const x1 = x0 + hr * 1.5;
+      const y1 = y0 - hr * 2.0;
+      c.line(x0, y0, x1, y1, Math.max(1, hr * 0.3), WOOD);
+      c.poly(
+        [
+          [x1 - hr * 0.9, y1 - hr * 0.5],
+          [x1 + hr * 0.9, y1 - hr * 0.2],
+          [x1 + hr * 0.6, y1 + hr * 0.5],
+          [x1 - hr * 0.7, y1 + hr * 0.2],
+        ],
+        col,
+      );
+      break;
+    }
+    case "beard": {
+      if (away) break;
+      c.ellipse(hx, hy + hr * 1.3, hr * 0.95, hr * 0.85, col);
+      c.ellipse(hx, hy + hr * 0.95, hr * 0.8, hr * 0.35, dark);
+      break;
+    }
+    case "satchel": {
+      // A diagonal strap from the left shoulder to the right hip, and a bag.
+      c.line(
+        b.shL + hr * 0.2,
+        b.shY,
+        hipX + hipW * 0.25,
+        hipY + hr * 0.6,
+        Math.max(1, hr * 0.3),
+        dark,
+      );
+      const bx = hipX + hipW * 0.5;
+      const by = hipY + hr * 0.8;
+      c.ellipse(bx, by, hr * 1.2, hr * 0.95, col);
+      c.line(
+        bx - hr * 1.0,
+        by - hr * 0.4,
+        bx + hr * 1.0,
+        by - hr * 0.4,
+        Math.max(1, hr * 0.2),
+        light,
+      );
+      break;
+    }
+    case "flask": {
+      // A round flask in the left hand, with a cork.
+      const x = b.shL - hr * 0.9;
+      const y = hipY + hr * 0.3;
+      c.ellipse(x, y, hr * 0.7, hr * 0.7, dark);
+      c.ellipse(x, y + hr * 0.1, hr * 0.55, hr * 0.55, col);
+      c.ellipse(x - hr * 0.2, y - hr * 0.1, hr * 0.18, hr * 0.14, WHITE);
+      c.poly(
+        [
+          [x - hr * 0.22, y - hr * 0.6],
+          [x + hr * 0.22, y - hr * 0.6],
+          [x + hr * 0.22, y - hr * 1.2],
+          [x - hr * 0.22, y - hr * 1.2],
+        ],
+        LEATHER,
+      );
+      break;
+    }
+    case "sack": {
+      // Over the back and the right shoulder, tied at the neck (drawn behind the body).
+      const x = b.shR - hr * 0.3;
+      const y = b.shY - hr * 0.1;
+      c.ellipse(x, y, hr * 1.9, hr * 1.6, dark);
+      c.ellipse(x, y - hr * 0.1, hr * 1.7, hr * 1.4, col);
+      c.line(x - hr * 0.5, y - hr * 1.3, x + hr * 0.3, y - hr * 1.9, Math.max(1, hr * 0.3), dark);
+      break;
+    }
+    case "dice": {
+      // Two bone dice in the left hand, with dark pips.
+      const x = b.shL - hr * 0.8;
+      const y = hipY + hr * 0.2;
+      const die = (x0: number, y0: number, pips: [number, number][]) => {
+        c.poly(
+          [
+            [x0 - hr * 0.6, y0 - hr * 0.6],
+            [x0 + hr * 0.6, y0 - hr * 0.6],
+            [x0 + hr * 0.6, y0 + hr * 0.6],
+            [x0 - hr * 0.6, y0 + hr * 0.6],
+          ],
+          col,
+        );
+        for (const [px, py] of pips) {
+          c.ellipse(x0 + px * hr * 0.3, y0 + py * hr * 0.3, hr * 0.12, hr * 0.12, dark);
+        }
+      };
+      die(x, y, [[0, 0]]);
+      die(x + hr * 1.4, y - hr * 0.7, [
+        [-1, -1],
+        [1, 1],
+      ]);
+      break;
+    }
+    case "maw": {
+      // A huge toothed mouth on the chest: a dark throat and cream teeth on both lips.
+      const my = b.shY + hf * 0.2;
+      const rx = (b.shR - b.shL) * 0.3;
+      c.ellipse(hx, my, rx, hr * 1.5, rgba(0x280610));
+      c.ellipse(hx, my + hr * 0.3, rx * 0.8, hr * 0.9, rgba(0x781418));
+      for (let i = -3; i <= 3; i++) {
+        const x = hx + (i * rx) / 3.4;
+        c.poly(
+          [
+            [x - hr * 0.22, my - hr * 1.2],
+            [x + hr * 0.22, my - hr * 1.2],
+            [x, my - hr * 0.1],
+          ],
+          [240, 230, 210, 255],
+        );
+        c.poly(
+          [
+            [x - hr * 0.2, my + hr * 1.2],
+            [x + hr * 0.2, my + hr * 1.2],
+            [x, my + hr * 0.4],
+          ],
+          [240, 230, 210, 255],
+        );
+      }
+      c.line(
+        hx - rx * 1.1,
+        my - hr * 1.3,
+        hx + rx * 1.1,
+        my - hr * 1.3,
+        Math.max(1, hr * 0.4),
+        col,
+      );
+      break;
+    }
+    case "trio": {
+      // Two small robed companions floating either side, lower and dimmer, behind the body.
+      for (const side of [-1, 1]) {
+        const x = hx + side * hr * 4.4;
+        const top = hy + hr * 1.6;
+        const bottom = fy - hf * 0.12;
+        const half = hr * 1.25;
+        c.poly(
+          [
+            [x - half, top],
+            [x + half, top],
+            [x + half * 1.7, bottom],
+            [x - half * 1.7, bottom],
+          ],
+          rgba(cue.color, 190),
+        );
+        c.ellipse(x, top - hr * 0.5, hr * 1.0, hr * 1.05, shade(cue.color, 0.7, 210));
+        c.glow(x, top + hr * 1.8, hr * 1.4, [255, 170, 80, 230], 2);
+      }
+      break;
+    }
   }
 }
 
@@ -2573,6 +2916,29 @@ function addAnimation(id: string, frameIds: string[], fps: number, loop = true):
 const WALK_KEEP = [0, 1, 3, 4, 5, 6, 8, 9];
 const HIT_RED = 0xff3a20;
 
+/** Cast clip: gather, channel, release (the thrust with the full glow) and recover. */
+function castPoses(glow: number): Pose[] {
+  return [
+    // Gather: lean back and crouch, the body squashes wide.
+    { lunge: -8, sx: 1.06, sy: 0.92, bright: 0.04 },
+    // Channel: the deepest lean back, a tall stretch, the aura starts.
+    { lunge: -12, sx: 0.92, sy: 1.1, bright: 0.1, rim: 0.7, rimColor: glow },
+    // Release: a big thrust forward, stretched thin, full glow at the edge.
+    { lunge: 16, sx: 0.9, sy: 1.12, bright: 0.2, rim: 1, rimColor: glow },
+    // Recover: back toward idle while the glow fades.
+    { lunge: 5, sx: 1, sy: 0.98, bright: 0.06, rim: 0.3, rimColor: glow },
+  ];
+}
+
+/** Hit clip: recoil and squash under a brief white flash, back to idle in three frames. */
+function hitPoses(): Pose[] {
+  return [
+    { lunge: -11, sx: 1.05, sy: 0.94, bright: 0.75 },
+    { lunge: -6, sx: 1.02, sy: 0.97, bright: 0.4 },
+    { lunge: -2, bright: 0.15 },
+  ];
+}
+
 /**
  * Per-facing clips for one unit, from that facing's Kenney idle and run frames:
  * idle (breathing), walk, and for fighters attack, cast, hit and death. Every
@@ -2583,7 +2949,6 @@ const HIT_RED = 0xff3a20;
  */
 function buildUnit(def: UnitDef): void {
   const id = def.id;
-  const fighter = def.role !== "npc";
   const cast = def.castColor ?? 0xffe9a0;
   const pending: { name: string; p: Posed }[] = [];
   const clips: { name: string; frames: string[]; fps: number; loop: boolean }[] = [];
@@ -2624,7 +2989,6 @@ function buildUnit(def: UnitDef): void {
       Math.round(((def.walkFps ?? 10) * WALK_KEEP.length) / RUN_FRAMES),
       true,
     );
-    if (!fighter) continue;
     clip(
       "attack",
       facing,
@@ -2633,34 +2997,8 @@ function buildUnit(def: UnitDef): void {
       12,
       false,
     );
-    clip(
-      "cast",
-      facing,
-      still,
-      [
-        // Gather: lean back and crouch, the body squashes wide.
-        { lunge: -8, sx: 1.06, sy: 0.92, bright: 0.04 },
-        // Channel: the deepest lean back, a tall stretch, the aura starts.
-        { lunge: -12, sx: 0.92, sy: 1.1, bright: 0.1, rim: 0.7, rimColor: cast },
-        // Release: a big thrust forward, stretched thin, full glow at the edge.
-        { lunge: 16, sx: 0.9, sy: 1.12, bright: 0.2, rim: 1, rimColor: cast },
-        // Recover: back toward idle while the glow fades.
-        { lunge: 5, sx: 1, sy: 0.98, bright: 0.06, rim: 0.3, rimColor: cast },
-      ],
-      10,
-      false,
-    );
-    clip(
-      "hit",
-      facing,
-      still,
-      [
-        { lunge: -11, sy: 0.96, mix: 0.5, mixColor: HIT_RED, bright: 0.15 },
-        { lunge: -5, mix: 0.22, mixColor: HIT_RED },
-      ],
-      12,
-      false,
-    );
+    clip("cast", facing, still, castPoses(cast), 10, false);
+    clip("hit", facing, still, hitPoses(), 14, false);
     // Falls backward (away from the facing) and ends lying flat, darkened but readable.
     const fall = vx > 0.1 ? -1 : vx < -0.1 ? 1 : vy >= 0 ? 1 : -1;
     clip(
@@ -2698,9 +3036,8 @@ function buildUnit(def: UnitDef): void {
   }
   for (const c of clips) addAnimation(c.name, c.frames, c.fps, c.loop);
   alias(id, `${id}.idle.s.0`, anchor);
-  for (const action of fighter
-    ? ["idle", "walk", "attack", "cast", "hit", "death"]
-    : ["idle", "walk"]) {
+  // Every unit has the full clip set (wave A: the gallery's "every action" rule); NPCs just never play the fights.
+  for (const action of ["idle", "walk", "attack", "cast", "hit", "death"]) {
     const south = animations[`${id}.${action}.s`]!;
     addAnimation(`${id}.${action}`, south.frames, south.fps, south.loop ?? true);
   }
@@ -2900,6 +3237,862 @@ function buildUnits(): void {
   }
 }
 
+// ------------------------------------------------------- wave A: effects and props
+
+/** Burst frames are 128 px squares; the origin is the centre and 64 px is one tile of radius. */
+const BURST_PX = 128;
+const BURST_C = 64;
+/** Drawn radius of a full-size burst (px), just inside the one-tile radius. */
+const BURST_R = 60;
+/** Alpha levels per burst frame: few levels make the PNGs much smaller. */
+const ALPHA_LEVELS = 24;
+
+type BurstKind =
+  | "ring"
+  | "nova"
+  | "burst"
+  | "slash"
+  | "bolt"
+  | "cloud"
+  | "heal"
+  | "swirl"
+  | "shock"
+  | "shards"
+  | "rays"
+  | "rise"
+  | "portal"
+  | "claws"
+  | "bite"
+  | "meteor"
+  | "rain"
+  | "telegraph"
+  | "spikes"
+  | "hit"
+  | "dash";
+
+interface BurstSpec {
+  /** Effect id (`fx.frost_ring`); its one-shot animation is `<id>.burst`. */
+  id: string;
+  kind: BurstKind;
+  /** Primary and secondary colours (0xRRGGBB). */
+  a: number;
+  b: number;
+  /** Frames (6 to 10) and frame rate (16 to 24). */
+  n: number;
+  fps: number;
+  /** Rays, spikes, forks or streaks (kind-specific). */
+  count?: number;
+  /** Slash centre angle and arc span (radians). */
+  dir?: number;
+  span?: number;
+  /** Drawn size: 1 fills the one-tile radius. */
+  size?: number;
+}
+
+/** Every EFFECT_TABLE id (effects.ts) plus the wave A effects; see LICENSES.md for the look of each. */
+const BURSTS: BurstSpec[] = [
+  { id: "fx.frost_ring", kind: "nova", a: 0x9fe7ff, b: 0xffffff, n: 8, fps: 20, count: 12 },
+  { id: "fx.cinder_orb", kind: "burst", a: 0xff8a2a, b: 0xffe08a, n: 7, fps: 20, count: 9 },
+  { id: "fx.arc_chain", kind: "bolt", a: 0x6fb8ff, b: 0xffffff, n: 7, fps: 22, count: 5 },
+  { id: "fx.phase_step", kind: "swirl", a: 0xb8c4ff, b: 0x6a7cd8, n: 7, fps: 20 },
+  { id: "fx.tumble", kind: "swirl", a: 0x8a6bd1, b: 0xd0c0ff, n: 6, fps: 18 },
+  { id: "fx.mend", kind: "heal", a: 0xb8ffcc, b: 0xffffff, n: 8, fps: 18, count: 7 },
+  { id: "fx.whirl", kind: "slash", a: 0xb8d4ff, b: 0xffffff, n: 8, fps: 22, span: Math.PI * 2 },
+  { id: "fx.slam", kind: "shock", a: 0xc8873a, b: 0x5a3a20, n: 7, fps: 20, count: 7 },
+  { id: "fx.burst", kind: "cloud", a: 0x7ad14a, b: 0xc8ff9a, n: 8, fps: 18, count: 7 },
+  { id: "fx.rally", kind: "rays", a: 0xffd75e, b: 0xfff4c0, n: 7, fps: 20, count: 10 },
+  { id: "fx.charge", kind: "slash", a: 0xffd27a, b: 0xffffff, n: 6, fps: 22, span: 1.6, dir: 0 },
+  { id: "fx.attack", kind: "slash", a: 0xe8eef5, b: 0xffffff, n: 6, fps: 22, span: 1.9, dir: -0.6 },
+  {
+    id: "fx.cleave",
+    kind: "slash",
+    a: 0xffd28a,
+    b: 0xffffff,
+    n: 7,
+    fps: 20,
+    span: 3.2,
+    dir: -Math.PI / 2,
+  },
+  { id: "fx.multishot", kind: "rain", a: 0xd9c08a, b: 0xffffff, n: 6, fps: 20, count: 7 },
+  {
+    id: "fx.venom_shot",
+    kind: "cloud",
+    a: 0x7fd15a,
+    b: 0xb8ff90,
+    n: 6,
+    fps: 20,
+    count: 5,
+    size: 0.7,
+  },
+  {
+    id: "fx.spark_sentry",
+    kind: "bolt",
+    a: 0x9fd8ff,
+    b: 0xffffff,
+    n: 6,
+    fps: 22,
+    count: 3,
+    size: 0.7,
+  },
+  {
+    id: "fx.ember_bolt",
+    kind: "burst",
+    a: 0xff6a2a,
+    b: 0xffd27a,
+    n: 6,
+    fps: 20,
+    count: 7,
+    size: 0.7,
+  },
+  { id: "fx.claw", kind: "claws", a: 0xd9534f, b: 0xffd0c0, n: 6, fps: 22 },
+  { id: "fx.bite", kind: "bite", a: 0xc84040, b: 0xfff0e0, n: 6, fps: 20 },
+  { id: "fx.gore", kind: "slash", a: 0xe0a060, b: 0xfff0d0, n: 6, fps: 20, span: 1.2, dir: 0 },
+  { id: "fx.arrow", kind: "hit", a: 0xe0e0e8, b: 0xffffff, n: 6, fps: 22 },
+  {
+    id: "fx.firebolt",
+    kind: "burst",
+    a: 0xf0701e,
+    b: 0xffe08a,
+    n: 6,
+    fps: 20,
+    count: 8,
+    size: 0.85,
+  },
+  { id: "fx.frostbolt", kind: "shards", a: 0xbff4ff, b: 0xffffff, n: 6, fps: 20, count: 6 },
+  { id: "fx.shadebolt", kind: "swirl", a: 0x9a7bd8, b: 0x3a2a5a, n: 6, fps: 18 },
+  { id: "fx.raise", kind: "portal", a: 0x8fbf7a, b: 0xd8ffc8, n: 8, fps: 16 },
+  { id: "fx.ember_burst", kind: "nova", a: 0xff7a2a, b: 0xffe0a0, n: 8, fps: 18, count: 12 },
+  {
+    id: "fx.sentry_bolt",
+    kind: "bolt",
+    a: 0x9fd8ff,
+    b: 0xffffff,
+    n: 6,
+    fps: 22,
+    count: 4,
+    size: 0.6,
+  },
+  { id: "fx.boss_slam", kind: "shock", a: 0xc8873a, b: 0x4a2a10, n: 9, fps: 18, count: 9 },
+  { id: "fx.boss_nova", kind: "nova", a: 0xff5a1a, b: 0xffd27a, n: 9, fps: 18, count: 14 },
+  { id: "fx.boss_volley", kind: "rain", a: 0xff9a5a, b: 0xffe0b0, n: 7, fps: 20, count: 9 },
+  { id: "fx.boss_summon", kind: "portal", a: 0x8a5a3a, b: 0xe0a070, n: 8, fps: 16 },
+  // Wave A additions.
+  { id: "fx.quake_stomp", kind: "shock", a: 0xb08a5a, b: 0x3a2a1a, n: 7, fps: 20, count: 8 },
+  { id: "fx.iron_skin", kind: "ring", a: 0xc9d1da, b: 0xffffff, n: 7, fps: 18 },
+  { id: "fx.sky_leap", kind: "rise", a: 0xbfd8ff, b: 0xffffff, n: 7, fps: 20, count: 6 },
+  { id: "fx.piercing_shot", kind: "hit", a: 0x9fe0ff, b: 0xffffff, n: 6, fps: 22 },
+  { id: "fx.caltrops", kind: "spikes", a: 0x9aa4b2, b: 0xd0d6de, n: 6, fps: 18, count: 9 },
+  { id: "fx.night_volley", kind: "rain", a: 0x7a5ad0, b: 0xd8c0ff, n: 7, fps: 20, count: 8 },
+  { id: "fx.glacial_spike", kind: "shards", a: 0xbff4ff, b: 0xffffff, n: 6, fps: 20, count: 4 },
+  { id: "fx.storm_call", kind: "bolt", a: 0x9ec7ff, b: 0xffffff, n: 8, fps: 20, count: 9 },
+  { id: "fx.falling_star", kind: "meteor", a: 0xffb347, b: 0xffffff, n: 8, fps: 18 },
+  { id: "fx.boss_quake", kind: "shock", a: 0xb06a2a, b: 0x2a1a10, n: 9, fps: 16, count: 11 },
+  {
+    id: "fx.boss_cleave",
+    kind: "slash",
+    a: 0xd9534f,
+    b: 0xffd0c0,
+    n: 7,
+    fps: 18,
+    span: 3.4,
+    dir: -Math.PI / 2,
+  },
+  { id: "fx.boss_rush", kind: "dash", a: 0xff9a5a, b: 0xfff0d0, n: 6, fps: 22, count: 7 },
+  { id: "fx.boss_meteor", kind: "meteor", a: 0xff7a2a, b: 0xffe08a, n: 9, fps: 16, size: 1 },
+  { id: "fx.boss_frost_nova", kind: "nova", a: 0x9fe7ff, b: 0xffffff, n: 9, fps: 18, count: 14 },
+  { id: "fx.telegraph", kind: "telegraph", a: 0xff5a4a, b: 0xffd0c0, n: 6, fps: 16 },
+];
+
+/** Projectile stills, drawn pointing right like fx.arrow. */
+const PROJECTILE_STILLS: [string, () => Img][] = [
+  ["fx.piercing_shot", () => fxPiercing()],
+  ["fx.night_volley", () => fxNightVolley()],
+  ["fx.glacial_spike", () => fxGlacialSpike()],
+];
+
+/** Particle textures: a soft dot with a bright core and a coloured halo. */
+const PARTICLES: [string, number, number, number][] = [
+  ["spark", 0xfff2a0, 0xffb020, 2.2],
+  ["ember", 0xffb060, 0xff5a1a, 1.8],
+  ["frost", 0xffffff, 0x9fe7ff, 1.6],
+  ["poison", 0xc8ff9a, 0x5ec23a, 1.7],
+  ["arcane", 0xe6d0ff, 0x8a5ad8, 1.7],
+  ["holy", 0xffffff, 0xffe38a, 1.5],
+  ["shadow", 0xb090e0, 0x2a1a44, 1.6],
+  ["blood", 0xff8a8a, 0x8a0f18, 1.5],
+  ["dust", 0xe0cc9a, 0x9a8258, 1.1],
+  ["gold", 0xfff6c0, 0xe0a520, 1.9],
+];
+
+/** A stable number per string (the effect's seed). */
+function hashOf(text: string): number {
+  let h = 17;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) % 100003;
+  return h;
+}
+
+/** Deterministic pseudo-random value in [0, 1) for a seed (the build must be repeatable). */
+function noise(seed: number): number {
+  const s = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/** Colour with an alpha in 0..1. */
+function tint(hex: number, a: number): RGBA {
+  return rgba(hex, Math.round(clamp01(a) * 255));
+}
+
+/** A ring of radius r and width w; `sy` flattens it into a ground ellipse. */
+function annulus(
+  c: Canvas,
+  cx: number,
+  cy: number,
+  r: number,
+  w: number,
+  hex: number,
+  a: number,
+  sy = 1,
+): void {
+  if (r <= 0 || a <= 0) return;
+  const reach = r + w;
+  const col = rgba(hex);
+  for (let y = Math.floor(cy - reach); y <= Math.ceil(cy + reach); y++) {
+    for (let x = Math.floor(cx - reach); x <= Math.ceil(cx + reach); x++) {
+      const dx = x + 0.5 - cx;
+      const dy = (y + 0.5 - cy) / sy;
+      const cov = clamp01(w / 2 - Math.abs(Math.hypot(dx, dy) - r) + 0.5);
+      if (cov > 0) c.put(x, y, col, cov * a);
+    }
+  }
+}
+
+/** Draws one frame (i of n) of a burst. Every kind fades out over the frames. */
+function drawBurst(c: Canvas, s: BurstSpec, i: number): void {
+  const p = s.n > 1 ? i / (s.n - 1) : 0;
+  // Fades to 10 %, never zero, so the last frame of every clip still has pixels.
+  const fade = 1 - 0.9 * p;
+  const k = (s.size ?? 1) * BURST_R;
+  const cx = BURST_C;
+  const cy = BURST_C;
+  const seed = hashOf(s.id) + i * 7;
+  const count = s.count ?? 8;
+  const at = (ang: number, r: number): [number, number] => [
+    cx + Math.cos(ang) * r,
+    cy + Math.sin(ang) * r,
+  ];
+  switch (s.kind) {
+    case "ring": {
+      annulus(c, cx, cy, k * (0.25 + 0.75 * p), 2 + 5 * fade, s.a, 0.9 * fade + 0.1);
+      annulus(c, cx, cy, k * (0.2 + 0.7 * p), 1.5, s.b, 0.5 * fade);
+      break;
+    }
+    case "nova": {
+      const r = k * (0.2 + 0.8 * p);
+      annulus(c, cx, cy, r, 3 + 5 * fade, s.a, fade);
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + noise(seed + j) * 0.4;
+        const [x0, y0] = at(ang, r * 0.5);
+        const [x1, y1] = at(ang, r * (0.85 + 0.25 * noise(seed + 50 + j)));
+        c.line(x0, y0, x1, y1, 1 + 2 * fade, tint(s.b, fade));
+      }
+      c.glow(cx, cy, k * 0.35 * fade + 4, tint(s.b, fade * 0.8), 2);
+      break;
+    }
+    case "burst": {
+      const r = k * (0.35 + 0.65 * p);
+      c.glow(cx, cy, k * 0.5 * (0.4 + 0.6 * fade), tint(s.a, fade), 1.6);
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + noise(seed + j) * 0.5;
+        const [x0, y0] = at(ang, r * 0.2);
+        const [x1, y1] = at(ang, r * (0.6 + 0.4 * noise(seed * 3 + j)));
+        c.line(x0, y0, x1, y1, 1 + 2.5 * fade, tint(s.b, 0.4 + 0.6 * fade));
+      }
+      c.glow(cx, cy, 4 + 6 * fade, tint(0xffffff, fade), 3);
+      break;
+    }
+    case "slash": {
+      const span = s.span ?? 1.8;
+      const dir = s.dir ?? 0;
+      const r = k * (0.7 + 0.3 * Math.min(1, p * 2));
+      const a0 = dir - span / 2 + (p - 0.5) * span * 0.5;
+      const steps = 16;
+      let [px, py] = at(a0, r);
+      for (let j = 1; j <= steps; j++) {
+        const t = j / steps;
+        const [x, y] = at(a0 + span * t, r);
+        const w = (1 + 4 * fade) * (0.4 + 0.6 * t);
+        c.line(px, py, x, y, w, tint(s.a, fade * (0.4 + 0.6 * t)));
+        const [ix, iy] = at(a0 + span * t, r - 2);
+        c.line(px, py, ix, iy, Math.max(0.6, w * 0.4), tint(s.b, fade * t));
+        px = x;
+        py = y;
+      }
+      break;
+    }
+    case "bolt": {
+      const reachBase = k * (0.5 + 0.5 * p);
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + noise(seed + j) * 0.6;
+        const reach = reachBase * (0.7 + 0.3 * noise(seed * 5 + j));
+        let [x, y] = at(ang, k * 0.12);
+        for (let q = 1; q <= 5; q++) {
+          const t = q / 5;
+          const jit = (noise(seed * 11 + j * 7 + q) - 0.5) * k * 0.18;
+          const base = k * 0.12 + reach * t;
+          const nx = cx + Math.cos(ang) * base + Math.cos(ang + Math.PI / 2) * jit;
+          const ny = cy + Math.sin(ang) * base + Math.sin(ang + Math.PI / 2) * jit;
+          c.line(x, y, nx, ny, 2.2, tint(s.a, 1 - 0.5 * p));
+          c.line(x, y, nx, ny, 0.9, tint(s.b, 1 - 0.4 * p));
+          x = nx;
+          y = ny;
+        }
+      }
+      c.glow(cx, cy, k * 0.3, tint(s.a, 0.5 * fade), 2);
+      break;
+    }
+    case "cloud": {
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + noise(seed + j);
+        const d = k * (0.25 + 0.45 * p) * (0.6 + 0.4 * noise(seed + 9 + j));
+        const [x, y] = at(ang, d);
+        const rad = k * (0.16 + 0.12 * p) * (0.7 + 0.3 * noise(seed + 30 + j));
+        c.glow(x, y - p * k * 0.2, rad, tint(s.a, 0.7 * fade + 0.1), 1.2);
+      }
+      c.glow(cx, cy, k * 0.2, tint(s.b, 0.6 * fade), 2);
+      break;
+    }
+    case "heal": {
+      c.glow(cx, cy, k * 0.5, tint(s.a, 0.45 * fade), 1.5);
+      annulus(c, cx, cy + k * 0.35, k * 0.3 * (0.5 + 0.5 * p), 1.5, s.a, 0.8 * fade, 0.45);
+      for (let j = 0; j < count; j++) {
+        const x = cx + (noise(seed + j) - 0.5) * k * 1.4;
+        const y = cy + k * 0.45 - p * k * (0.5 + 0.5 * noise(seed + 20 + j));
+        const arm = 3 + 2 * noise(seed + 40 + j);
+        c.line(x - arm, y, x + arm, y, 1.6, tint(s.b, fade + 0.2));
+        c.line(x, y - arm, x, y + arm, 1.6, tint(s.b, fade + 0.2));
+      }
+      break;
+    }
+    case "swirl": {
+      const R2 = k * (0.45 + 0.55 * p);
+      const rot = p * Math.PI;
+      for (const arm of [0, Math.PI]) {
+        let px = cx;
+        let py = cy;
+        for (let j = 1; j <= 22; j++) {
+          const t = j / 22;
+          const ang = rot + arm + t * Math.PI * 2 * 1.1;
+          const x = cx + Math.cos(ang) * R2 * t;
+          const y = cy + Math.sin(ang) * R2 * t * 0.6;
+          c.line(
+            px,
+            py,
+            x,
+            y,
+            1 + 3 * (1 - t) * fade,
+            tint(t < 0.5 ? s.a : s.b, fade * (0.3 + 0.7 * t)),
+          );
+          px = x;
+          py = y;
+        }
+      }
+      break;
+    }
+    case "shock": {
+      const r = k * (0.2 + 0.8 * p);
+      annulus(c, cx, cy, r, 2 + 4 * fade, s.a, fade, 0.5);
+      annulus(c, cx, cy, r * 0.7, 1.5, s.b, 0.6 * fade, 0.5);
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + noise(seed + j) * 0.3;
+        const len = r * (0.6 + 0.4 * noise(seed + 60 + j));
+        const jag = (noise(seed + 90 + j) - 0.5) * 4;
+        const mx = cx + Math.cos(ang) * len * 0.5 + jag;
+        const my = cy + Math.sin(ang) * len * 0.25;
+        c.line(cx, cy, mx, my, 1.2, tint(s.b, fade));
+        c.line(
+          mx,
+          my,
+          cx + Math.cos(ang) * len,
+          cy + Math.sin(ang) * len * 0.5,
+          1,
+          tint(s.b, fade),
+        );
+        c.glow(
+          cx + Math.cos(ang) * r,
+          cy + Math.sin(ang) * r * 0.5,
+          4 + 3 * fade,
+          tint(s.b, 0.6 * fade),
+          2,
+        );
+      }
+      break;
+    }
+    case "shards": {
+      const r0 = k * (0.12 + 0.2 * p);
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + noise(seed + j) * 0.4;
+        const r1 = k * (0.35 + 0.6 * p) * (0.8 + 0.2 * noise(seed + 30 + j));
+        const nx = Math.cos(ang);
+        const ny = Math.sin(ang);
+        const w = k * 0.09 + 1;
+        c.poly(
+          [
+            [cx + nx * r1, cy + ny * r1],
+            [cx + nx * r0 - ny * w, cy + ny * r0 + nx * w],
+            [cx + nx * r0 + ny * w, cy + ny * r0 - nx * w],
+          ],
+          tint(s.a, 0.9 * fade + 0.1),
+        );
+        c.line(
+          cx + nx * r0,
+          cy + ny * r0,
+          cx + nx * r1 * 0.9,
+          cy + ny * r1 * 0.9,
+          0.7,
+          tint(0xffffff, fade),
+        );
+      }
+      c.glow(cx, cy, k * 0.25 * fade + 3, tint(s.b, fade * 0.7), 2);
+      break;
+    }
+    case "rays": {
+      const r = k * (0.25 + 0.75 * p);
+      c.glow(cx, cy, k * 0.3 * fade + 4, tint(s.b, 0.7 * fade), 2);
+      for (let j = 0; j < count; j++) {
+        const ang = (j / count) * Math.PI * 2 + p * 0.5;
+        const [x0, y0] = at(ang, r * 0.3);
+        const [x1, y1] = at(ang, r * (0.9 + 0.1 * noise(seed + j)));
+        c.line(x0, y0, x1, y1, 1.5 + 1.5 * fade, tint(s.a, fade * 0.9 + 0.1));
+      }
+      break;
+    }
+    case "rise": {
+      const n = count;
+      for (let j = 0; j < n; j++) {
+        const x = cx + (j / (n - 1) - 0.5) * k * 1.3 + (noise(seed + j) - 0.5) * 3;
+        const top = cy + k * 0.5 - p * k * (1 + 0.2 * noise(seed + 70 + j));
+        const bottom = cy + k * 0.6 - p * k * 0.6;
+        c.line(x, bottom, x, top, 2, tint(s.a, fade));
+        c.line(x, top, x, top + 4, 2, tint(s.b, fade));
+      }
+      annulus(c, cx, cy + k * 0.5, k * 0.35 * (0.3 + p), 1.5, s.a, fade, 0.4);
+      break;
+    }
+    case "portal": {
+      const r = k * (0.3 + 0.7 * Math.min(1, p * 1.3));
+      annulus(c, cx, cy, r, 3, s.a, 0.9, 0.55);
+      annulus(c, cx, cy, r * 0.7, 1.5, s.b, 0.6 + 0.4 * fade, 0.55);
+      c.glow(cx, cy, r * 0.8, tint(s.a, 0.3 * fade + 0.1), 2);
+      for (let j = 0; j < 6; j++) {
+        const ang = (j / 6) * Math.PI * 2 + p;
+        const x = cx + Math.cos(ang) * r * 0.9;
+        const y = cy + Math.sin(ang) * r * 0.45 - p * k * 0.4;
+        c.glow(x, y, 3, tint(s.b, fade), 2);
+      }
+      break;
+    }
+    case "claws": {
+      const len = k * (0.3 + 0.7 * Math.min(1, p * 1.6));
+      for (let j = -1; j <= 1; j++) {
+        const ox = j * k * 0.32;
+        const x0 = cx + ox - len * 0.4;
+        const y0 = cy - len * 0.6;
+        const x1 = cx + ox + len * 0.4;
+        const y1 = cy + len * 0.5;
+        c.line(x0, y0, x1, y1, 3 * fade + 1.5, tint(s.a, fade * 0.9 + 0.1));
+        c.line(x0, y0, x1, y1, 1, tint(s.b, fade));
+      }
+      break;
+    }
+    case "bite": {
+      // Jaws snap shut by frame 3 and fade out.
+      const closure = Math.min(1, p / 0.6);
+      const gap = (1 - closure) * k * 0.35;
+      for (const side of [-1, 1]) {
+        const yOff = side * gap;
+        const base = side < 0 ? -Math.PI * 0.85 : Math.PI * 0.15;
+        const arc = (t: number): [number, number] => {
+          const ang = base + t * Math.PI * 0.7;
+          return [cx + Math.cos(ang) * k * 0.8, cy + yOff + Math.sin(ang) * k * 0.8];
+        };
+        let [px, py] = arc(0);
+        for (let j = 1; j <= 12; j++) {
+          const [x, y] = arc(j / 12);
+          c.line(px, py, x, y, 3, tint(s.a, fade * 0.9 + 0.1));
+          px = x;
+          py = y;
+        }
+        for (let j = 1; j < 5; j++) {
+          const t = j / 5;
+          const ang = base + t * Math.PI * 0.7;
+          const [bx, by] = arc(t);
+          const tipX = cx + Math.cos(ang) * k * 0.45;
+          const tipY = cy + yOff + Math.sin(ang) * k * 0.45;
+          c.poly(
+            [
+              [bx - 3, by],
+              [bx + 3, by],
+              [tipX, tipY],
+            ],
+            tint(s.b, fade + 0.2),
+          );
+        }
+      }
+      break;
+    }
+    case "meteor": {
+      const headT = Math.min(1, p * 1.25);
+      const sx = cx - k * 0.9;
+      const sy = cy - k * 0.9;
+      const hx = sx + (cx + k * 0.1 - sx) * headT;
+      const hy = sy + (cy + k * 0.1 - sy) * headT;
+      c.line(sx, sy, hx, hy, 6 * (1 - headT * 0.5) + 1, tint(s.a, 0.8 * fade + 0.2));
+      c.line(sx, sy, hx, hy, 2, tint(s.b, fade));
+      c.glow(hx, hy, 8 + 4 * (1 - headT), tint(s.b, 0.9), 2);
+      if (p > 0.6) {
+        const q = (p - 0.6) / 0.4;
+        annulus(c, cx + k * 0.1, cy + k * 0.1, k * 0.5 * q, 2, s.a, 1 - q, 0.5);
+        for (let j = 0; j < 6; j++) {
+          const [x, y] = at((j / 6) * Math.PI * 2, k * 0.5 * q);
+          c.glow(x, y, 3, tint(s.b, 1 - q), 2);
+        }
+      }
+      break;
+    }
+    case "rain": {
+      for (let j = 0; j < count; j++) {
+        const x0 = cx + (noise(seed + j) - 0.5) * k * 1.7;
+        const y0 = cy - k * 0.9 + noise(seed + 30 + j) * k * 0.3;
+        // Arrows fall down and to the right.
+        const hx = x0 + 0.5 * p * k * 1.2;
+        const hy = y0 + 0.87 * p * k * 1.2;
+        const tx = hx - 0.5 * k * 0.3;
+        const ty = hy - 0.87 * k * 0.3;
+        c.line(tx, ty, hx, hy, 1.6, tint(s.a, fade * 0.8 + 0.2));
+        c.glow(hx, hy, 2.5, tint(s.b, fade), 2);
+      }
+      break;
+    }
+    case "telegraph": {
+      // A ground zone that fills outward: a faint disc, a bright edge and a dashed rim.
+      const r = k * (0.2 + 0.8 * p);
+      c.ellipse(cx, cy, r, r * 0.5, tint(s.a, 0.22));
+      annulus(c, cx, cy, r, 2.5, s.a, 0.9, 0.5);
+      for (let j = 0; j < 16; j++) {
+        if (j % 2 === 1) continue;
+        const ang = (j / 16) * Math.PI * 2;
+        const [x, y] = at(ang, r);
+        c.glow(x, cy + (y - cy) * 0.5, 2, tint(s.b, 0.9), 2);
+      }
+      break;
+    }
+    case "spikes": {
+      const grow = 0.4 + 0.6 * Math.min(1, p * 2);
+      for (let j = 0; j < count; j++) {
+        const ang = noise(seed + j) * Math.PI * 2;
+        const d = k * (0.15 + 0.6 * noise(seed + 30 + j));
+        const x = cx + Math.cos(ang) * d;
+        const y = cy + Math.sin(ang) * d * 0.5;
+        const h = k * 0.22 * grow;
+        c.poly(
+          [
+            [x - h * 0.35, y],
+            [x + h * 0.35, y],
+            [x, y - h],
+          ],
+          tint(s.a, 1),
+        );
+        c.line(x, y - h, x, y - h * 0.6, 0.8, tint(s.b, 1));
+      }
+      break;
+    }
+    case "hit": {
+      const len = k * (0.25 + 0.75 * Math.min(1, p * 1.5)) * (1 - p * 0.4);
+      for (let j = 0; j < 4; j++) {
+        const ang = (j / 4) * Math.PI;
+        const dx = Math.cos(ang) * len;
+        const dy = Math.sin(ang) * len;
+        c.line(cx - dx, cy - dy, cx + dx, cy + dy, 2.6 * fade + 1, tint(s.a, fade * 0.9 + 0.1));
+      }
+      c.glow(cx, cy, k * 0.25 * fade + 3, tint(0xffffff, fade), 2);
+      break;
+    }
+    case "dash": {
+      const n = count;
+      for (let j = 0; j < n; j++) {
+        const y = cy + (j / (n - 1) - 0.5) * k * 1.2;
+        const x1 = cx - k * 0.2 + p * k * 0.6 + (noise(seed + j) - 0.5) * k * 0.3;
+        const len = k * (0.6 + 0.4 * noise(seed + 10 + j));
+        c.line(x1 - len, y, x1, y, 1.5 + 2 * fade, tint(s.a, fade * 0.9 + 0.1));
+      }
+      break;
+    }
+  }
+}
+
+/** Frame index that represents the effect as a still sprite (the middle of the burst). */
+function peakFrame(s: BurstSpec): number {
+  return Math.floor(s.n * 0.45);
+}
+
+/** Rounds the colour channels of every visible pixel to a multiple of `step`; transparent pixels get no colour. */
+function quantiseRgb(img: Img, step: number): void {
+  for (let i = 0; i < img.data.length; i += 4) {
+    if (img.data[i + 3] === 0) {
+      img.data[i] = 0;
+      img.data[i + 1] = 0;
+      img.data[i + 2] = 0;
+      continue;
+    }
+    for (let k = 0; k < 3; k++) {
+      img.data[i + k] = Math.min(255, Math.round(img.data[i + k]! / step) * step);
+    }
+  }
+}
+
+/** Alpha quantised to a few levels, so the frames compress well. */
+function quantiseAlpha(img: Img): void {
+  for (let i = 3; i < img.data.length; i += 4) {
+    const a = img.data[i]!;
+    if (a === 0) continue;
+    img.data[i] = Math.min(
+      255,
+      Math.round((Math.round((a / 255) * ALPHA_LEVELS) / ALPHA_LEVELS) * 255),
+    );
+  }
+}
+
+/** Trims a 128 px burst frame to its opaque box; the trim keeps the 128 px source box for the centre anchor. */
+function burstFrame(s: BurstSpec, i: number): { img: Img; trim: Frame["trim"] } {
+  const full = paintOn(blank(BURST_PX, BURST_PX));
+  drawBurst(full, s, i);
+  quantiseAlpha(full.img);
+  if (!full.img.data.some((_, k) => k % 4 === 3 && full.img.data[k] !== 0)) {
+    throw new Error(`burst ${s.id} frame ${i} is empty`);
+  }
+  const box = alphaBox(full.img);
+  return {
+    img: crop(full.img, box),
+    trim: { x: box.x, y: box.y, w: BURST_PX, h: BURST_PX },
+  };
+}
+
+/** Animated particle textures, one per ParticleStyle. */
+function buildParticles(): void {
+  for (const [style, core, halo, power] of PARTICLES) {
+    const img = procedural(24, 24, (c) => {
+      c.glow(12, 12, 12, rgba(halo), power);
+      c.ellipse(12, 12, 4.5, 4.5, rgba(core));
+      c.ellipse(11.5, 11.5, 1.6, 1.6, WHITE);
+    });
+    addFrame(`fx.particle.${style}`, img, CENTER);
+  }
+}
+
+/** Projectile stills: a long streak with a bright head, pointing right. */
+function fxPiercing(): Img {
+  return procedural(30, 10, (c) => {
+    c.glow(12, 5, 8, [120, 220, 255, 170], 2);
+    c.line(1, 5, 21, 5, 1.8, [120, 210, 255, 255]);
+    c.line(4, 5, 18, 5, 0.8, WHITE);
+    c.poly(
+      [
+        [28, 5],
+        [19, 1],
+        [19, 9],
+      ],
+      [200, 240, 255, 255],
+    );
+  });
+}
+
+function fxNightVolley(): Img {
+  return procedural(28, 10, (c) => {
+    c.glow(9, 5, 8, [110, 70, 210, 255], 1.6);
+    c.line(1, 5, 21, 5, 1.8, [40, 26, 66, 255]);
+    c.line(3, 5, 17, 5, 0.8, [190, 150, 255, 255]);
+    c.poly(
+      [
+        [27, 5],
+        [19, 1],
+        [19, 9],
+      ],
+      [120, 80, 220, 255],
+    );
+    c.poly(
+      [
+        [4, 5],
+        [0, 1],
+        [7, 5],
+        [0, 9],
+      ],
+      [60, 40, 110, 255],
+    );
+  });
+}
+
+function fxGlacialSpike(): Img {
+  return procedural(30, 12, (c) => {
+    c.glow(12, 6, 9, [150, 230, 255, 150], 2);
+    c.poly(
+      [
+        [0, 6],
+        [22, 2],
+        [29, 6],
+        [22, 10],
+      ],
+      [170, 232, 255, 255],
+    );
+    c.line(3, 6, 25, 5, 1, WHITE);
+    c.poly(
+      [
+        [16, 2],
+        [22, 2],
+        [29, 6],
+      ],
+      [230, 250, 255, 255],
+    );
+  });
+}
+
+/** The map for `fx.rift.exit`: an animated violet-teal portal, distinct from fx.portal's orange-blue. */
+function riftExitFrame(phase: number): Img {
+  return procedural(64, 48, (c) => {
+    for (let y = 0; y < 48; y++) {
+      for (let x = 0; x < 64; x++) {
+        const nx = (x + 0.5 - 32) / 28;
+        const ny = (y + 0.5 - 24) / 20;
+        const d = Math.sqrt(nx * nx + ny * ny);
+        const band = Math.exp(-(((d - 0.72) / 0.13) ** 2));
+        const swirl = 0.5 + 0.5 * Math.sin(4 * Math.atan2(ny, nx) + d * 7 - phase);
+        const r = 60 + 60 * swirl;
+        const g = 170 + 60 * (1 - swirl);
+        const b = 230;
+        if (band > 0.01) c.put(x, y, [r, g, b, 255], band);
+      }
+    }
+    const pulse = 0.85 + 0.15 * Math.sin(phase);
+    c.glow(32, 24, 12 * pulse, [150, 255, 230, 255], 2);
+    c.ellipse(32, 24, 3, 6, [240, 255, 250, 255]);
+  });
+}
+
+/** A tall dark obelisk with a violet core band and a glowing crown: prop.rift.obelisk. */
+function riftObelisk(): Img {
+  return procedural(40, 100, (c) => {
+    c.poly(
+      [
+        [6, 100],
+        [34, 100],
+        [31, 90],
+        [9, 90],
+      ],
+      [40, 36, 48, 255],
+    );
+    c.poly(
+      [
+        [10, 90],
+        [30, 90],
+        [25, 22],
+        [15, 22],
+      ],
+      [52, 46, 64, 255],
+    );
+    c.poly(
+      [
+        [15, 22],
+        [25, 22],
+        [20, 2],
+      ],
+      [60, 54, 74, 255],
+    );
+    c.poly(
+      [
+        [20, 20],
+        [25, 22],
+        [25, 90],
+        [20, 90],
+      ],
+      [72, 64, 90, 255],
+    );
+    c.glow(20, 52, 13, [170, 90, 255, 230], 1.5);
+    c.ellipse(20, 52, 3, 9, [226, 190, 255, 255]);
+    c.line(14, 70, 26, 70, 1, [150, 120, 220, 200]);
+    c.line(14, 78, 26, 78, 1, [150, 120, 220, 200]);
+    c.glow(20, 6, 5, [200, 150, 255, 220], 2);
+  });
+}
+
+/** A faceted cyan gem for loot: loot.item.gem. */
+function gemIcon(): Img {
+  return procedural(28, 28, (c) => {
+    c.poly(
+      [
+        [14, 2],
+        [25, 10],
+        [21, 25],
+        [7, 25],
+        [3, 10],
+      ],
+      [120, 220, 255, 255],
+    );
+    c.poly(
+      [
+        [14, 2],
+        [25, 10],
+        [14, 11],
+        [3, 10],
+      ],
+      [200, 245, 255, 255],
+    );
+    c.poly(
+      [
+        [3, 10],
+        [14, 11],
+        [7, 25],
+      ],
+      [60, 150, 230, 255],
+    );
+    c.poly(
+      [
+        [14, 11],
+        [25, 10],
+        [21, 25],
+      ],
+      [40, 120, 210, 255],
+    );
+    c.ellipse(11, 7, 2, 1.5, WHITE);
+  });
+}
+
+/** Every wave A effect, particle, projectile still, prop and loot sprite. */
+function buildWaveA(): void {
+  buildParticles();
+  for (const [id, make] of PROJECTILE_STILLS) addFrame(id, make(), CENTER);
+  for (const s of BURSTS) {
+    const names: string[] = [];
+    for (let i = 0; i < s.n; i++) {
+      const name = `${s.id}.burst.${i}`;
+      const { img, trim } = burstFrame(s, i);
+      addFrame(name, img, CENTER, trim);
+      names.push(name);
+    }
+    addAnimation(`${s.id}.burst`, names, s.fps, false);
+    // The still sprite of an effect shows its middle frame (projectile stills keep their own sprite).
+    if (!sprites[s.id]) alias(s.id, names[peakFrame(s)]!, CENTER);
+  }
+  const rift: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const name = `fx.rift.exit.${i}`;
+    addFrame(name, riftExitFrame((i / 8) * Math.PI * 2), BOTTOM);
+    rift.push(name);
+  }
+  addAnimation("fx.rift.exit", rift, 10, true);
+  alias("fx.rift.exit", rift[0]!, BOTTOM);
+  addFrame("prop.rift.obelisk", riftObelisk(), BOTTOM);
+  addFrame("loot.item.gem", gemIcon(), LOOT);
+}
+
 // ------------------------------------------------------------------ atlases
 
 interface Placed {
@@ -2962,8 +4155,14 @@ buildGround();
 buildProps();
 buildLoot();
 buildFx();
+buildWaveA();
 buildUnits();
 addFrame("missing", missingTile(), BOTTOM);
+
+// Visually lossless palette trim: channels rounded to multiples of 4 (at most 2 levels off), and
+// the colour of transparent pixels zeroed. Together this keeps the atlas PNGs near the wave A
+// byte budget (about +9 %) and changes nothing a player can see.
+for (const f of frames.values()) quantiseRgb(f.img, 4);
 
 // Identical pixels (for example a breathing frame that repeats) are packed once
 // and shared by every frame name that uses them.

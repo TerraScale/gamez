@@ -51,7 +51,28 @@ import {
   type StashState,
   type VendorState,
 } from "../resources.ts";
-import { potionUnlocked, sellPrice, skillManaCost, xpAtLevel } from "../rules.ts";
+import {
+  effectiveCooldown,
+  effectiveManaCost,
+  potionUnlocked,
+  sellPrice,
+  skillManaCost,
+  xpAtLevel,
+} from "../rules.ts";
+import { skillModsOf } from "../bonus.ts";
+import { lootFilterOf, type LootFilter } from "../resources.ts";
+import { buildAchievementsView } from "./model/achievements.ts";
+import type { ModelContext } from "./model/context.ts";
+import {
+  buildCraftView,
+  buildGambleView,
+  buildLootFilterView,
+  buildStashTabs,
+} from "./model/craft.ts";
+import { buildDpsView } from "./model/dps.ts";
+import { extendItemView } from "./model/items.ts";
+import { buildRiftView } from "./model/rift.ts";
+import { buildTalentsView } from "./model/talents.ts";
 import {
   BALANCE_ID,
   KIND,
@@ -86,6 +107,7 @@ import {
   type VendorView,
 } from "./contract.ts";
 import { itemLines, skillDetailLines, statDiffs, statTotals } from "./describe.ts";
+import { depthLabel } from "./hud/format.ts";
 
 /** Per-build inputs that are not in the world (client UI state). */
 export interface HudContext {
@@ -189,6 +211,8 @@ export interface ItemContext {
   equipped: Record<EquipSlot, ItemInstance | null> | null;
   /** Junk buyer percent (0 = not sellable). */
   junkPct: number;
+  /** Wave A: the loot filter for ItemView.filtered (absent = not evaluated). */
+  lootFilter?: LootFilter | null;
 }
 
 /** Requirements check: level, strength and dexterity. */
@@ -235,7 +259,7 @@ export function itemView(item: ItemInstance, c: ItemContext): ItemView {
   const base = c.registry.get<ItemBaseProto>(KIND.itemBase, item.base);
   const category = base?.category ?? "armor";
   const cmp = base ? compareOf(item, base, c) : { upgrade: 0, compare: null };
-  return {
+  const view: ItemView = {
     uid: item.uid,
     base: item.base,
     baseName: base?.name,
@@ -255,6 +279,11 @@ export function itemView(item: ItemInstance, c: ItemContext): ItemView {
     upgrade: cmp.upgrade,
     compare: cmp.compare,
   };
+  return extendItemView(view, item, {
+    registry: c.registry,
+    equipped: c.equipped,
+    lootFilter: c.lootFilter ?? null,
+  });
 }
 
 function heroStatsOf(world: World, e: Entity): HeroStatsValue | undefined {
@@ -353,7 +382,7 @@ function areaName(world: World, registry: FrozenRegistry, depth: number): string
   try {
     return getAreaMap(world, registry).name;
   } catch {
-    return depth === 0 ? "Town" : `Depth ${depth}`;
+    return depthLabel(depth);
   }
 }
 
@@ -402,7 +431,8 @@ function skillBar(world: World, registry: FrozenRegistry, e: Entity, tick: numbe
     const rank = id ? (book?.ranks.find((r) => r.skill === id)?.rank ?? 0) : 0;
     const readyAt = id ? (book?.cooldowns.find((c) => c.skill === id)?.readyAt ?? 0) : 0;
     const cooldownLeft = Math.max(0, readyAt - tick);
-    const cost = skill && rank > 0 ? skillManaCost(skill, rank) : 0;
+    const mods = id && skill ? skillModsOf(world, registry, e, id) : null;
+    const cost = skill && rank > 0 && mods ? effectiveManaCost(skill, rank, mods) : 0;
     slots.push({
       slot: i,
       key: BAR_KEYS[i]!,
@@ -411,7 +441,7 @@ function skillBar(world: World, registry: FrozenRegistry, e: Entity, tick: numbe
       icon: skill?.icon ?? "",
       manaCost: cost,
       cooldownLeft,
-      cooldown: skill?.cooldown ?? 0,
+      cooldown: skill && mods ? effectiveCooldown(skill, mods) : (skill?.cooldown ?? 0),
       usable:
         skill !== undefined && rank > 0 && !dead && cooldownLeft === 0 && (mana?.mp ?? 0) >= cost,
     });
@@ -657,6 +687,7 @@ export function buildHud(world: World, registry: FrozenRegistry, ctx: HudContext
     primary,
     equipped: equipment ?? null,
     junkPct,
+    lootFilter: lootFilterOf(world),
   };
   const bag = hero ? world.get(hero, Inventory) : undefined;
   const stash = world.getResource<StashState>(RES.stash);
@@ -706,6 +737,24 @@ export function buildHud(world: World, registry: FrozenRegistry, ctx: HudContext
     quests: questViews(registry, world.getResource(RES.quests), level),
     vendor: ctx.vendor !== 0 ? vendorView(world, registry, ctx.vendor, itemCtx) : null,
   };
+  // Wave A sections, one builder file each (src/client/model/).
+  const mc: ModelContext = {
+    world,
+    registry,
+    hero,
+    heroView: heroV,
+    tick: ctx.tick,
+    vendor: ctx.vendor,
+    itemView: (it) => itemView(it, itemCtx),
+  };
+  snapshot.talents = buildTalentsView(mc);
+  snapshot.craft = buildCraftView(mc);
+  snapshot.gamble = buildGambleView(mc);
+  snapshot.rift = buildRiftView(mc);
+  snapshot.achievements = buildAchievementsView(mc);
+  snapshot.lootFilter = buildLootFilterView(mc);
+  snapshot.stashTabs = buildStashTabs(mc);
+  snapshot.dps = buildDpsView(mc);
   return shareStructure(ctx.prev, snapshot);
 }
 

@@ -38,13 +38,16 @@ packages/
   assets/                  Asset manifest types, mergeManifests, resolveId fallback
   ui-host/                 Client SDK for modes: ClientModeView, ClientServices, InstanceConnection, UI slots, renderer contract
 modules/
-  classic.town/            Classic town map (content)
+  classic/                 The classic idle ARPG (@gamez/mode-classic): sim modules in src/, client in src/client/
+  classic.town/            Town Plaza map (content)
   art.kenney/              Starter CC0 art pack → apps/game/public/art/kenney/
   steps/  duel/            Test modes (also the regression suite for the module system)
 tools/
   e2e/                     End-to-end tests against a real local `vp dev`
+  qa/                      Browser QA harness (headless Chrome over CDP): scenarios + screenshots
   bench/                   Benchmarks (results in docs/bench/)
 docs/adr/                  Architecture decision records
+docs/design/               Mode designs (classic.md, wave-A.md): the binding spec for builders
 ```
 
 ---
@@ -62,6 +65,7 @@ docs/adr/                  Architecture decision records
 | Dev server (client + Worker + DOs, local D1/queues) | `node_modules/.bin/vp run dev`                                                   |
 | Apply D1 migrations to local dev                    | `node_modules/.bin/vp run migrate-local`                                         |
 | End-to-end                                          | `node_modules/.bin/vp run e2e` (starts and stops its own dev server)             |
+| Browser QA (against a running dev server)           | `node tools/qa/src/run.ts classic-idle warrior 2 8` (see `tools/qa/README.md`)   |
 | Production build                                    | `node_modules/.bin/vp -C apps/game build`                                        |
 | Cloudflare CLI                                      | `cf …`. Discover commands with `cf cli search "<task>"`. **Never use wrangler.** |
 
@@ -351,7 +355,8 @@ A "feature system" is something like professions, player shops, an auction house
 | Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                           |
 | Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes. |
 | Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                |
-| End to end   | `tools/e2e` against real `vp dev`: classic presence, then each instance mode, then persistence across restart        |
+| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph      |
+| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                           |
 | Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`                                   |
 
 Before saying something is done: `node_modules/.bin/vp check`, `node_modules/.bin/vp run -r test`, `node_modules/.bin/vp -C apps/game build` and `node_modules/.bin/vp run e2e`, all green. Report failures honestly, with output.
@@ -401,3 +406,5 @@ Worktrees start from the last commit, so commit contracts first if you use `isol
 - Don't commit secrets. `.dev.vars` is git-ignored; use `.dev.vars.example` for defaults.
 - Don't bypass `vp`, the formatter or the lint guard.
 - Don't push, deploy or create cloud resources unless the user asked for it.
+- Don't import a file before it exists. A running `vp dev` remembers an unresolved import of a file outside `apps/game` and keeps serving a 500 for the importer even after the file appears. Create the new file first, then wire it in. Every saved file must compile, because the dev server hot-reloads the tree.
+- Don't leave headless browsers running after a QA script. Orphaned QA browsers keep the game running at x8 and slow every later measurement.

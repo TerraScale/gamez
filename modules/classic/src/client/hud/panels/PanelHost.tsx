@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { Slot } from "@gamez/ui-host";
 import { useSelect } from "../hooks.ts";
 import { useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
-import { HUD_EDGE, PANEL_IDS, bottomBarInset, panelSlot } from "../layout.ts";
+import { HUD_EDGE, PANEL_IDS, PANEL_ROW_RIGHT, bottomBarInset, panelSlot } from "../layout.ts";
 import type { PanelId } from "../../contract.ts";
 
 export function PanelHost({ api }: SlotProps) {
@@ -41,7 +41,10 @@ export function PanelHost({ api }: SlotProps) {
         justifyContent: "center",
         gap: 12,
         // Panels stop HUD_EDGE above the measured bottom bar, so they never cover the orbs.
-        padding: compact ? 0 : `64px 16px ${bottomBarInset(layout, insets.bottom) + HUD_EDGE}px`,
+        // Desktop: the right inset keeps the row left of the toast column (see PANEL_ROW_RIGHT).
+        padding: compact
+          ? 0
+          : `64px ${PANEL_ROW_RIGHT[layout]}px ${bottomBarInset(layout, insets.bottom) + HUD_EDGE}px 16px`,
       }}
     >
       {shown.map((id) => (

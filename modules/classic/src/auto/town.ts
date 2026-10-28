@@ -1,9 +1,12 @@
 /**
- * The town routine (§15.2 step 9): AutoState.todo walks through heal ->
- * sell -> stash -> buy -> smith -> quests -> return. Each step walks to its
- * NPC/Interactable with an interact Intent and, once within reach, queues
- * the owner's ops directly (heal, sell, stashPut, buy, acceptQuest,
- * completeQuest, usePortal / waypoint / stairs).
+ * The town routine (§15.2 step 9; wave A §8): AutoState.todo walks through
+ * heal -> sell -> repair -> buy -> smith -> craft -> gamble -> sell -> stash
+ * -> quests -> return. Each step walks to its NPC/Interactable with an
+ * interact Intent and, once within reach, queues the owner's ops directly
+ * (heal, sell, repair, buy, socketGem/addSocket/upgrade/combineGems, gamble,
+ * stashPut with a tab, acceptQuest, completeQuest, usePortal / waypoint /
+ * stairs / openRift). The second sell step sells what the gamble brought
+ * that is neither an upgrade nor worth keeping.
  */
 import type { Entity } from "@gamez/kernel";
 import { pushCommand } from "../bus.ts";
@@ -16,7 +19,7 @@ import {
   type StashState,
   type VendorState,
 } from "../resources.ts";
-import { monsterLevel, potionUnlocked, rarityRank } from "../rules.ts";
+import { monsterLevel, potionUnlocked, rarityRank, stashTabCount } from "../rules.ts";
 import {
   KIND,
   type ItemBaseProto,
@@ -24,9 +27,11 @@ import {
   type NpcProto,
   type QuestProto,
 } from "../types.ts";
-import { travel } from "./explore.ts";
-import { walkTo } from "./route.ts";
+import { craftStep, gambleStep, repairStep } from "./craft.ts";
+import { travel } from "./dungeon.ts";
 import { isKeeper, upgradeFor } from "./gear.ts";
+import { riftTownStep } from "./riftLoop.ts";
+import { approach, at, type StepResult } from "./visit.ts";
 import {
   addIgnore,
   balanceOf,
@@ -38,38 +43,18 @@ import {
   nearestInteractable,
   nearestNpc,
   npcsByRole,
+  potionAmount,
   potionOf,
-  setIntent,
+  retreatLoop,
   setPlan,
-  stopIntent,
   type AutoCtx,
 } from "./util.ts";
 
-type StepResult = "skip" | "walk" | "done" | "wait";
-
-/** Scrolls the routine buys up to. */
+/** Town portal scrolls the routine buys up to. */
 export const SCROLL_TARGET = 5;
 
 function bagItems(c: AutoCtx): ItemInstance[] {
   return (c.world.get(c.hero, Inventory)?.items ?? []).map((e) => e.item);
-}
-
-/** Walk to `e` (interact intent, long walks in legs), or run `act` when within reach. */
-function at(c: AutoCtx, e: Entity, act: () => void): StepResult {
-  const same = c.st.focus === e;
-  c.st.focus = e;
-  if (inReach(c, e)) {
-    act();
-    stopIntent(c);
-    return "done";
-  }
-  approach(c, e, same);
-  return "walk";
-}
-
-function approach(c: AutoCtx, e: Entity, same: boolean): void {
-  const p = c.world.read(e, Pos);
-  walkTo(c, p.x >> 8, p.y >> 8, () => setIntent(c, { kind: "interact", target: e }), same);
 }
 
 function healStep(c: AutoCtx): StepResult {
@@ -81,23 +66,80 @@ function healStep(c: AutoCtx): StepResult {
   return at(c, npc, () => pushCommand(c.world, { op: "heal", npc }));
 }
 
+/** Stash tabs by convention (wave-A.md §8): general, sets and uniques, gems, overflow. */
+export const TAB_GENERAL = 0;
+export const TAB_SPECIAL = 1;
+export const TAB_GEMS = 2;
+export const TAB_OVERFLOW = 3;
+/** Gems kept in the bag for the smith (best tiers first); the rest go to the gem tab. */
+export const GEM_BAG_KEEP = 8;
+
+function isGem(c: AutoCtx, it: ItemInstance): boolean {
+  return c.reg.get<ItemBaseProto>(KIND.itemBase, it.base)?.gem !== undefined;
+}
+
+function gemTier(c: AutoCtx, it: ItemInstance): number {
+  return c.reg.get<ItemBaseProto>(KIND.itemBase, it.base)?.gem?.tier ?? 0;
+}
+
+/** Preferred stash tab of an item (falls back to overflow, then any tab with room). */
+export function preferredTab(c: AutoCtx, it: ItemInstance, tabs: number): number {
+  const want = isGem(c, it)
+    ? TAB_GEMS
+    : it.rarity === "set" || it.rarity === "unique"
+      ? TAB_SPECIAL
+      : TAB_GENERAL;
+  return want < tabs ? want : 0;
+}
+
+export interface StashPlan {
+  item: ItemInstance;
+  tab: number;
+}
+
 /**
  * What the town routine does with the bag: items below keepRarity (that are
  * not upgrades to keep) are sold; kept rarities go to the stash while it has
  * room, and are sold once it is full, so a town trip always frees the bag.
+ * Gems: the best GEM_BAG_KEEP stay in the bag (crafting), the rest go to the
+ * gem tab. Stash tabs (wave A): preferred tab, else overflow, else the first
+ * tab with room; per-tab capacity BalanceProto.stashSize.
  */
-export function sortBag(c: AutoCtx): { sell: ItemInstance[]; stash: ItemInstance[] } {
+export function sortBag(c: AutoCtx): { sell: ItemInstance[]; stash: StashPlan[] } {
   const keep = rarityRank(c.cfg.keepRarity);
-  let room =
-    balanceOf(c.reg).stashSize - (c.world.getResource<StashState>(RES.stash)?.items.length ?? 0);
+  const bal = balanceOf(c.reg);
+  const tabs = stashTabCount(bal as Parameters<typeof stashTabCount>[0]);
+  const counts = Array.from({ length: tabs }, () => 0);
+  for (const it of c.world.getResource<StashState>(RES.stash)?.items ?? []) {
+    const t = it.tab ?? 0;
+    if (t >= 0 && t < tabs) counts[t]!++;
+  }
+  const tabFor = (it: ItemInstance): number => {
+    const pref = preferredTab(c, it, tabs);
+    if (counts[pref]! < bal.stashSize) return pref;
+    if (TAB_OVERFLOW < tabs && counts[TAB_OVERFLOW]! < bal.stashSize) return TAB_OVERFLOW;
+    return counts.findIndex((n) => n < bal.stashSize);
+  };
   const sell: ItemInstance[] = [];
-  const stash: ItemInstance[] = [];
-  for (const it of bagItems(c)) {
-    if (isKeeper(c, it)) continue;
-    if (rarityRank(it.rarity) < keep) sell.push(it);
-    else if (room > 0) {
-      stash.push(it);
-      room--;
+  const stash: StashPlan[] = [];
+  const items = bagItems(c);
+  // Gems: the best tiers stay in the bag (ties: lower uid).
+  const gems = items
+    .filter((it) => isGem(c, it))
+    .sort((a, b) => gemTier(c, b) - gemTier(c, a) || a.uid - b.uid);
+  const extraGems = new Set(gems.slice(GEM_BAG_KEEP).map((it) => it.uid));
+  for (const it of items) {
+    if (isGem(c, it)) {
+      if (!extraGems.has(it.uid)) continue;
+    } else if (isKeeper(c, it)) continue;
+    if (!isGem(c, it) && rarityRank(it.rarity) < keep) {
+      sell.push(it);
+      continue;
+    }
+    const tab = tabFor(it);
+    if (tab >= 0) {
+      stash.push({ item: it, tab });
+      counts[tab]!++;
     } else sell.push(it);
   }
   return { sell, stash };
@@ -127,10 +169,11 @@ function sellStep(c: AutoCtx): StepResult {
   if (junk === undefined) return "skip";
   const { sell } = sortBag(c);
   if (sell.length === 0) return "skip";
-  const stashFull =
-    (c.world.getResource<StashState>(RES.stash)?.items.length ?? 0) >= balanceOf(c.reg).stashSize;
+  const keptSold = sell.some(
+    (it) => !isGem(c, it) && rarityRank(it.rarity) >= rarityRank(c.cfg.keepRarity),
+  );
   return at(c, junk, () => {
-    if (stashFull && sell.some((it) => rarityRank(it.rarity) >= rarityRank(c.cfg.keepRarity)))
+    if (keptSold)
       emit(c.ctx, {
         type: "classic.auto.notice",
         code: "stash_full",
@@ -146,9 +189,12 @@ function stashStep(c: AutoCtx): StepResult {
   const put = sortBag(c).stash;
   if (put.length === 0) return "skip";
   return at(c, stash, () => {
-    for (const it of put) pushCommand(c.world, { op: "stashPut", uid: it.uid });
+    for (const p of put) pushCommand(c.world, { op: "stashPut", uid: p.item.uid, tab: p.tab });
   });
 }
+
+/** Highest potion tier the routine considers when buying. */
+export const POTION_TIER_MAX = 4;
 
 /** Potion tier wanted at a hero level: < 10 minor, < 20 light, < 30 greater, else super. */
 export function potionTier(level: number): number {
@@ -200,11 +246,12 @@ export interface Purchase {
 }
 
 /**
- * What the alchemist routine buys with the current gold. With no life
- * potion in the belt, potions come first; otherwise scrolls up to 2 first.
+ * What the alchemist routine buys with the current gold. One town portal
+ * scroll first (the retreat needs it); then, with no life potion in the
+ * belt, potions; otherwise scrolls up to 2 first.
  * Potions follow the class belt plan (casters 2 life + 2 mana slots, others
- * 3 + 1) at the best affordable tier up to the level's tier, then scrolls up
- * to 5.
+ * 3 + 1), each kind the unlocked base that restores the most in total with
+ * the gold and belt room, then scrolls up to 5.
  */
 export function planPurchases(c: AutoCtx, sells: NonNullable<NpcProto["sells"]>): Purchase[] {
   const bal = balanceOf(c.reg);
@@ -216,7 +263,10 @@ export function planPurchases(c: AutoCtx, sells: NonNullable<NpcProto["sells"]>)
     const want = Math.min(upTo, bal.maxTpScrolls) - scrolls;
     const n = Math.min(want, Math.floor(gold / Math.max(1, bal.tpScrollPrice)));
     if (n <= 0) return;
-    out.push({ potion: "tp", count: n });
+    // Consecutive scroll purchases are one op.
+    const last = out[out.length - 1];
+    if (last && last.potion === "tp") last.count += n;
+    else out.push({ potion: "tp", count: n });
     gold -= n * bal.tpScrollPrice;
     scrolls += n;
   };
@@ -224,32 +274,55 @@ export function planPurchases(c: AutoCtx, sells: NonNullable<NpcProto["sells"]>)
   const noLife =
     belt !== undefined &&
     !belt.slots.some((s) => s.count > 0 && potionOf(c.reg, s.base)?.kind === "life");
+  // One scroll always comes first: without it a hero with an empty belt cannot retreat
+  // (playtest wave A: most warrior deaths had no potion and no scroll left).
+  buyScrolls(1);
   if (!noLife) buyScrolls(2);
   if (c.cfg.buyPotions && belt) {
     const level = c.world.get(c.hero, Level)?.level ?? 1;
-    const tier = potionTier(level);
+    // Any unlocked tier (the alchemist unlocks them by hero level); the choice below weighs
+    // what the gold buys, so a poor hero still takes the cheap ones.
+    const tier = POTION_TIER_MAX;
     const caster = isCasterClass(c.classProto);
     let empty = belt.slots.filter((s) => s.count <= 0 || s.base === null).length;
     for (const [kind, slots] of [
       ["life", caster ? 2 : 3],
       ["mana", caster ? 2 : 1],
     ] as const) {
-      const base = chooseBase(c, sells.potions, kind, tier, gold);
-      if (!base) continue;
       let kindSlots = 0;
-      let room = 0;
       for (const s of belt.slots) {
-        if (s.count <= 0 || s.base === null) continue;
-        if (potionOf(c.reg, s.base)?.kind === kind) kindSlots++;
-        if (s.base === base.id) room += Math.max(0, bal.beltStack - s.count);
+        if (s.count > 0 && s.base !== null && potionOf(c.reg, s.base)?.kind === kind) kindSlots++;
       }
       const useEmpty = Math.min(empty, Math.max(0, slots - kindSlots));
-      empty -= useEmpty;
-      room += useEmpty * bal.beltStack;
-      const n = Math.min(room, Math.floor(gold / base.price));
-      if (n <= 0) continue;
-      out.push({ potion: base.id, count: n });
-      gold -= n * base.price;
+      // The unlocked base (tier <= the level's tier) that restores the most in total with
+      // this gold and belt room: a poor hero buys three minor potions, not one light one.
+      let best: { id: string; price: number; n: number; total: number; tier: number } | null = null;
+      for (const id of [...sells.potions].sort()) {
+        const b = c.reg.get<ItemBaseProto>(KIND.itemBase, id);
+        if (!b?.potion || b.potion.kind !== kind || b.potion.tier > tier) continue;
+        if (!potionUnlocked(b, level)) continue;
+        const price = Math.max(1, b.value);
+        let room = useEmpty * bal.beltStack;
+        for (const s of belt.slots)
+          if (s.count > 0 && s.base === id) room += Math.max(0, bal.beltStack - s.count);
+        const n = Math.min(room, Math.floor(gold / price));
+        if (n <= 0) continue;
+        const max =
+          kind === "life"
+            ? (c.world.get(c.hero, Life)?.max ?? 0)
+            : (c.world.get(c.hero, Mana)?.max ?? 0);
+        const total = n * potionAmount(b.potion, max, 0);
+        if (!best || total > best.total || (total === best.total && b.potion.tier > best.tier))
+          best = { id, price, n, total, tier: b.potion.tier };
+      }
+      if (!best) continue;
+      // Empty slots taken by this purchase (stacks of the same base fill first).
+      let left = best.n;
+      for (const s of belt.slots)
+        if (s.count > 0 && s.base === best.id) left -= Math.max(0, bal.beltStack - s.count);
+      empty -= Math.min(useEmpty, Math.max(0, Math.ceil(left / bal.beltStack)));
+      out.push({ potion: best.id, count: best.n });
+      gold -= best.n * best.price;
     }
   }
   buyScrolls(SCROLL_TARGET);
@@ -354,11 +427,19 @@ function goTravel(
   return "walk";
 }
 
-/** Back to the dungeon: open portal, else the deepest suitable waypoint, else the town stairs. */
+/**
+ * Back to the dungeon: a Rift run once the main dungeon is done (riftLoop.ts),
+ * else the open portal, else the deepest suitable waypoint, else the town
+ * stairs.
+ */
 function returnStep(c: AutoCtx): StepResult {
+  const rift = riftTownStep(c);
+  if (rift !== "skip") return rift;
   const dungeon = c.world.getResource<DungeonState>(RES.dungeon);
   const avoid = c.st.deathDepth;
-  if (dungeon?.portal && !(avoid > 0 && dungeon.portal.depth >= avoid)) {
+  // Two quick retreats: the portal leads back into a fight the hero keeps losing.
+  const loop = retreatLoop(c);
+  if (dungeon?.portal && !loop && !(avoid > 0 && dungeon.portal.depth >= avoid)) {
     const portal = nearestInteractable(c, "portal");
     if (portal !== 0) return goTravel(c, portal, { op: "usePortal" }, "portal");
   }
@@ -367,8 +448,12 @@ function returnStep(c: AutoCtx): StepResult {
   for (const w of dungeon?.waypoints ?? []) {
     if (w <= 0 || (c.cfg.maxDepth > 0 && w > c.cfg.maxDepth)) continue;
     if (monsterLevel(w) > level + 2) continue;
-    // First return after a death: below that depth (a fresh level, not the pack that won).
-    if (c.st.deathDepth > 0 && w >= c.st.deathDepth && w > 1) continue;
+    // First return after a death: not deeper than that depth, and never through the portal
+    // (it opens next to the pack that won); the waypoint is elsewhere on the level. Going
+    // further up cost two 128x128 levels of walking (~10 000 ticks) per death. After
+    // repeated deaths (caution >= 2) strictly above it: the same pack won twice.
+    const limit = c.st.caution >= 2 ? c.st.deathDepth - 1 : c.st.deathDepth;
+    if (c.st.deathDepth > 0 && w > Math.max(1, limit)) continue;
     if (w > dest) dest = w;
   }
   if (dest > 0) {
@@ -386,12 +471,18 @@ function runStep(c: AutoCtx, step: string): StepResult {
       return healStep(c);
     case "sell":
       return sellStep(c);
+    case "repair":
+      return repairStep(c);
     case "stash":
       return stashStep(c);
     case "buy":
       return buyStep(c);
     case "smith":
       return smithStep(c);
+    case "craft":
+      return craftStep(c, smithReserve(c));
+    case "gamble":
+      return gambleStep(c, smithReserve(c));
     case "quests":
       return questStep(c);
     case "return":
@@ -418,6 +509,8 @@ export function townStep(c: AutoCtx): boolean {
     st.todo.shift();
     st.focus = 0;
     if (r === "done") {
+      // What the gambler handed over and is neither equipped nor kept gets sold right away.
+      if (step === "gamble") st.todo.unshift("sell");
       setPlan(c, "town", step);
       return true;
     }

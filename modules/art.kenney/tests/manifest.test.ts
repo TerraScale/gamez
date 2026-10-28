@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { PNG } from "pngjs";
 import type { AssetManifest } from "@gamez/assets";
 import { resolveId } from "@gamez/assets";
@@ -6,6 +6,47 @@ import { describe, expect, it } from "vite-plus/test";
 import { KENNEY_MANIFEST_URL } from "../src/index.ts";
 
 const dir = new URL("../../../apps/game/public/art/kenney/", import.meta.url);
+/** Atlas PNG bytes before wave A (18,945,210): the wave may grow them by at most 20 %. */
+const WAVE_A_BASE_ATLAS_BYTES = 18_945_210;
+/** Every effect id that effects.ts maps (its EFFECT_TABLE keys, read from source). */
+const effectsSource = readFileSync(
+  new URL("../../classic/src/client/effects.ts", import.meta.url),
+  "utf8",
+);
+const effectTable = [...effectsSource.matchAll(/^\s*"(fx\.[a-z_]+)": \{ kind:/gm)].map(
+  (m) => m[1]!,
+);
+/** Wave A effect ids that are not in EFFECT_TABLE yet (the planner names them in wave A). */
+const waveAEffects = [
+  "fx.quake_stomp",
+  "fx.iron_skin",
+  "fx.sky_leap",
+  "fx.piercing_shot",
+  "fx.caltrops",
+  "fx.night_volley",
+  "fx.glacial_spike",
+  "fx.storm_call",
+  "fx.falling_star",
+  "fx.boss_quake",
+  "fx.boss_cleave",
+  "fx.boss_rush",
+  "fx.boss_meteor",
+  "fx.boss_frost_nova",
+  "fx.telegraph",
+];
+const burstIds = [...new Set([...effectTable, ...waveAEffects])];
+const particleStyles = [
+  "spark",
+  "ember",
+  "frost",
+  "poison",
+  "arcane",
+  "holy",
+  "shadow",
+  "blood",
+  "dust",
+  "gold",
+];
 const read = (name: string) => JSON.parse(readFileSync(new URL(name, dir), "utf8"));
 
 const manifest: AssetManifest = read("manifest.json");
@@ -52,6 +93,7 @@ const props = [
   "prop.cart",
   "prop.tent",
   "prop.statue",
+  "prop.rift.obelisk",
 ];
 const heroes = ["unit.hero", "unit.hero.warrior", "unit.hero.rogue", "unit.hero.sorcerer"];
 const npcs = [
@@ -60,6 +102,7 @@ const npcs = [
   "unit.npc.alchemist",
   "unit.npc.junk",
   "unit.npc.quest",
+  "unit.npc.gambler",
 ];
 const monsters = [
   "husk",
@@ -78,6 +121,8 @@ const monsters = [
   "boss_tunnel_mother",
   "boss_ninth_flame",
   "boss_hollow_king",
+  "guardian_maw",
+  "guardian_choir",
 ].map((m) => `unit.monster.${m}`);
 const loot = [
   "loot.gold",
@@ -101,6 +146,7 @@ const loot = [
     "boots",
     "ring",
     "amulet",
+    "gem",
   ].map((k) => `loot.item.${k}`),
 ];
 const fx = [
@@ -114,6 +160,11 @@ const fx = [
   "fx.venom",
   "fx.portal",
   "fx.volley",
+  "fx.rift.exit",
+  ...particleStyles.map((style) => `fx.particle.${style}`),
+  "fx.piercing_shot",
+  "fx.night_volley",
+  "fx.glacial_spike",
 ];
 const facings = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
 const fighterActions = ["idle", "walk", "attack", "cast", "hit", "death"];
@@ -131,6 +182,7 @@ const frameOf = (id: string) => {
   return atlases.get(ref.atlas)!.frames[ref.frame]!;
 };
 const section14 = [
+  ...burstIds.map((id) => `${id}.burst`),
   ...ground,
   ...floors,
   ...walls,
@@ -162,8 +214,18 @@ describe("art.kenney manifest", () => {
     }
   });
 
-  it("stays within the atlas budget: at most 4 pages", () => {
-    expect(manifest.atlases.length).toBeLessThanOrEqual(4);
+  it("stays within the atlas budget: at most 6 pages", () => {
+    // Wave A's bursts and two guardians took the set from 4 pages to 6 (about 100 MB of GPU
+    // memory at RGBA8). Shrinking burst canvases is the next step if mobile memory binds.
+    expect(manifest.atlases.length).toBeLessThanOrEqual(6);
+  });
+
+  it("grows the atlas PNG bytes by at most 20 % over the pre-wave-A set", () => {
+    const bytes = manifest.atlases.reduce(
+      (sum, a) => sum + statSync(new URL(atlases.get(a.id)!.meta.image, dir)).size,
+      0,
+    );
+    expect(bytes).toBeLessThanOrEqual(WAVE_A_BASE_ATLAS_BYTES * 1.2);
   });
 
   it("keeps every atlas page within 2048x2048", () => {
@@ -366,6 +428,88 @@ describe("art.kenney manifest", () => {
       const ref = manifest.sprites[id]!;
       const { w, h } = atlases.get(ref.atlas)!.frames[ref.frame]!.frame;
       expect([w, h], id).toEqual([64, 32]);
+    }
+  });
+
+  it("reads EFFECT_TABLE from effects.ts, and every effect has a burst and a still sprite", () => {
+    expect(effectTable.length).toBeGreaterThanOrEqual(31);
+    for (const id of burstIds) {
+      const anim = manifest.animations[`${id}.burst`];
+      expect(anim, `${id}.burst`).toBeDefined();
+      expect(anim!.loop, `${id}.burst`).toBe(false);
+      expect(anim!.frames.length, `${id}.burst frames`).toBeGreaterThanOrEqual(6);
+      expect(anim!.frames.length, `${id}.burst frames`).toBeLessThanOrEqual(10);
+      expect(anim!.fps, `${id}.burst fps`).toBeGreaterThanOrEqual(16);
+      expect(anim!.fps, `${id}.burst fps`).toBeLessThanOrEqual(24);
+      for (const f of anim!.frames) {
+        // Centre anchor on a 128 px box: 64 px is one tile of radius, the origin is the middle.
+        expect(manifest.sprites[f]!.anchor, f).toEqual({ x: 0.5, y: 0.5 });
+        const fr = frameOf(f);
+        expect(fr.sourceSize, f).toEqual({ w: 128, h: 128 });
+        expect(fr.frame.w, f).toBeLessThanOrEqual(128);
+        expect(fr.frame.h, f).toBeLessThanOrEqual(128);
+      }
+      expect(manifest.sprites, `${id} still`).toHaveProperty([id]);
+    }
+  });
+
+  it("has the ten particle textures, small and centred", () => {
+    for (const style of particleStyles) {
+      const id = `fx.particle.${style}`;
+      expect(manifest.sprites, id).toHaveProperty([id]);
+      expect(frameOf(id).sourceSize, id).toEqual({ w: 24, h: 24 });
+      expect(manifest.sprites[id]!.anchor, id).toEqual({ x: 0.5, y: 0.5 });
+    }
+  });
+
+  it("draws the projectile stills pointing right (wider than tall)", () => {
+    for (const id of ["fx.piercing_shot", "fx.night_volley", "fx.glacial_spike"]) {
+      const { w, h } = frameOf(id).frame;
+      expect(w, id).toBeGreaterThanOrEqual(2 * h);
+    }
+  });
+
+  it("animates the rift exit as a looping portal, separate from fx.portal", () => {
+    const anim = manifest.animations["fx.rift.exit"]!;
+    expect(anim.loop).toBe(true);
+    expect(anim.frames.length).toBeGreaterThanOrEqual(6);
+    expect(frameOf(anim.frames[0]!).sourceSize).not.toEqual(frameOf("fx.portal").sourceSize);
+  });
+
+  it("gives every unit cast and hit clips for all 8 facings, and unsuffixed south clips", () => {
+    for (const id of units) {
+      for (const action of ["cast", "hit"]) {
+        expect(manifest.animations, `${id}.${action}`).toHaveProperty([`${id}.${action}`]);
+        for (const f of facings) {
+          expect(manifest.animations, `${id}.${action}.${f}`).toHaveProperty([
+            `${id}.${action}.${f}`,
+          ]);
+        }
+        expect(manifest.animations[`${id}.${action}`]!.frames, `${id}.${action}`).toEqual(
+          manifest.animations[`${id}.${action}.s`]!.frames,
+        );
+      }
+    }
+  });
+
+  it("gives cast a 4 to 6 frame glow and hit a 3 to 4 frame white flash", () => {
+    for (const id of units) {
+      expect(manifest.animations[`${id}.cast.s`]!.frames.length, id).toBeGreaterThanOrEqual(4);
+      expect(manifest.animations[`${id}.cast.s`]!.frames.length, id).toBeLessThanOrEqual(6);
+      expect(manifest.animations[`${id}.hit.s`]!.frames.length, id).toBeGreaterThanOrEqual(3);
+      expect(manifest.animations[`${id}.hit.s`]!.frames.length, id).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it("draws the guardians with every clip like the bosses", () => {
+    for (const id of ["unit.monster.guardian_maw", "unit.monster.guardian_choir"]) {
+      for (const action of ["idle", "walk", "attack", "cast", "hit", "death"]) {
+        for (const f of facings) {
+          expect(manifest.animations, `${id}.${action}.${f}`).toHaveProperty([
+            `${id}.${action}.${f}`,
+          ]);
+        }
+      }
     }
   });
 

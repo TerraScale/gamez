@@ -1,9 +1,14 @@
-/** Settings: display toggles, zoom, auto-config editor, new game and exit (panel "settings"). */
+/**
+ * Settings (panel "settings"): display toggles and zoom, audio (master, effects, music, mute),
+ * graphics quality, tips, the loot filter entry, the automation editor and the game buttons.
+ * Every control calls the handlers of settingsHandlers(), so the payloads are unit-tested.
+ */
 import { useState } from "react";
 import { ACTION } from "../../../actions.ts";
 import { ITEM_RARITIES, type ItemRarity } from "../../../types.ts";
-import type { AutoConfig } from "../../../resources.ts";
-import type { Settings } from "../../contract.ts";
+import { DEFAULT_AUTO_CONFIG, type AutoConfig } from "../../../resources.ts";
+import type { ClassicClientApi, GraphicsQuality, Settings } from "../../contract.ts";
+import { tipsStore } from "../../tips/index.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
 import { C, labelStyle } from "../styles.ts";
@@ -16,6 +21,22 @@ const FLAGS: { key: BoolSetting; label: string }[] = [
   { key: "showMinimap", label: "Minimap (M)" },
   { key: "lighting", label: "Lighting" },
   { key: "showPerf", label: "Performance overlay" },
+];
+
+export type VolumeSetting = "masterVolume" | "sfxVolume" | "musicVolume";
+
+const VOLUMES: { key: VolumeSetting; label: string }[] = [
+  { key: "masterVolume", label: "Master volume" },
+  { key: "sfxVolume", label: "Sound effects" },
+  { key: "musicVolume", label: "Music" },
+];
+
+/** Graphics quality choices, in display order. */
+export const QUALITY_OPTIONS: readonly { value: GraphicsQuality; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
 ];
 
 type NumberField =
@@ -40,7 +61,11 @@ type BoolField =
   | "autoDescend"
   | "buyPotions"
   | "pickupGold"
-  | "pickupPotions";
+  | "pickupPotions"
+  | "autoRepair"
+  | "autoCraft"
+  | "autoGamble"
+  | "autoRift";
 const BOOL_FIELDS: { key: BoolField; label: string }[] = [
   { key: "autoEquip", label: "Equip upgrades" },
   { key: "autoAllocate", label: "Spend attribute points" },
@@ -48,7 +73,60 @@ const BOOL_FIELDS: { key: BoolField; label: string }[] = [
   { key: "buyPotions", label: "Buy potions in town" },
   { key: "pickupGold", label: "Pick up gold" },
   { key: "pickupPotions", label: "Pick up potions" },
+  { key: "autoRepair", label: "Repair worn gear at the smith" },
+  { key: "autoCraft", label: "Craft with spare gold (smith)" },
+  { key: "autoGamble", label: "Gamble with spare gold" },
+  { key: "autoRift", label: "Run Rifts once the dungeon is done" },
 ];
+
+/** Clamps a slider value to an integer 0..100. */
+export function clampVolume(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(100, Math.max(0, Math.round(v)));
+}
+
+/**
+ * Every action the settings panel can take, as plain calls on the client API. The JSX only
+ * binds these to controls, so tests can assert each payload without a DOM.
+ */
+export function settingsHandlers(api: ClassicClientApi) {
+  return {
+    flag(key: BoolSetting, value: boolean): void {
+      const next: Partial<Settings> = {};
+      next[key] = value;
+      api.updateSettings(next);
+    },
+    zoom(value: number): void {
+      api.updateSettings({ zoom: value });
+    },
+    volume(key: VolumeSetting, value: number): void {
+      api.updateSettings({ [key]: clampVolume(value) } as Partial<Settings>);
+    },
+    muted(value: boolean): void {
+      api.updateSettings({ muted: value });
+    },
+    quality(value: GraphicsQuality): void {
+      api.updateSettings({ quality: value });
+    },
+    tips(value: boolean): void {
+      api.updateSettings({ tips: value });
+    },
+    resetTips(): void {
+      tipsStore.reset();
+    },
+    lootFilter(): void {
+      api.openPanel("lootFilter");
+    },
+    applyAutomation(config: AutoConfig): void {
+      api.act(ACTION.setAutoConfig, { config });
+    },
+  };
+}
+
+/** The automation draft with every field filled (stored configs may predate the wave A fields). */
+export function fullAutoConfig(config: Partial<AutoConfig> | undefined): AutoConfig {
+  return { ...DEFAULT_AUTO_CONFIG, ...config };
+}
 
 function patch<K extends keyof AutoConfig>(
   draft: AutoConfig,
@@ -117,9 +195,39 @@ function Toggle({
   );
 }
 
-function AutoConfigEditor({ api }: SlotProps) {
+function Slider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44 }}>
+      <span style={{ minWidth: 120 }}>{label}</span>
+      <input
+        type="range"
+        aria-label={label}
+        min={0}
+        max={100}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ flex: 1, height: 44 }}
+      />
+      <span style={{ minWidth: 40, textAlign: "right" }}>{`${value}%`}</span>
+    </label>
+  );
+}
+
+function AutoConfigEditor({
+  api,
+  handlers,
+}: SlotProps & { handlers: ReturnType<typeof settingsHandlers> }) {
   const config = useSelect(api.hud, (s) => s.control.config);
-  const [draft, setDraft] = useState<AutoConfig>(config);
+  const [draft, setDraft] = useState<AutoConfig>(() => fullAutoConfig(config));
   const set = <K extends keyof AutoConfig>(key: K, value: AutoConfig[K]) =>
     setDraft((d) => patch(d, key, value));
   return (
@@ -161,15 +269,15 @@ function AutoConfigEditor({ api }: SlotProps) {
         <Toggle
           key={f.key}
           label={f.label}
-          checked={draft[f.key]}
+          checked={draft[f.key] ?? DEFAULT_AUTO_CONFIG[f.key] ?? false}
           onChange={(v) => set(f.key, v)}
         />
       ))}
       <Row style={{ marginTop: 8 }}>
-        <Btn pressed onClick={() => api.act(ACTION.setAutoConfig, { config: draft })}>
+        <Btn pressed onClick={() => handlers.applyAutomation(draft)}>
           Apply automation
         </Btn>
-        <Btn onClick={() => setDraft(config)}>Reset</Btn>
+        <Btn onClick={() => setDraft(fullAutoConfig(config))}>Reset</Btn>
       </Row>
     </Section>
   );
@@ -177,11 +285,7 @@ function AutoConfigEditor({ api }: SlotProps) {
 
 export function SettingsPanel({ api }: SlotProps) {
   const settings: Settings = useSelect(api.ui, (u) => u.settings);
-  const flag = (key: BoolSetting, value: boolean) => {
-    const next: Partial<Settings> = {};
-    next[key] = value;
-    api.updateSettings(next);
-  };
+  const handlers = settingsHandlers(api);
   return (
     <PanelFrame api={api} id="settings" title="Settings" width={440}>
       <Section title="Display">
@@ -190,7 +294,7 @@ export function SettingsPanel({ api }: SlotProps) {
             key={f.key}
             label={f.label}
             checked={settings[f.key]}
-            onChange={(v) => flag(f.key, v)}
+            onChange={(v) => handlers.flag(f.key, v)}
           />
         ))}
         <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44 }}>
@@ -202,13 +306,50 @@ export function SettingsPanel({ api }: SlotProps) {
             max={2}
             step={0.1}
             value={settings.zoom}
-            onChange={(e) => api.updateSettings({ zoom: Number(e.target.value) })}
+            onChange={(e) => handlers.zoom(Number(e.target.value))}
             style={{ flex: 1, height: 44 }}
           />
           <span style={{ minWidth: 40, textAlign: "right" }}>{`${settings.zoom.toFixed(1)}×`}</span>
         </label>
       </Section>
-      <AutoConfigEditor api={api} />
+      <Section title="Audio">
+        {VOLUMES.map((v) => (
+          <Slider
+            key={v.key}
+            label={v.label}
+            value={settings[v.key]}
+            onChange={(n) => handlers.volume(v.key, n)}
+          />
+        ))}
+        <Toggle label="Mute" checked={settings.muted} onChange={(v) => handlers.muted(v)} />
+      </Section>
+      <Section title="Graphics">
+        <div role="radiogroup" aria-label="Graphics quality" style={{ display: "flex", gap: 6 }}>
+          {QUALITY_OPTIONS.map((q) => (
+            <Btn
+              key={q.value}
+              label={`Graphics quality: ${q.label}`}
+              pressed={settings.quality === q.value}
+              minWidth={72}
+              onClick={() => handlers.quality(q.value)}
+            >
+              {q.label}
+            </Btn>
+          ))}
+        </div>
+      </Section>
+      <Section title="Help and items">
+        <Toggle label="Show tips" checked={settings.tips} onChange={(v) => handlers.tips(v)} />
+        <Row>
+          <Btn label="Reset tips" onClick={() => handlers.resetTips()}>
+            Reset tips
+          </Btn>
+          <Btn label="Loot filter" onClick={() => handlers.lootFilter()}>
+            Loot filter...
+          </Btn>
+        </Row>
+      </Section>
+      <AutoConfigEditor api={api} handlers={handlers} />
       <Section title="Game">
         <Row>
           <Btn

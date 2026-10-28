@@ -19,8 +19,8 @@
  *   owner's command system (emit classic.command.failed when !ok).
  */
 import type { Entity } from "@gamez/kernel";
-import type { Attr, EquipSlot } from "./types.ts";
-import type { AutoConfig, ControlMode, SimSpeed } from "./resources.ts";
+import type { Attr, EquipSlot, ItemCategory, ItemRarity } from "./types.ts";
+import type { AutoConfig, ControlMode, LootFilter, SimSpeed } from "./resources.ts";
 
 export const MANUAL_OVERRIDE_TICKS = 60;
 /** Max hero distance (sub) to an NPC / Interactable for ops that need one (buy, sell, heal, stash, stairs, waypoint, portal). */
@@ -65,6 +65,25 @@ export const ACTION = {
   setSpeed: "classic.setSpeed",
   setAutoConfig: "classic.setAutoConfig",
   offlineProgress: "classic.offlineProgress",
+  // ---- wave A (docs/design/wave-A.md)
+  // classic.items
+  gamble: "classic.gamble",
+  stashMove: "classic.stashMove",
+  setLootFilter: "classic.setLootFilter",
+  // classic.crafting (town, smith in reach)
+  repair: "classic.repair",
+  upgradeItem: "classic.upgradeItem",
+  rerollItem: "classic.rerollItem",
+  addSocket: "classic.addSocket",
+  socketGem: "classic.socketGem",
+  unsocketGems: "classic.unsocketGems",
+  combineGems: "classic.combineGems",
+  // classic.talents
+  learnTalent: "classic.learnTalent",
+  resetTalents: "classic.resetTalents",
+  // classic.rift
+  openRift: "classic.openRift",
+  leaveRift: "classic.leaveRift",
 } as const;
 
 export type ActionName = (typeof ACTION)[keyof typeof ACTION];
@@ -103,7 +122,8 @@ export interface ActionPayloads {
   "classic.buy": { npc: Entity; index: number; potion: string | null; count: number };
   /** Town only: sell an inventory item to the junk buyer. */
   "classic.sell": { npc: Entity; uid: number };
-  "classic.stashPut": { uid: number };
+  /** `tab` (wave A, optional): stash tab 0..stashTabs-1; absent = the first tab with room. */
+  "classic.stashPut": { uid: number; tab?: number };
   "classic.stashTake": { uid: number };
   "classic.townPortal": Record<string, never>;
   "classic.usePortal": Record<string, never>;
@@ -114,6 +134,36 @@ export interface ActionPayloads {
   "classic.setAutoConfig": { config: Partial<AutoConfig> };
   /** Elapsed wall time supplied by the host (server-verified later). 0 < elapsedMs <= 7 days. */
   "classic.offlineProgress": { elapsedMs: number };
+  // ---- wave A
+  /** Town, gambler NPC in reach: buy a random item of `category` (EconomyProto.gamble) into the bag. */
+  "classic.gamble": { npc: Entity; category: ItemCategory };
+  /** Town, stash in reach: move a stash item to another tab. */
+  "classic.stashMove": { uid: number; tab: number };
+  /** Any time: patch the loot filter (validated; unknown keys rejected). */
+  "classic.setLootFilter": { filter: Partial<LootFilter> };
+  /**
+   * Smith services. `npc` = the smith entity (role smith, in reach, town).
+   * `uid` = an item in the bag or equipped. repair: uid 0 = everything worn
+   * and carried.
+   */
+  "classic.repair": { npc: Entity; uid: number };
+  "classic.upgradeItem": { npc: Entity; uid: number };
+  "classic.rerollItem": { npc: Entity; uid: number };
+  "classic.addSocket": { npc: Entity; uid: number };
+  /** `gem` = uid of a gem item in the bag; it fills the first empty socket of `uid`. */
+  "classic.socketGem": { npc: Entity; uid: number; gem: number };
+  /** Removes every gem of `uid` back into the bag (fails when they do not fit). */
+  "classic.unsocketGems": { npc: Entity; uid: number };
+  /** Three bag gems of ItemBaseProto `base` -> one gem of the next tier. */
+  "classic.combineGems": { npc: Entity; base: string };
+  /** Spend one talent point on `node` (TalentNodeProto id of the hero's class tree). */
+  "classic.learnTalent": { node: string };
+  /** Town only: refund every talent point for EconomyProto.talentResetPerLevel x level gold. */
+  "classic.resetTalents": Record<string, never>;
+  /** Town, rift obelisk `target` in reach, rift unlocked, 1 <= level <= maxCompleted + 1, fee paid. */
+  "classic.openRift": { target: Entity; level: number };
+  /** In a rift: abandon it (failed, reason "left") and return to town. After completion: return to town. */
+  "classic.leaveRift": Record<string, never>;
 }
 
 /** Standard ActionError codes. */
@@ -149,6 +199,27 @@ export const ERR = {
   modeNotIdle: "mode_not_idle",
   empty: "empty",
   potionUseless: "potion_useless",
+  // ---- wave A
+  notSmith: "not_smith",
+  notGambler: "not_gambler",
+  indestructible: "indestructible",
+  noRepairNeeded: "no_repair_needed",
+  maxUpgrade: "max_upgrade",
+  notRerollable: "not_rerollable",
+  maxSockets: "max_sockets",
+  noSockets: "no_sockets",
+  socketsFull: "sockets_full",
+  notGem: "not_gem",
+  needThree: "need_three",
+  maxTier: "max_tier",
+  broken: "broken",
+  talentLocked: "talent_locked",
+  wrongClass: "wrong_class",
+  riftLocked: "rift_locked",
+  riftLevel: "rift_level",
+  inRift: "in_rift",
+  notInRift: "not_in_rift",
+  badTab: "bad_tab",
 } as const;
 
 export type OpResult = { ok: true } | { ok: false; code: string; message: string };
@@ -172,15 +243,20 @@ export type HeroCommand =
   | { op: "drink"; slot: number }
   | { op: "buy"; npc: Entity; index: number; potion: string | null; count: number }
   | { op: "sell"; npc: Entity; uid: number }
-  | { op: "stashPut"; uid: number }
+  | { op: "stashPut"; uid: number; tab?: number }
   | { op: "drop"; uid: number }
+  // owner classic.items (wave A)
+  | { op: "gamble"; npc: Entity; category: ItemCategory }
+  | { op: "stashMove"; uid: number; tab: number }
   /** Grants from other systems (quests, offline): gold to the wallet, generated items to bag/stash. */
   | { op: "grantGold"; amount: number; reason: string }
   | {
       op: "grantItems";
       count: number;
       ilvl: number;
-      minRarity: "normal" | "magic" | "rare" | "unique";
+      minRarity: ItemRarity;
+      /** Wave A: only bases of this category (gambling, debug grants). Absent = any. */
+      category?: ItemCategory;
       toStash: boolean;
       reason: string;
     }
@@ -197,14 +273,33 @@ export type HeroCommand =
   | { op: "heal"; npc: Entity }
   | { op: "acceptQuest"; quest: string }
   | { op: "completeQuest"; quest: string }
-  | { op: "grantXp"; amount: number; reason: string };
+  | { op: "grantXp"; amount: number; reason: string }
+  // owner classic.crafting (wave A)
+  | { op: "repair"; npc: Entity; uid: number }
+  | { op: "upgrade"; npc: Entity; uid: number }
+  | { op: "reroll"; npc: Entity; uid: number }
+  | { op: "addSocket"; npc: Entity; uid: number }
+  | { op: "socketGem"; npc: Entity; uid: number; gem: number }
+  | { op: "unsocket"; npc: Entity; uid: number }
+  | { op: "combineGems"; npc: Entity; base: string }
+  // owner classic.talents (wave A)
+  | { op: "learnTalent"; node: string }
+  | { op: "resetTalents" }
+  // owner classic.rift (wave A)
+  | { op: "openRift"; target: Entity; level: number }
+  | { op: "leaveRift" };
 
 export type HeroCommandOp = HeroCommand["op"];
 
-export const COMMAND_OWNER: Record<
-  HeroCommandOp,
-  "classic.items" | "classic.world" | "classic.progression"
-> = {
+export type CommandOwner =
+  | "classic.items"
+  | "classic.world"
+  | "classic.progression"
+  | "classic.crafting"
+  | "classic.talents"
+  | "classic.rift";
+
+export const COMMAND_OWNER: Record<HeroCommandOp, CommandOwner> = {
   pickup: "classic.items",
   equip: "classic.items",
   unequip: "classic.items",
@@ -227,4 +322,17 @@ export const COMMAND_OWNER: Record<
   acceptQuest: "classic.progression",
   completeQuest: "classic.progression",
   grantXp: "classic.progression",
+  gamble: "classic.items",
+  stashMove: "classic.items",
+  repair: "classic.crafting",
+  upgrade: "classic.crafting",
+  reroll: "classic.crafting",
+  addSocket: "classic.crafting",
+  socketGem: "classic.crafting",
+  unsocket: "classic.crafting",
+  combineGems: "classic.crafting",
+  learnTalent: "classic.talents",
+  resetTalents: "classic.talents",
+  openRift: "classic.rift",
+  leaveRift: "classic.rift",
 };

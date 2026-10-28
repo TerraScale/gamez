@@ -20,6 +20,80 @@ import {
 } from "../format.ts";
 import { ItemIcon } from "../icons.tsx";
 import { C, labelStyle } from "../styles.ts";
+import { gemTierOf } from "../../describe.ts";
+import { useSelectedStashTab } from "./StashPanel.tsx";
+
+/**
+ * Marks on a bag cell: socket dots (top left, filled when a gem sits in it), the
+ * gem tier (top right), and a durability tick along the bottom while the item is worn.
+ */
+export function CellMarks({ item }: { item: ItemView }) {
+  const sockets = item.sockets ?? [];
+  const tier = item.category === "gem" ? gemTierOf(item.name) : 0;
+  const dur = item.durability ?? null;
+  const worn = dur !== null && dur.max > 0 && (item.broken === true || dur.cur < dur.max);
+  const pct = worn && dur ? Math.max(0, Math.min(100, (dur.cur / dur.max) * 100)) : null;
+  return (
+    <>
+      {sockets.length > 0 ? (
+        <span
+          aria-hidden="true"
+          style={{ position: "absolute", left: 3, top: 3, display: "flex", gap: 2 }}
+        >
+          {sockets.map((s, i) => (
+            <span
+              key={i}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                border: `1px solid ${C.goldBright}`,
+                background: s.gem ? C.goldBright : "transparent",
+              }}
+            />
+          ))}
+        </span>
+      ) : null}
+      {tier > 0 ? (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            right: 3,
+            top: 2,
+            fontSize: 11,
+            fontWeight: 700,
+            color: C.goldBright,
+          }}
+        >{`T${tier}`}</span>
+      ) : null}
+      {pct !== null ? (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 4,
+            right: 4,
+            bottom: 3,
+            height: 3,
+            borderRadius: 2,
+            background: "rgba(0, 0, 0, 0.6)",
+            overflow: "hidden",
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              height: "100%",
+              width: `${pct}%`,
+              background: item.broken ? C.danger : pct <= 10 ? "#e0a040" : C.ok,
+            }}
+          />
+        </span>
+      ) : null}
+    </>
+  );
+}
 
 /** Paper doll layout: null = empty cell. */
 export const DOLL: (EquipSlot | null)[][] = [
@@ -64,10 +138,15 @@ function BagItem({
     timer.current = null;
   };
   const color = rarityHex(item.rarity);
+  const broken = item.broken === true;
+  const extras = [
+    broken ? "broken" : null,
+    item.sockets && item.sockets.length > 0 ? `${item.sockets.length} sockets` : null,
+  ].filter((t): t is string => t !== null);
   return (
     <button
       type="button"
-      aria-label={`${item.name}, ${RARITY_LABEL[item.rarity]}, ${item.w} by ${item.h}`}
+      aria-label={`${item.name}, ${RARITY_LABEL[item.rarity]}, ${item.w} by ${item.h}${extras.map((t) => `, ${t}`).join("")}`}
       title={item.name}
       onClick={() => {
         if (fired.current) {
@@ -111,8 +190,8 @@ function BagItem({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0, 0, 0, 0.42)",
-        border: `2px solid ${selected ? C.borderStrong : color}`,
+        background: broken ? "rgba(224, 102, 79, 0.22)" : "rgba(0, 0, 0, 0.42)",
+        border: `2px solid ${selected ? C.borderStrong : broken ? C.danger : color}`,
         borderRadius: 6,
         pointerEvents: "auto",
         color: C.text,
@@ -123,6 +202,7 @@ function BagItem({
         color={color}
         size={Math.min(item.w, item.h) * cell - 14}
       />
+      <CellMarks item={item} />
     </button>
   );
 }
@@ -134,6 +214,7 @@ export function InventoryPanel({ api }: SlotProps) {
     s.vendor ? { npc: s.vendor.npc, role: s.vendor.role } : null,
   );
   const stashOpen = useSelect(api.ui, (u) => u.panels.includes("stash"));
+  const stashTab = useSelectedStashTab();
   const gold = useSelect(api.hud, (s) => (s.hero ? s.hero.gold : 0));
   const compact = useCompact(api);
   const [moving, setMoving] = useState<number | null>(null);
@@ -246,7 +327,7 @@ export function InventoryPanel({ api }: SlotProps) {
                     borderRadius: 8,
                     cursor: item ? "pointer" : "default",
                     background: "rgba(0, 0, 0, 0.4)",
-                    border: `1px solid ${item ? rarityHex(item.rarity) : C.border}`,
+                    border: `1px solid ${item ? (item.broken ? C.danger : rarityHex(item.rarity)) : C.border}`,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
@@ -379,7 +460,7 @@ export function InventoryPanel({ api }: SlotProps) {
                 {stashOpen ? (
                   <Btn
                     onClick={() => {
-                      api.act(ACTION.stashPut, { uid: menuItem.uid });
+                      api.act(ACTION.stashPut, { uid: menuItem.uid, tab: stashTab });
                       setMenu(null);
                     }}
                   >

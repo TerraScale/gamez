@@ -29,12 +29,14 @@ import {
   Dash,
 } from "../components.ts";
 import { SUB, facingOf } from "../fixed.ts";
-import { RES, type AreaState, type QuestState } from "../resources.ts";
+import { lootFilterOf, RES, type AreaState, type QuestState } from "../resources.ts";
+import { lootVisible } from "../loot.ts";
 import {
   BALANCE_ID,
   KIND,
   type BalanceProto,
   type ClassProto,
+  type GemKind,
   type ItemBaseProto,
   type ItemRarity,
   type MonsterModProto,
@@ -47,7 +49,7 @@ import {
   type ThemeProto,
 } from "../types.ts";
 import { getAreaMap, type ClassicMap } from "../world/maps.ts";
-import { GOLD_COLOR, MONSTER_LABEL_COLOR, RARITY_COLOR } from "./contract.ts";
+import { ELEMENT_COLOR, GOLD_COLOR, MONSTER_LABEL_COLOR, RARITY_COLOR } from "./contract.ts";
 import {
   BOTTOM_BAR_HEIGHT,
   HUD_EDGE,
@@ -270,7 +272,8 @@ export function walkRate(speed: number): number {
 
 /** Loot label priority: rarer items keep their place, the rest stack above them. */
 export const LOOT_PRIORITY: Readonly<Record<ItemRarity | "gold" | "potion", number>> = {
-  unique: 5,
+  unique: 6,
+  set: 5,
   rare: 4,
   magic: 3,
   normal: 2,
@@ -327,7 +330,15 @@ function decorateUnit(
   baseSpeed: number,
 ): void {
   if (a.progress !== undefined) ent.actionProgress = a.progress;
-  if (a.flash > 0) ent.hitFlash = a.flash;
+  if (a.flash > 0) {
+    ent.hitFlash = a.flash;
+    // The hit flash is white (additive overlay), the old red multiply tint is gone.
+    ent.hitFlashColor = 0xffffff;
+  }
+  if (a.glow > 0) {
+    ent.castGlow = a.glow;
+    ent.glowColor = a.glowColor;
+  }
   if (a.action === "walk" && baseSpeed > 0) {
     const rate = walkRate(moveSpeedOf(world, registry, e, baseSpeed));
     if (rate !== 1) ent.animRate = rate;
@@ -364,12 +375,44 @@ export function itemSprite(
   return { appearance: `loot.item.${b.weaponClass ?? b.category}`, color: RARITY_COLOR.normal };
 }
 
+/** Gem tint on the ground (multiplied over loot.item.gem), by gem kind. */
+export const GEM_COLOR: Readonly<Record<GemKind, number>> = {
+  ruby: 0xe0405a,
+  sapphire: 0x4a7bff,
+  topaz: 0xf2c744,
+  emerald: 0x3fbf6a,
+  amethyst: 0xa86bd6,
+  diamond: 0xeaf6ff,
+};
+
+/** Ground tint of a loot item: gems take their kind's colour, everything else stays white. */
+export function lootTintOf(registry: FrozenRegistry, base: string): number {
+  const b = registry.get<ItemBaseProto>(KIND.itemBase, base);
+  if (b?.category === "gem" && b.gem) return GEM_COLOR[b.gem.kind];
+  return 0xffffff;
+}
+
+/** Glow colour of a cast: the skill's damage element, the white of plain weapon skills otherwise. */
+export function skillGlowColor(registry: FrozenRegistry, skill: string): number {
+  const s = registry.get<SkillProto>(KIND.skill, skill);
+  if (!s) return 0xffffff;
+  if (s.damage) return ELEMENT_COLOR[s.damage.element];
+  return 0xffffff;
+}
+
+/** Cast glow strength (0..1) while a unit is casting or swinging. */
+export const CAST_GLOW = 0.8;
+/** Loot hidden by the loot filter is still drawn, but this faded. */
+export const HIDDEN_LOOT_ALPHA = 0.35;
+
 export const STATION_APPEARANCE = {
   stairsDown: "prop.stairs.down",
   stairsUp: "prop.stairs.up",
   waypoint: "prop.waypoint",
   portal: "fx.portal",
   stash: "prop.stash",
+  riftObelisk: "prop.rift.obelisk",
+  riftExit: "fx.rift.exit",
 } as const;
 export const STATION_NAME = {
   stairsDown: "Stairs down",
@@ -377,6 +420,8 @@ export const STATION_NAME = {
   waypoint: "Waypoint",
   portal: "Town portal",
   stash: "Stash",
+  riftObelisk: "Rift obelisk",
+  riftExit: "Rift exit",
 } as const;
 
 /** Action and clip progress of one unit this frame (scratch, reused). */
@@ -384,6 +429,9 @@ interface UnitAnim {
   action: EntityAction;
   progress: number | undefined;
   flash: number;
+  /** 0 = no cast glow. */
+  glow: number;
+  glowColor: number;
 }
 
 export class SceneSync {
@@ -400,7 +448,13 @@ export class SceneSync {
   private readonly packPlates = new Set<number>();
   /** Client-only: the last swing of each unit and the render time it was last seen. */
   private readonly swings = new Map<Entity, { action: EntityAction; at: number }>();
-  private readonly anim: UnitAnim = { action: "idle", progress: undefined, flash: 0 };
+  private readonly anim: UnitAnim = {
+    action: "idle",
+    progress: undefined,
+    flash: 0,
+    glow: 0,
+    glowColor: 0xffffff,
+  };
 
   constructor(private readonly target: SceneRenderer) {}
 
@@ -442,6 +496,8 @@ export class SceneSync {
     const out = this.anim;
     out.progress = undefined;
     out.flash = hitFlashAt(t, this.hits.get(e));
+    out.glow = 0;
+    out.glowColor = 0xffffff;
     if (dead) {
       out.action = "death";
       this.swings.delete(e);
@@ -451,6 +507,8 @@ export class SceneSync {
     if (cast) {
       out.action = castAction(registry, cast.skill);
       out.progress = quantize(castProgress(t, cast.startedAt, cast.hitAt, cast.endAt), 32);
+      out.glow = CAST_GLOW;
+      out.glowColor = skillGlowColor(registry, cast.skill);
       const rec = this.swings.get(e);
       if (rec) {
         rec.action = out.action;
@@ -666,7 +724,8 @@ export class SceneSync {
       put(e, ent, "npc");
     }
 
-    // Loot.
+    // Loot. The loot filter hides labels and fades the drop (a click still picks it up).
+    const filter = lootFilterOf(world);
     for (const e of world.query(Loot, Pos, AreaTag)) {
       if (world.read(e, AreaTag).depth !== depth) continue;
       const loot = world.read(e, Loot);
@@ -675,12 +734,14 @@ export class SceneSync {
       let name = `${loot.gold} gold`;
       let color = GOLD_COLOR;
       let priority = LOOT_PRIORITY.gold;
+      let tint = 0xffffff;
       if (loot.kind === "item" && loot.item) {
         const s = itemSprite(registry, loot.item.base);
         appearance = s.appearance;
         name = loot.item.name;
         color = RARITY_COLOR[loot.item.rarity];
         priority = LOOT_PRIORITY[loot.item.rarity];
+        tint = lootTintOf(registry, loot.item.base);
       } else if (loot.kind === "potion") {
         const s = itemSprite(registry, loot.potion);
         appearance = s.appearance;
@@ -688,28 +749,27 @@ export class SceneSync {
         color = RARITY_COLOR.normal;
         priority = LOOT_PRIORITY.potion;
       }
-      put(
-        e,
-        {
-          id: `c${e}`,
-          name,
-          appearance,
-          fallbackAppearance: "loot.item",
-          kind: "loot",
-          x: pos.x / SUB,
-          y: pos.y / SUB,
-          facing: "s",
-          moving: false,
-          isSelf: false,
-          tint: 0xffffff,
-          scale: 100,
-          labelColor: color,
-          showLabel: input.showLootLabels,
-          labelPriority: priority,
-          highlight: e === input.hovered,
-        },
-        "loot",
-      );
+      const visible = lootVisible(filter, registry, loot);
+      const ent: ArpgRenderEntity = {
+        id: `c${e}`,
+        name,
+        appearance,
+        fallbackAppearance: "loot.item",
+        kind: "loot",
+        x: pos.x / SUB,
+        y: pos.y / SUB,
+        facing: "s",
+        moving: false,
+        isSelf: false,
+        tint,
+        scale: 100,
+        labelColor: color,
+        showLabel: input.showLootLabels && visible,
+        labelPriority: priority,
+        highlight: e === input.hovered,
+      };
+      if (!visible) ent.alpha = HIDDEN_LOOT_ALPHA;
+      put(e, ent, "loot");
     }
 
     // Interactables: stairs, waypoint, town portal, stash. Stairs and the
@@ -737,7 +797,13 @@ export class SceneSync {
     const hint = input.touch ? "tap to use" : "click to use";
     for (let i = 0; i < stations.length; i++) {
       const st = stations[i]!;
-      const always = st.kind === "stairsDown" || st.kind === "stairsUp" || st.kind === "waypoint";
+      // Stairs, the waypoint and the rift stations are always labelled (wave A: obelisk and rift exit).
+      const always =
+        st.kind === "stairsDown" ||
+        st.kind === "stairsUp" ||
+        st.kind === "waypoint" ||
+        st.kind === "riftObelisk" ||
+        st.kind === "riftExit";
       const ent: ArpgRenderEntity = {
         id: `c${st.e}`,
         name: STATION_NAME[st.kind],

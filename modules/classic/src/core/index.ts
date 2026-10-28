@@ -22,7 +22,7 @@ import { movementSystem } from "./movement.ts";
 
 export const classicCore = defineModule({
   id: MODULE.core,
-  version: "0.2.0",
+  version: "0.3.0",
   optionalDeps: [MODULE.content],
   setup: setupCore,
   systems: [spatialSystem, intentSystem, movementSystem, cleanupSystem],

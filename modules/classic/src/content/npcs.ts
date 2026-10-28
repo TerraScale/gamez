@@ -44,6 +44,8 @@ export const NPCS: Record<string, NpcProto> = {
     },
     buyPct: 0,
     greeting: "Good steel at a fair price. Bring me what you find down there.",
+    // Wave A: repair, upgrade, reroll, sockets and gems (classic.crafting).
+    crafts: true,
   },
   "classic.npc.ysolde": {
     name: "Ysolde",
@@ -80,5 +82,19 @@ export const NPCS: Record<string, NpcProto> = {
     tint: 0xe0c060,
     buyPct: 0,
     greeting: "The town needs someone brave, and you look like you have been looking for work.",
+  },
+  // Wave A: the gambler (classic.gamble, prices in EconomyProto.gamble).
+  "classic.npc.mirelle": {
+    name: "Mirelle Quickhand",
+    title: "Gambler",
+    role: "gambler",
+    appearance: "unit.npc.gambler",
+    fallbackAppearance: UNKNOWN_ART,
+    tint: 0xd8a0ff,
+    buyPct: 0,
+    greeting: "Sealed goods, sight unseen. Feeling lucky, or just rich?",
+    gamble: {
+      categories: ["weapon", "shield", "helm", "armor", "gloves", "boots", "ring", "amulet"],
+    },
   },
 };

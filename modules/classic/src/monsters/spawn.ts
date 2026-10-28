@@ -188,8 +188,12 @@ function spawnOne(world: World, ctx: SimContext, req: SpawnRequest, depth: numbe
     thinkAt: ctx.tick,
     repathAt: 0,
     specialAt: 0,
-    // A wounded boss has already called the minions of the phases it is past.
-    count: req.rarity === "boss" ? bossPhase(hp, scaled.life) : 0,
+    // A wounded boss has already called the minions of the thresholds it is past;
+    // bosses with wave A phases start at 0 and enter their passed phases again.
+    count:
+      req.rarity === "boss" && !(proto.phases !== undefined && proto.phases.length > 0)
+        ? bossPhase(hp, scaled.life)
+        : 0,
   });
   world.add(e, SkillBook, { ranks, cooldowns: [] });
   world.add(e, Life, { hp, max: scaled.life, acc: 0 });

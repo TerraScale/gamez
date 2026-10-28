@@ -8,7 +8,9 @@
  *  5. A plays the instanced test modes (steps, duel) over /ws/instance: scripted
  *     actions replayed on a local sim, invalid / unknown / stale actions rejected;
  *  6. the dev server restarts: A's welcome must put it on that tile, and each
- *     instance must resume from its persisted snapshot; a fresh join resets it.
+ *     instance must resume from its persisted snapshot; a fresh join resets it;
+ *  7. the client module graph (classic runs its whole sim in the browser) loads:
+ *     every module the page imports, statically or dynamically, answers 200.
  *
  * Usage: `vp run e2e` (plain node, type stripping). Env: E2E_PORT, default 5299;
  * E2E_LOG, default /tmp/gamez-e2e-dev.log.
@@ -18,6 +20,7 @@ import { townMap } from "@gamez/classic.town";
 import type { EntityState, ServerMessage, TilePos } from "@gamez/protocol";
 import { findPath, isWalkable, pathDuration } from "@gamez/world";
 import { BotClient, loginGuest, type Received } from "./client.ts";
+import { crawlClientGraph } from "./client-graph.ts";
 import { startDevServer, type DevServer } from "./dev-server.ts";
 import { play, resume, SCRIPTS, type PlayedInstance } from "./instance.ts";
 import { LocalD1 } from "./local-d1.ts";
@@ -30,6 +33,17 @@ type Delta = Extract<ServerMessage, { t: "delta" }>;
 const PORT = Number(process.env.E2E_PORT ?? 5299);
 const LOG = process.env.E2E_LOG ?? "/tmp/gamez-e2e-dev.log";
 const REPLICATION_TIMEOUT_MS = 20_000;
+/** Modules the client graph must reach: the classic view and the wave A modules. */
+const CLIENT_MODULES = [
+  "modules/classic/src/client/game.ts",
+  "modules/classic/src/client/audio/index.ts",
+  "modules/classic/src/talents/index.ts",
+  "modules/classic/src/crafting/index.ts",
+  "modules/classic/src/rift/index.ts",
+  "modules/classic/src/achievements/index.ts",
+  "modules/steps/src/client",
+  "modules/duel/src/client",
+];
 
 const isWelcome = (m: ServerMessage): m is Welcome => m.t === "welcome";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -207,6 +221,24 @@ async function run(): Promise<void> {
     );
     await a2.close();
     for (const run of played) await resume(server.url, run);
+
+    // 7. the client module graph, including every classic module (sim + client)
+    const graphStart = performance.now();
+    const graph = await crawlClientGraph(server.url);
+    timings["client module graph (cold transform)"] = performance.now() - graphStart;
+    check(
+      graph.failed.length === 0,
+      `client module graph: ${graph.modules.length} modules, ${graph.failed.length} failed${graph.failed
+        .slice(0, 5)
+        .map((f) => `\n      ${f.status} ${f.url}`)
+        .join("")}`,
+    );
+    for (const want of CLIENT_MODULES) {
+      check(
+        graph.modules.some((u) => u.includes(want)),
+        `client module graph includes ${want}`,
+      );
+    }
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   } finally {

@@ -26,6 +26,8 @@ import type {
   EquipSlot,
   ItemInstance,
   MonsterRarity,
+  SkillModifier,
+  StatMod,
   Team,
 } from "./types.ts";
 
@@ -340,6 +342,18 @@ export const GroundEffect = defineComponent<{
   every: number;
   damage: Damage;
   effect: string;
+  // ---- wave A telegraphs (SkillProto.telegraph); all optional ----
+  /** True for a telegraph: hits once at `nextAt` (== until) and is destroyed. */
+  once?: boolean;
+  /** Danger-zone shape (default circle of `radius` around Pos). */
+  shape?: "circle" | "cone" | "line";
+  /** cone/line: aim angle (0..63 steps) from Pos; cone half-width in steps; line length and width (sub). */
+  angle?: number;
+  arc?: number;
+  length?: number;
+  width?: number;
+  /** Tick the telegraph was placed (for the client fill animation). */
+  placedAt?: number;
 }>("classic.groundEffect");
 
 // ---------------------------------------------------------------------------
@@ -389,7 +403,19 @@ export const Loot = defineComponent<{
 
 export const Npc = defineComponent<{ proto: string }>("classic.npc");
 
-export type InteractableKind = "stairsDown" | "stairsUp" | "waypoint" | "portal" | "stash";
+/**
+ * "riftObelisk" (wave A, town): opens the Rift panel (classic.rift.panel).
+ * "riftExit" (wave A, rift levels): appears when the guardian dies; using it
+ * (op leaveRift) returns to town.
+ */
+export type InteractableKind =
+  | "stairsDown"
+  | "stairsUp"
+  | "waypoint"
+  | "portal"
+  | "stash"
+  | "riftObelisk"
+  | "riftExit";
 export const Interactable = defineComponent<{
   kind: InteractableKind;
   /** portal: the depth it leads to (0 = town); stairs: the depth they lead to. */
@@ -447,3 +473,36 @@ export const AutoState = defineComponent<{
   /** Hero level last seen (caution decay). */
   levelSeen: number;
 }>("classic.autoState");
+
+// ---------------------------------------------------------------------------
+// Wave A (docs/design/wave-A.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Talent points and ranks of the hero. Owner: classic.talents (creates it
+ * lazily on the hero, grants points on level ups, spends them).
+ */
+export const Talents = defineComponent<{
+  /** Unspent talent points. */
+  points: number;
+  /** Points spent (sum of ranks). */
+  spent: number;
+  /** Sorted by node id; rank >= 1. */
+  ranks: { node: string; rank: number }[];
+  /** Hero level points were last granted for (level ups grant (level - levelSeen) x talentPointsPerLevel). */
+  levelSeen: number;
+}>("classic.talents");
+
+/**
+ * Extra hero stats and skill modifiers by source, read by
+ * classic.progression.stats (mods) and classic.combat (skills, through
+ * bonus.ts skillModsOf). Each writer owns ONLY its own entry (by `source`,
+ * its module id) and writes through bonus.ts setBonusSource; entries are
+ * sorted by source. Writers: classic.talents ("classic.talents").
+ */
+export interface BonusSource {
+  source: string;
+  mods: StatMod[];
+  skills: SkillModifier[];
+}
+export const BonusStats = defineComponent<{ sources: BonusSource[] }>("classic.bonusStats");

@@ -121,6 +121,16 @@ export interface ArpgRenderEntity extends RenderEntity {
   zLift?: number;
   /** Status tint pulse (e.g. chilled blue, poisoned green); 0 = none. */
   statusTint?: number;
+  // ---- wave A (docs/design/wave-A.md §Art and effects) ----
+  /** 0..1 strength of a cast glow (additive halo + slight lift) while casting/attacking. 0/omitted = none. */
+  castGlow?: number;
+  /** Glow colour (element of the skill); default 0xffffff. */
+  glowColor?: number;
+  /**
+   * Colour of the hit flash: white (0xffffff, an additive overlay, the
+   * default from wave A) or any tint. The old red multiply tint is gone.
+   */
+  hitFlashColor?: number;
 }
 
 export interface FloatTextSpec {
@@ -146,7 +156,33 @@ export type EffectKind =
   | "levelup"
   | "portal"
   | "aoe"
-  | "slash";
+  | "slash"
+  // ---- wave A
+  /**
+   * Ground danger zone that fills over `durationMs` and flashes when it fires
+   * (boss telegraphs): circle (`radius`), cone (`angle`, `arc`, `radius` =
+   * length) or line (`angle`, `length`, `width`). Drawn under units.
+   */
+  | "telegraph"
+  /** Lingering ring/aura on the ground around a point (buffs, caltrops, iron skin). */
+  | "aura"
+  /** Particle burst only (impacts, loot sparkle, level-up confetti). */
+  | "burst";
+
+/** Particle look presets (procedural; sprite textures "fx.particle.<style>" are used when present). */
+export type ParticleStyle =
+  | "spark"
+  | "ember"
+  | "frost"
+  | "poison"
+  | "arcane"
+  | "holy"
+  | "shadow"
+  | "blood"
+  | "dust"
+  | "gold";
+
+export type GraphicsQualityLevel = "low" | "medium" | "high";
 
 /** One-shot visual drawn with Pixi Graphics (sprites optional via `sprite`). Positions in fractional tiles. */
 export interface EffectSpec {
@@ -162,8 +198,25 @@ export interface EffectSpec {
   radius?: number;
   color: number;
   durationMs?: number;
-  /** Optional logical sprite id (e.g. "fx.frost_ring"); ignored when missing. */
+  /**
+   * Optional logical sprite id (e.g. "fx.frost_ring"); ignored when missing.
+   * Wave A: when the manifest has the animation `${sprite}.burst`, the
+   * renderer plays it once (scaled so 64 px = 1 tile of `radius`) on top of
+   * the procedural shape.
+   */
   sprite?: string;
+  // ---- wave A (all optional) ----
+  /** Aim angle in radians in TILE space (x right-down, y left-down); telegraph cones/lines, slashes. */
+  angle?: number;
+  /** Cone half-width in radians (telegraph cone). */
+  arc?: number;
+  /** Line length and width in tiles (telegraph line). */
+  length?: number;
+  width?: number;
+  /** Particle preset for the effect's particles (default by kind and colour). */
+  style?: ParticleStyle;
+  /** 0..1 particle amount multiplier (also scaled down by quality). Default 1. */
+  intensity?: number;
 }
 
 /** HUD chrome insets (CSS px) for ArpgWorldRenderer.setLabelInsets. */
@@ -222,6 +275,14 @@ export interface ArpgWorldRenderer extends WorldRenderer {
   setLabelInsets?(insets: LabelInsets): void;
   /** Darkness 0..1 outside a light circle of `radius` tiles around the followed point (0 = off). */
   setLighting(opts: { darkness: number; radius: number }): void;
+  /**
+   * Optional (wave A): rendering quality. low = no particles, simple lighting,
+   * resolution 1; medium = reduced particles, resolution <= 1.5; high = full
+   * particles and glow, resolution <= 2. Default high.
+   */
+  setQuality?(q: GraphicsQualityLevel): void;
+  /** Optional (wave A): brief camera shake (boss slams), strength in px, decays over `ms`. */
+  shake?(strength: number, ms: number): void;
   /** Fractional tile under a client (CSS px) point, or null before init. */
   tileAtClient(clientX: number, clientY: number): { x: number; y: number } | null;
   stats(): RendererStats;

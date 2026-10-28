@@ -56,7 +56,7 @@ export const TEST_BALANCE: BalanceProto = {
   uniquePacksPerLevel: [1, 1],
   sleepRange: 20 * 256,
   lightRadius: 8,
-  rarityWeights: { normal: 600, magic: 300, rare: 90, unique: 10 },
+  rarityWeights: { normal: 600, magic: 300, rare: 90, set: 0, unique: 10 },
   drops: {
     normal: { item: 15, items: [1, 1], gold: 45, potion: 12 },
     minion: { item: 20, items: [1, 1], gold: 50, potion: 12 },

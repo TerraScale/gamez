@@ -1,22 +1,67 @@
-/** Skill list: rank, learn with a skill point, assign to a bar slot (panel "skills"). */
+/**
+ * Skill list: rank, learn with a skill point, assign to a bar slot (panel
+ * "skills"). Tabs "Skills | Talents": the Talents tab embeds the class talent
+ * tree (TalentsBody, OWNER T-talents) so both live in one panel.
+ */
+import { useState } from "react";
 import { ACTION } from "../../../actions.ts";
+import type { SkillView } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, type SlotProps } from "../common.tsx";
 import { fmtDuration, fmtInt, pluralize } from "../format.ts";
 import { SkillIcon } from "../icons.tsx";
-import { badgeStyle, C, labelStyle } from "../styles.ts";
+import { badgeStyle, C, labelStyle, TOUCH } from "../styles.ts";
+import { TalentsBody } from "./TalentsPanel.tsx";
+
+type Tab = "skills" | "talents";
+
+function TabButton({ tab, current, onPick }: { tab: Tab; current: Tab; onPick: (t: Tab) => void }) {
+  const label = tab === "skills" ? "Skills" : "Talents";
+  return (
+    <Btn
+      label={`${label} tab`}
+      pressed={current === tab}
+      height={TOUCH}
+      style={{ flex: 1, fontSize: 13 }}
+      onClick={() => onPick(tab)}
+    >
+      {label}
+    </Btn>
+  );
+}
 
 export function SkillsPanel({ api }: SlotProps) {
   const skills = useSelect(api.hud, (s) => s.skills);
   const points = useSelect(api.hud, (s) => (s.hero ? s.hero.skillPoints : 0));
+  const [tab, setTab] = useState<Tab>("skills");
   return (
     <PanelFrame
       api={api}
       id="skills"
       title="Skills"
       width={480}
-      subtitle={`${pluralize(points, "skill point")} to spend`}
+      subtitle={tab === "skills" ? `${pluralize(points, "skill point")} to spend` : undefined}
     >
+      <div
+        role="group"
+        aria-label="Skills or talents"
+        style={{ display: "flex", gap: 6, marginBottom: 10 }}
+      >
+        <TabButton tab="skills" current={tab} onPick={setTab} />
+        <TabButton tab="talents" current={tab} onPick={setTab} />
+      </div>
+      {tab === "talents" ? (
+        <TalentsBody api={api} stacked />
+      ) : (
+        <SkillList api={api} skills={skills} points={points} />
+      )}
+    </PanelFrame>
+  );
+}
+
+function SkillList({ api, skills, points }: SlotProps & { skills: SkillView[]; points: number }) {
+  return (
+    <>
       {skills.length === 0 ? <p style={labelStyle}>No skills yet.</p> : null}
       <ul
         style={{
@@ -107,6 +152,6 @@ export function SkillsPanel({ api }: SlotProps) {
           );
         })}
       </ul>
-    </PanelFrame>
+    </>
   );
 }

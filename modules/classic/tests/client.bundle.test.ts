@@ -20,13 +20,17 @@ describe("@gamez/mode-classic package entry points", () => {
     const loaded = loadMode(mode, modules);
     expect(loaded.contentHash).toMatch(/^[0-9a-f]{16}$/);
     expect(modules.map((m) => m.id).sort()).toEqual([
+      "classic.achievements",
       "classic.auto",
       "classic.combat",
       "classic.content",
       "classic.core",
+      "classic.crafting",
       "classic.items",
       "classic.monsters",
       "classic.progression",
+      "classic.rift",
+      "classic.talents",
       "classic.world",
     ]);
   });
