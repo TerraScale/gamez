@@ -4,9 +4,14 @@
  * its `modules` to MODULE_CATALOG and its `mode` to MODES.
  */
 import type { ModeSpec, ModuleSpec } from "@gamez/kernel";
+import * as classic from "@gamez/mode-classic";
 import * as duel from "@gamez/mode-duel";
 import * as steps from "@gamez/mode-steps";
 
-export const MODULE_CATALOG: readonly ModuleSpec[] = [...duel.modules, ...steps.modules];
+export const MODULE_CATALOG: readonly ModuleSpec[] = [
+  ...classic.modules,
+  ...duel.modules,
+  ...steps.modules,
+];
 
-export const MODES: readonly ModeSpec[] = [duel.mode, steps.mode];
+export const MODES: readonly ModeSpec[] = [classic.mode, duel.mode, steps.mode];

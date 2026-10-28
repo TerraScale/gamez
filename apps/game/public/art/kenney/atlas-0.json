@@ -1,0 +1,10172 @@
+{
+  "frames": {
+    "unit.monster.boss_hollow_king.attack.0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.attack.1": {
+      "frame": {
+        "x": 121,
+        "y": 0,
+        "w": 127,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 127,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 127,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.attack.2": {
+      "frame": {
+        "x": 249,
+        "y": 0,
+        "w": 134,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 134,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 134,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.attack.3": {
+      "frame": {
+        "x": 384,
+        "y": 0,
+        "w": 125,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 125,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 125,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.death.0": {
+      "frame": {
+        "x": 510,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.idle.0": {
+      "frame": {
+        "x": 631,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.0": {
+      "frame": {
+        "x": 752,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.1": {
+      "frame": {
+        "x": 873,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.2": {
+      "frame": {
+        "x": 994,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.3": {
+      "frame": {
+        "x": 1115,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.4": {
+      "frame": {
+        "x": 1236,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.5": {
+      "frame": {
+        "x": 1357,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.6": {
+      "frame": {
+        "x": 1478,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.7": {
+      "frame": {
+        "x": 1599,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.8": {
+      "frame": {
+        "x": 1720,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_hollow_king.walk.9": {
+      "frame": {
+        "x": 1841,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 114
+      },
+      "sourceSize": {
+        "w": 120,
+        "h": 114
+      }
+    },
+    "unit.monster.boss_tunnel_mother.attack.0": {
+      "frame": {
+        "x": 0,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.attack.1": {
+      "frame": {
+        "x": 115,
+        "y": 115,
+        "w": 121,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 121,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 121,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.attack.2": {
+      "frame": {
+        "x": 237,
+        "y": 115,
+        "w": 127,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 127,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 127,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.attack.3": {
+      "frame": {
+        "x": 365,
+        "y": 115,
+        "w": 118,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 118,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 118,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.death.0": {
+      "frame": {
+        "x": 484,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.idle.0": {
+      "frame": {
+        "x": 599,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.0": {
+      "frame": {
+        "x": 714,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.1": {
+      "frame": {
+        "x": 829,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.2": {
+      "frame": {
+        "x": 944,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.3": {
+      "frame": {
+        "x": 1059,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.4": {
+      "frame": {
+        "x": 1174,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.5": {
+      "frame": {
+        "x": 1289,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.6": {
+      "frame": {
+        "x": 1404,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.7": {
+      "frame": {
+        "x": 1519,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.8": {
+      "frame": {
+        "x": 1634,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_tunnel_mother.walk.9": {
+      "frame": {
+        "x": 1749,
+        "y": 115,
+        "w": 114,
+        "h": 111
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 114,
+        "h": 111
+      },
+      "sourceSize": {
+        "w": 114,
+        "h": 111
+      }
+    },
+    "unit.monster.boss_warden.attack.0": {
+      "frame": {
+        "x": 1864,
+        "y": 115,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.attack.1": {
+      "frame": {
+        "x": 1947,
+        "y": 115,
+        "w": 88,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 88,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 88,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.attack.2": {
+      "frame": {
+        "x": 0,
+        "y": 227,
+        "w": 95,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 95,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 95,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.attack.3": {
+      "frame": {
+        "x": 96,
+        "y": 227,
+        "w": 86,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 86,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 86,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.death.0": {
+      "frame": {
+        "x": 183,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.idle.0": {
+      "frame": {
+        "x": 266,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.0": {
+      "frame": {
+        "x": 349,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.1": {
+      "frame": {
+        "x": 432,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.2": {
+      "frame": {
+        "x": 515,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.3": {
+      "frame": {
+        "x": 598,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.4": {
+      "frame": {
+        "x": 681,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.5": {
+      "frame": {
+        "x": 764,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.6": {
+      "frame": {
+        "x": 847,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.7": {
+      "frame": {
+        "x": 930,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.8": {
+      "frame": {
+        "x": 1013,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_warden.walk.9": {
+      "frame": {
+        "x": 1096,
+        "y": 227,
+        "w": 82,
+        "h": 108
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 108
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 108
+      }
+    },
+    "unit.monster.boss_ninth_flame.attack.0": {
+      "frame": {
+        "x": 1179,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.attack.1": {
+      "frame": {
+        "x": 1261,
+        "y": 227,
+        "w": 87,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 87,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 87,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.attack.2": {
+      "frame": {
+        "x": 1349,
+        "y": 227,
+        "w": 93,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 93,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 93,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.attack.3": {
+      "frame": {
+        "x": 1443,
+        "y": 227,
+        "w": 85,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 85,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 85,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.death.0": {
+      "frame": {
+        "x": 1529,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.idle.0": {
+      "frame": {
+        "x": 1611,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.0": {
+      "frame": {
+        "x": 1693,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.1": {
+      "frame": {
+        "x": 1775,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.2": {
+      "frame": {
+        "x": 1857,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.3": {
+      "frame": {
+        "x": 1939,
+        "y": 227,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.4": {
+      "frame": {
+        "x": 0,
+        "y": 336,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.5": {
+      "frame": {
+        "x": 82,
+        "y": 336,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.6": {
+      "frame": {
+        "x": 164,
+        "y": 336,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.7": {
+      "frame": {
+        "x": 246,
+        "y": 336,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.8": {
+      "frame": {
+        "x": 328,
+        "y": 336,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_ninth_flame.walk.9": {
+      "frame": {
+        "x": 410,
+        "y": 336,
+        "w": 81,
+        "h": 105
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 81,
+        "h": 105
+      },
+      "sourceSize": {
+        "w": 81,
+        "h": 105
+      }
+    },
+    "unit.monster.boss_hollow_king.death.1": {
+      "frame": {
+        "x": 492,
+        "y": 336,
+        "w": 130,
+        "h": 97
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 130,
+        "h": 97
+      },
+      "sourceSize": {
+        "w": 130,
+        "h": 97
+      }
+    },
+    "unit.monster.boss_tunnel_mother.death.1": {
+      "frame": {
+        "x": 623,
+        "y": 336,
+        "w": 123,
+        "h": 95
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 123,
+        "h": 95
+      },
+      "sourceSize": {
+        "w": 123,
+        "h": 95
+      }
+    },
+    "unit.monster.boss_warden.death.1": {
+      "frame": {
+        "x": 747,
+        "y": 336,
+        "w": 88,
+        "h": 92
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 88,
+        "h": 92
+      },
+      "sourceSize": {
+        "w": 88,
+        "h": 92
+      }
+    },
+    "unit.monster.cairn_brute.attack.0": {
+      "frame": {
+        "x": 836,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.attack.1": {
+      "frame": {
+        "x": 908,
+        "y": 336,
+        "w": 76,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 76,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 76,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.attack.2": {
+      "frame": {
+        "x": 985,
+        "y": 336,
+        "w": 82,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 82,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 82,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.attack.3": {
+      "frame": {
+        "x": 1068,
+        "y": 336,
+        "w": 75,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 75,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 75,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.death.0": {
+      "frame": {
+        "x": 1144,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.idle.0": {
+      "frame": {
+        "x": 1216,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.0": {
+      "frame": {
+        "x": 1288,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.1": {
+      "frame": {
+        "x": 1360,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.2": {
+      "frame": {
+        "x": 1432,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.3": {
+      "frame": {
+        "x": 1504,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.4": {
+      "frame": {
+        "x": 1576,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.5": {
+      "frame": {
+        "x": 1648,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.6": {
+      "frame": {
+        "x": 1720,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.7": {
+      "frame": {
+        "x": 1792,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.8": {
+      "frame": {
+        "x": 1864,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.cairn_brute.walk.9": {
+      "frame": {
+        "x": 1936,
+        "y": 336,
+        "w": 71,
+        "h": 91
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 91
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 91
+      }
+    },
+    "unit.monster.boss_ninth_flame.death.1": {
+      "frame": {
+        "x": 0,
+        "y": 442,
+        "w": 87,
+        "h": 89
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 87,
+        "h": 89
+      },
+      "sourceSize": {
+        "w": 87,
+        "h": 89
+      }
+    },
+    "unit.monster.cairn_brute.death.1": {
+      "frame": {
+        "x": 88,
+        "y": 442,
+        "w": 77,
+        "h": 77
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 77,
+        "h": 77
+      },
+      "sourceSize": {
+        "w": 77,
+        "h": 77
+      }
+    },
+    "unit.npc.junk.idle.0": {
+      "frame": {
+        "x": 166,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.0": {
+      "frame": {
+        "x": 196,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.1": {
+      "frame": {
+        "x": 226,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.2": {
+      "frame": {
+        "x": 256,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.3": {
+      "frame": {
+        "x": 286,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.4": {
+      "frame": {
+        "x": 316,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.5": {
+      "frame": {
+        "x": 346,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.6": {
+      "frame": {
+        "x": 376,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.7": {
+      "frame": {
+        "x": 406,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.8": {
+      "frame": {
+        "x": 436,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.npc.junk.walk.9": {
+      "frame": {
+        "x": 466,
+        "y": 442,
+        "w": 29,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 76
+      }
+    },
+    "unit.monster.ash_seer.attack.0": {
+      "frame": {
+        "x": 496,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.attack.1": {
+      "frame": {
+        "x": 542,
+        "y": 442,
+        "w": 49,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.attack.2": {
+      "frame": {
+        "x": 592,
+        "y": 442,
+        "w": 54,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.attack.3": {
+      "frame": {
+        "x": 647,
+        "y": 442,
+        "w": 48,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 48,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 48,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.death.0": {
+      "frame": {
+        "x": 696,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.idle.0": {
+      "frame": {
+        "x": 742,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.0": {
+      "frame": {
+        "x": 788,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.1": {
+      "frame": {
+        "x": 834,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.2": {
+      "frame": {
+        "x": 880,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.3": {
+      "frame": {
+        "x": 926,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.4": {
+      "frame": {
+        "x": 972,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.5": {
+      "frame": {
+        "x": 1018,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.6": {
+      "frame": {
+        "x": 1064,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.7": {
+      "frame": {
+        "x": 1110,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.8": {
+      "frame": {
+        "x": 1156,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.ash_seer.walk.9": {
+      "frame": {
+        "x": 1202,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.idle.0": {
+      "frame": {
+        "x": 1248,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.0": {
+      "frame": {
+        "x": 1294,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.1": {
+      "frame": {
+        "x": 1340,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.2": {
+      "frame": {
+        "x": 1386,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.3": {
+      "frame": {
+        "x": 1432,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.4": {
+      "frame": {
+        "x": 1478,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.5": {
+      "frame": {
+        "x": 1524,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.6": {
+      "frame": {
+        "x": 1570,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.7": {
+      "frame": {
+        "x": 1616,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.8": {
+      "frame": {
+        "x": 1662,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.npc.smith.walk.9": {
+      "frame": {
+        "x": 1708,
+        "y": 442,
+        "w": 45,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 73
+      }
+    },
+    "unit.monster.blightbloat.attack.0": {
+      "frame": {
+        "x": 1754,
+        "y": 442,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.attack.1": {
+      "frame": {
+        "x": 1792,
+        "y": 442,
+        "w": 41,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 41,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 41,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.attack.2": {
+      "frame": {
+        "x": 1834,
+        "y": 442,
+        "w": 46,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.attack.3": {
+      "frame": {
+        "x": 1881,
+        "y": 442,
+        "w": 40,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.death.0": {
+      "frame": {
+        "x": 1922,
+        "y": 442,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.idle.0": {
+      "frame": {
+        "x": 1960,
+        "y": 442,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.0": {
+      "frame": {
+        "x": 1998,
+        "y": 442,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.1": {
+      "frame": {
+        "x": 0,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.2": {
+      "frame": {
+        "x": 38,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.3": {
+      "frame": {
+        "x": 76,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.4": {
+      "frame": {
+        "x": 114,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.5": {
+      "frame": {
+        "x": 152,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.6": {
+      "frame": {
+        "x": 190,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.7": {
+      "frame": {
+        "x": 228,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.8": {
+      "frame": {
+        "x": 266,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.monster.blightbloat.walk.9": {
+      "frame": {
+        "x": 304,
+        "y": 532,
+        "w": 37,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 72
+      }
+    },
+    "unit.hero.attack.0": {
+      "frame": {
+        "x": 342,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.attack.1": {
+      "frame": {
+        "x": 385,
+        "y": 532,
+        "w": 46,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 70
+      }
+    },
+    "unit.hero.attack.2": {
+      "frame": {
+        "x": 432,
+        "y": 532,
+        "w": 50,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 50,
+        "h": 70
+      }
+    },
+    "unit.hero.attack.3": {
+      "frame": {
+        "x": 483,
+        "y": 532,
+        "w": 45,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 70
+      }
+    },
+    "unit.hero.death.0": {
+      "frame": {
+        "x": 529,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.idle.0": {
+      "frame": {
+        "x": 572,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.0": {
+      "frame": {
+        "x": 615,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.1": {
+      "frame": {
+        "x": 658,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.2": {
+      "frame": {
+        "x": 701,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.3": {
+      "frame": {
+        "x": 744,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.4": {
+      "frame": {
+        "x": 787,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.5": {
+      "frame": {
+        "x": 830,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.6": {
+      "frame": {
+        "x": 873,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.7": {
+      "frame": {
+        "x": 916,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.8": {
+      "frame": {
+        "x": 959,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.walk.9": {
+      "frame": {
+        "x": 1002,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.attack.0": {
+      "frame": {
+        "x": 1045,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.attack.1": {
+      "frame": {
+        "x": 1088,
+        "y": 532,
+        "w": 46,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.attack.2": {
+      "frame": {
+        "x": 1135,
+        "y": 532,
+        "w": 50,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 50,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.attack.3": {
+      "frame": {
+        "x": 1186,
+        "y": 532,
+        "w": 45,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.death.0": {
+      "frame": {
+        "x": 1232,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.idle.0": {
+      "frame": {
+        "x": 1275,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.0": {
+      "frame": {
+        "x": 1318,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.1": {
+      "frame": {
+        "x": 1361,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.2": {
+      "frame": {
+        "x": 1404,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.3": {
+      "frame": {
+        "x": 1447,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.4": {
+      "frame": {
+        "x": 1490,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.5": {
+      "frame": {
+        "x": 1533,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.6": {
+      "frame": {
+        "x": 1576,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.7": {
+      "frame": {
+        "x": 1619,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.8": {
+      "frame": {
+        "x": 1662,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.hero.warrior.walk.9": {
+      "frame": {
+        "x": 1705,
+        "y": 532,
+        "w": 42,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 70
+      }
+    },
+    "unit.monster.bristleback.attack.0": {
+      "frame": {
+        "x": 1748,
+        "y": 532,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.attack.1": {
+      "frame": {
+        "x": 1803,
+        "y": 532,
+        "w": 58,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.attack.2": {
+      "frame": {
+        "x": 1862,
+        "y": 532,
+        "w": 62,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 62,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 62,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.attack.3": {
+      "frame": {
+        "x": 1925,
+        "y": 532,
+        "w": 57,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 57,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 57,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.death.0": {
+      "frame": {
+        "x": 1983,
+        "y": 532,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.idle.0": {
+      "frame": {
+        "x": 0,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.0": {
+      "frame": {
+        "x": 55,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.1": {
+      "frame": {
+        "x": 110,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.2": {
+      "frame": {
+        "x": 165,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.3": {
+      "frame": {
+        "x": 220,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.4": {
+      "frame": {
+        "x": 275,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.5": {
+      "frame": {
+        "x": 330,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.6": {
+      "frame": {
+        "x": 385,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.7": {
+      "frame": {
+        "x": 440,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.8": {
+      "frame": {
+        "x": 495,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "unit.monster.bristleback.walk.9": {
+      "frame": {
+        "x": 550,
+        "y": 605,
+        "w": 54,
+        "h": 69
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 69
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 69
+      }
+    },
+    "prop.tree": {
+      "frame": {
+        "x": 605,
+        "y": 605,
+        "w": 33,
+        "h": 68
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 33,
+        "h": 68
+      },
+      "sourceSize": {
+        "w": 33,
+        "h": 68
+      }
+    },
+    "unit.monster.boss_hollow_king.death.2": {
+      "frame": {
+        "x": 639,
+        "y": 605,
+        "w": 142,
+        "h": 68
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 142,
+        "h": 68
+      },
+      "sourceSize": {
+        "w": 142,
+        "h": 68
+      }
+    },
+    "unit.monster.boss_tunnel_mother.death.2": {
+      "frame": {
+        "x": 782,
+        "y": 605,
+        "w": 134,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 134,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 134,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.attack.0": {
+      "frame": {
+        "x": 917,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.attack.1": {
+      "frame": {
+        "x": 972,
+        "y": 605,
+        "w": 58,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.attack.2": {
+      "frame": {
+        "x": 1031,
+        "y": 605,
+        "w": 62,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 62,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 62,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.attack.3": {
+      "frame": {
+        "x": 1094,
+        "y": 605,
+        "w": 57,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 57,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 57,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.death.0": {
+      "frame": {
+        "x": 1152,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.idle.0": {
+      "frame": {
+        "x": 1207,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.0": {
+      "frame": {
+        "x": 1262,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.1": {
+      "frame": {
+        "x": 1317,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.2": {
+      "frame": {
+        "x": 1372,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.3": {
+      "frame": {
+        "x": 1427,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.4": {
+      "frame": {
+        "x": 1482,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.5": {
+      "frame": {
+        "x": 1537,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.6": {
+      "frame": {
+        "x": 1592,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.7": {
+      "frame": {
+        "x": 1647,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.8": {
+      "frame": {
+        "x": 1702,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.hollow_cantor.walk.9": {
+      "frame": {
+        "x": 1757,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.attack.0": {
+      "frame": {
+        "x": 1812,
+        "y": 605,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.attack.1": {
+      "frame": {
+        "x": 1867,
+        "y": 605,
+        "w": 58,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.attack.2": {
+      "frame": {
+        "x": 1926,
+        "y": 605,
+        "w": 62,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 62,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 62,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.attack.3": {
+      "frame": {
+        "x": 1989,
+        "y": 605,
+        "w": 57,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 57,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 57,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.death.0": {
+      "frame": {
+        "x": 0,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.idle.0": {
+      "frame": {
+        "x": 55,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.0": {
+      "frame": {
+        "x": 110,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.1": {
+      "frame": {
+        "x": 165,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.2": {
+      "frame": {
+        "x": 220,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.3": {
+      "frame": {
+        "x": 275,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.4": {
+      "frame": {
+        "x": 330,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.5": {
+      "frame": {
+        "x": 385,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.6": {
+      "frame": {
+        "x": 440,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.7": {
+      "frame": {
+        "x": 495,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.8": {
+      "frame": {
+        "x": 550,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.husk.walk.9": {
+      "frame": {
+        "x": 605,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.idle.0": {
+      "frame": {
+        "x": 660,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.0": {
+      "frame": {
+        "x": 690,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.1": {
+      "frame": {
+        "x": 720,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.2": {
+      "frame": {
+        "x": 750,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.3": {
+      "frame": {
+        "x": 780,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.4": {
+      "frame": {
+        "x": 810,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.5": {
+      "frame": {
+        "x": 840,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.6": {
+      "frame": {
+        "x": 870,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.7": {
+      "frame": {
+        "x": 900,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.8": {
+      "frame": {
+        "x": 930,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.alchemist.walk.9": {
+      "frame": {
+        "x": 960,
+        "y": 675,
+        "w": 29,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 29,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 29,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.idle.0": {
+      "frame": {
+        "x": 990,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.0": {
+      "frame": {
+        "x": 1045,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.1": {
+      "frame": {
+        "x": 1100,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.2": {
+      "frame": {
+        "x": 1155,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.3": {
+      "frame": {
+        "x": 1210,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.4": {
+      "frame": {
+        "x": 1265,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.5": {
+      "frame": {
+        "x": 1320,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.6": {
+      "frame": {
+        "x": 1375,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.7": {
+      "frame": {
+        "x": 1430,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.8": {
+      "frame": {
+        "x": 1485,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.npc.quest.walk.9": {
+      "frame": {
+        "x": 1540,
+        "y": 675,
+        "w": 54,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 67
+      }
+    },
+    "unit.monster.bonefletcher.attack.0": {
+      "frame": {
+        "x": 1595,
+        "y": 675,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.attack.1": {
+      "frame": {
+        "x": 1650,
+        "y": 675,
+        "w": 58,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.attack.2": {
+      "frame": {
+        "x": 1709,
+        "y": 675,
+        "w": 62,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 62,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 62,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.attack.3": {
+      "frame": {
+        "x": 1772,
+        "y": 675,
+        "w": 57,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 57,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 57,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.death.0": {
+      "frame": {
+        "x": 1830,
+        "y": 675,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.idle.0": {
+      "frame": {
+        "x": 1885,
+        "y": 675,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.0": {
+      "frame": {
+        "x": 1940,
+        "y": 675,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.1": {
+      "frame": {
+        "x": 0,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.2": {
+      "frame": {
+        "x": 55,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.3": {
+      "frame": {
+        "x": 110,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.4": {
+      "frame": {
+        "x": 165,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.5": {
+      "frame": {
+        "x": 220,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.6": {
+      "frame": {
+        "x": 275,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.7": {
+      "frame": {
+        "x": 330,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.8": {
+      "frame": {
+        "x": 385,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.bonefletcher.walk.9": {
+      "frame": {
+        "x": 440,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.attack.0": {
+      "frame": {
+        "x": 495,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.attack.1": {
+      "frame": {
+        "x": 545,
+        "y": 743,
+        "w": 53,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.attack.2": {
+      "frame": {
+        "x": 599,
+        "y": 743,
+        "w": 57,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 57,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 57,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.attack.3": {
+      "frame": {
+        "x": 657,
+        "y": 743,
+        "w": 52,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 52,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 52,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.death.0": {
+      "frame": {
+        "x": 710,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.idle.0": {
+      "frame": {
+        "x": 760,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.0": {
+      "frame": {
+        "x": 810,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.1": {
+      "frame": {
+        "x": 860,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.2": {
+      "frame": {
+        "x": 910,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.3": {
+      "frame": {
+        "x": 960,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.4": {
+      "frame": {
+        "x": 1010,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.5": {
+      "frame": {
+        "x": 1060,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.6": {
+      "frame": {
+        "x": 1110,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.7": {
+      "frame": {
+        "x": 1160,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.8": {
+      "frame": {
+        "x": 1210,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.monster.rime_wraith.walk.9": {
+      "frame": {
+        "x": 1260,
+        "y": 743,
+        "w": 49,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.idle.0": {
+      "frame": {
+        "x": 1310,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.0": {
+      "frame": {
+        "x": 1365,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.1": {
+      "frame": {
+        "x": 1420,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.2": {
+      "frame": {
+        "x": 1475,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.3": {
+      "frame": {
+        "x": 1530,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.4": {
+      "frame": {
+        "x": 1585,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.5": {
+      "frame": {
+        "x": 1640,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.6": {
+      "frame": {
+        "x": 1695,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.7": {
+      "frame": {
+        "x": 1750,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.8": {
+      "frame": {
+        "x": 1805,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.npc.healer.walk.9": {
+      "frame": {
+        "x": 1860,
+        "y": 743,
+        "w": 54,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 54,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 54,
+        "h": 66
+      }
+    },
+    "unit.hero.rogue.attack.0": {
+      "frame": {
+        "x": 1915,
+        "y": 743,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.attack.1": {
+      "frame": {
+        "x": 1961,
+        "y": 743,
+        "w": 49,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.attack.2": {
+      "frame": {
+        "x": 0,
+        "y": 810,
+        "w": 53,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.attack.3": {
+      "frame": {
+        "x": 54,
+        "y": 810,
+        "w": 48,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 48,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 48,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.death.0": {
+      "frame": {
+        "x": 103,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.idle.0": {
+      "frame": {
+        "x": 149,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.0": {
+      "frame": {
+        "x": 195,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.1": {
+      "frame": {
+        "x": 241,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.2": {
+      "frame": {
+        "x": 287,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.3": {
+      "frame": {
+        "x": 333,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.4": {
+      "frame": {
+        "x": 379,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.5": {
+      "frame": {
+        "x": 425,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.6": {
+      "frame": {
+        "x": 471,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.7": {
+      "frame": {
+        "x": 517,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.8": {
+      "frame": {
+        "x": 563,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.rogue.walk.9": {
+      "frame": {
+        "x": 609,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.attack.0": {
+      "frame": {
+        "x": 655,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.attack.1": {
+      "frame": {
+        "x": 698,
+        "y": 810,
+        "w": 46,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.attack.2": {
+      "frame": {
+        "x": 745,
+        "y": 810,
+        "w": 50,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 50,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.attack.3": {
+      "frame": {
+        "x": 796,
+        "y": 810,
+        "w": 45,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 45,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 45,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.death.0": {
+      "frame": {
+        "x": 842,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.idle.0": {
+      "frame": {
+        "x": 885,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.0": {
+      "frame": {
+        "x": 928,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.1": {
+      "frame": {
+        "x": 971,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.2": {
+      "frame": {
+        "x": 1014,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.3": {
+      "frame": {
+        "x": 1057,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.4": {
+      "frame": {
+        "x": 1100,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.5": {
+      "frame": {
+        "x": 1143,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.6": {
+      "frame": {
+        "x": 1186,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.7": {
+      "frame": {
+        "x": 1229,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.8": {
+      "frame": {
+        "x": 1272,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.hero.sorcerer.walk.9": {
+      "frame": {
+        "x": 1315,
+        "y": 810,
+        "w": 42,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 65
+      }
+    },
+    "unit.monster.boss_warden.death.2": {
+      "frame": {
+        "x": 1358,
+        "y": 810,
+        "w": 96,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 96,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 96,
+        "h": 65
+      }
+    },
+    "unit.monster.cinder_imp.attack.0": {
+      "frame": {
+        "x": 1455,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.attack.1": {
+      "frame": {
+        "x": 1495,
+        "y": 810,
+        "w": 43,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 43,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 43,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.attack.2": {
+      "frame": {
+        "x": 1539,
+        "y": 810,
+        "w": 47,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 47,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 47,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.attack.3": {
+      "frame": {
+        "x": 1587,
+        "y": 810,
+        "w": 42,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.death.0": {
+      "frame": {
+        "x": 1630,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.idle.0": {
+      "frame": {
+        "x": 1670,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.0": {
+      "frame": {
+        "x": 1710,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.1": {
+      "frame": {
+        "x": 1750,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.2": {
+      "frame": {
+        "x": 1790,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.3": {
+      "frame": {
+        "x": 1830,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.4": {
+      "frame": {
+        "x": 1870,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.5": {
+      "frame": {
+        "x": 1910,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.6": {
+      "frame": {
+        "x": 1950,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.7": {
+      "frame": {
+        "x": 1990,
+        "y": 810,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.8": {
+      "frame": {
+        "x": 0,
+        "y": 876,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.cinder_imp.walk.9": {
+      "frame": {
+        "x": 40,
+        "y": 876,
+        "w": 39,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 64
+      }
+    },
+    "unit.monster.boss_ninth_flame.death.2": {
+      "frame": {
+        "x": 80,
+        "y": 876,
+        "w": 96,
+        "h": 63
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 96,
+        "h": 63
+      },
+      "sourceSize": {
+        "w": 96,
+        "h": 63
+      }
+    },
+    "prop.tree.pine": {
+      "frame": {
+        "x": 177,
+        "y": 876,
+        "w": 24,
+        "h": 62
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 62
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 62
+      }
+    },
+    "unit.monster.ash_seer.death.1": {
+      "frame": {
+        "x": 202,
+        "y": 876,
+        "w": 48,
+        "h": 62
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 48,
+        "h": 62
+      },
+      "sourceSize": {
+        "w": 48,
+        "h": 62
+      }
+    },
+    "unit.monster.blightbloat.death.1": {
+      "frame": {
+        "x": 251,
+        "y": 876,
+        "w": 40,
+        "h": 61
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 61
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 61
+      }
+    },
+    "prop.door": {
+      "frame": {
+        "x": 292,
+        "y": 876,
+        "w": 40,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 59
+      }
+    },
+    "unit.hero.death.1": {
+      "frame": {
+        "x": 333,
+        "y": 876,
+        "w": 46,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 59
+      }
+    },
+    "unit.hero.warrior.death.1": {
+      "frame": {
+        "x": 380,
+        "y": 876,
+        "w": 46,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 59
+      }
+    },
+    "wall.abyss": {
+      "frame": {
+        "x": 427,
+        "y": 876,
+        "w": 40,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 59
+      }
+    },
+    "wall.cave": {
+      "frame": {
+        "x": 468,
+        "y": 876,
+        "w": 40,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 59
+      }
+    },
+    "wall.crypt": {
+      "frame": {
+        "x": 509,
+        "y": 876,
+        "w": 40,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 59
+      }
+    },
+    "wall.dungeon": {
+      "frame": {
+        "x": 550,
+        "y": 876,
+        "w": 40,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 59
+      }
+    },
+    "wall.forge": {
+      "frame": {
+        "x": 591,
+        "y": 876,
+        "w": 40,
+        "h": 59
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 59
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 59
+      }
+    },
+    "unit.monster.bristleback.death.1": {
+      "frame": {
+        "x": 632,
+        "y": 876,
+        "w": 58,
+        "h": 58
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 58
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 58
+      }
+    },
+    "unit.monster.hollow_cantor.death.1": {
+      "frame": {
+        "x": 691,
+        "y": 876,
+        "w": 59,
+        "h": 57
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 59,
+        "h": 57
+      },
+      "sourceSize": {
+        "w": 59,
+        "h": 57
+      }
+    },
+    "unit.monster.husk.death.1": {
+      "frame": {
+        "x": 751,
+        "y": 876,
+        "w": 59,
+        "h": 57
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 59,
+        "h": 57
+      },
+      "sourceSize": {
+        "w": 59,
+        "h": 57
+      }
+    },
+    "unit.hero.rogue.death.1": {
+      "frame": {
+        "x": 811,
+        "y": 876,
+        "w": 48,
+        "h": 56
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 48,
+        "h": 56
+      },
+      "sourceSize": {
+        "w": 48,
+        "h": 56
+      }
+    },
+    "unit.hero.sorcerer.death.1": {
+      "frame": {
+        "x": 860,
+        "y": 876,
+        "w": 46,
+        "h": 56
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 56
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 56
+      }
+    },
+    "unit.monster.bonefletcher.death.1": {
+      "frame": {
+        "x": 907,
+        "y": 876,
+        "w": 59,
+        "h": 56
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 59,
+        "h": 56
+      },
+      "sourceSize": {
+        "w": 59,
+        "h": 56
+      }
+    },
+    "unit.monster.rime_wraith.death.1": {
+      "frame": {
+        "x": 967,
+        "y": 876,
+        "w": 53,
+        "h": 56
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 56
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 56
+      }
+    },
+    "unit.monster.sentry.idle.0": {
+      "frame": {
+        "x": 1021,
+        "y": 876,
+        "w": 28,
+        "h": 56
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 56
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 56
+      }
+    },
+    "unit.monster.sentry.idle.1": {
+      "frame": {
+        "x": 1050,
+        "y": 876,
+        "w": 28,
+        "h": 56
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 56
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 56
+      }
+    },
+    "unit.monster.cinder_imp.death.1": {
+      "frame": {
+        "x": 1079,
+        "y": 876,
+        "w": 42,
+        "h": 55
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 55
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 55
+      }
+    },
+    "unit.monster.cairn_brute.death.2": {
+      "frame": {
+        "x": 1122,
+        "y": 876,
+        "w": 84,
+        "h": 54
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 84,
+        "h": 54
+      },
+      "sourceSize": {
+        "w": 84,
+        "h": 54
+      }
+    },
+    "prop.stairs.down": {
+      "frame": {
+        "x": 1207,
+        "y": 876,
+        "w": 64,
+        "h": 52
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 52
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 52
+      }
+    },
+    "prop.pillar": {
+      "frame": {
+        "x": 1272,
+        "y": 876,
+        "w": 16,
+        "h": 47
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 47
+      },
+      "sourceSize": {
+        "w": 16,
+        "h": 47
+      }
+    },
+    "prop.statue": {
+      "frame": {
+        "x": 1289,
+        "y": 876,
+        "w": 19,
+        "h": 47
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 19,
+        "h": 47
+      },
+      "sourceSize": {
+        "w": 19,
+        "h": 47
+      }
+    },
+    "prop.house.large": {
+      "frame": {
+        "x": 1309,
+        "y": 876,
+        "w": 44,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 44,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 44,
+        "h": 44
+      }
+    },
+    "prop.well": {
+      "frame": {
+        "x": 1354,
+        "y": 876,
+        "w": 40,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 44
+      }
+    },
+    "unit.monster.ash_seer.death.2": {
+      "frame": {
+        "x": 1395,
+        "y": 876,
+        "w": 53,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.attack.0": {
+      "frame": {
+        "x": 1449,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.attack.1": {
+      "frame": {
+        "x": 1471,
+        "y": 876,
+        "w": 24,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.attack.2": {
+      "frame": {
+        "x": 1496,
+        "y": 876,
+        "w": 26,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 26,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 26,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.attack.3": {
+      "frame": {
+        "x": 1523,
+        "y": 876,
+        "w": 23,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 23,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 23,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.death.0": {
+      "frame": {
+        "x": 1547,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.idle.0": {
+      "frame": {
+        "x": 1569,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.0": {
+      "frame": {
+        "x": 1591,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.1": {
+      "frame": {
+        "x": 1613,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.2": {
+      "frame": {
+        "x": 1635,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.3": {
+      "frame": {
+        "x": 1657,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.4": {
+      "frame": {
+        "x": 1679,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.5": {
+      "frame": {
+        "x": 1701,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.6": {
+      "frame": {
+        "x": 1723,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.7": {
+      "frame": {
+        "x": 1745,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.8": {
+      "frame": {
+        "x": 1767,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.gnawling.walk.9": {
+      "frame": {
+        "x": 1789,
+        "y": 876,
+        "w": 21,
+        "h": 44
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 21,
+        "h": 44
+      },
+      "sourceSize": {
+        "w": 21,
+        "h": 44
+      }
+    },
+    "unit.monster.blightbloat.death.2": {
+      "frame": {
+        "x": 1811,
+        "y": 876,
+        "w": 44,
+        "h": 43
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 44,
+        "h": 43
+      },
+      "sourceSize": {
+        "w": 44,
+        "h": 43
+      }
+    },
+    "unit.hero.death.2": {
+      "frame": {
+        "x": 1856,
+        "y": 876,
+        "w": 50,
+        "h": 42
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 42
+      },
+      "sourceSize": {
+        "w": 50,
+        "h": 42
+      }
+    },
+    "unit.hero.warrior.death.2": {
+      "frame": {
+        "x": 1907,
+        "y": 876,
+        "w": 50,
+        "h": 42
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 42
+      },
+      "sourceSize": {
+        "w": 50,
+        "h": 42
+      }
+    },
+    "unit.monster.bristleback.death.2": {
+      "frame": {
+        "x": 1958,
+        "y": 876,
+        "w": 64,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.attack.0": {
+      "frame": {
+        "x": 0,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.attack.1": {
+      "frame": {
+        "x": 32,
+        "y": 941,
+        "w": 33,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 33,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 33,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.attack.2": {
+      "frame": {
+        "x": 66,
+        "y": 941,
+        "w": 36,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 36,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 36,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.attack.3": {
+      "frame": {
+        "x": 103,
+        "y": 941,
+        "w": 33,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 33,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 33,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.death.0": {
+      "frame": {
+        "x": 137,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.idle.0": {
+      "frame": {
+        "x": 169,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.0": {
+      "frame": {
+        "x": 201,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.1": {
+      "frame": {
+        "x": 233,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.2": {
+      "frame": {
+        "x": 265,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.3": {
+      "frame": {
+        "x": 297,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.4": {
+      "frame": {
+        "x": 329,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.5": {
+      "frame": {
+        "x": 361,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.6": {
+      "frame": {
+        "x": 393,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.7": {
+      "frame": {
+        "x": 425,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.8": {
+      "frame": {
+        "x": 457,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "unit.monster.webskitter.walk.9": {
+      "frame": {
+        "x": 489,
+        "y": 941,
+        "w": 31,
+        "h": 41
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 41
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 41
+      }
+    },
+    "fx.portal": {
+      "frame": {
+        "x": 521,
+        "y": 941,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      }
+    },
+    "prop.stairs.up": {
+      "frame": {
+        "x": 578,
+        "y": 941,
+        "w": 64,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 40
+      }
+    },
+    "unit.monster.bonefletcher.death.2": {
+      "frame": {
+        "x": 643,
+        "y": 941,
+        "w": 64,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 40
+      }
+    },
+    "unit.monster.boss_hollow_king.death.3": {
+      "frame": {
+        "x": 708,
+        "y": 941,
+        "w": 150,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 150,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 40
+      }
+    },
+    "unit.monster.hollow_cantor.death.2": {
+      "frame": {
+        "x": 859,
+        "y": 941,
+        "w": 64,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 40
+      }
+    },
+    "unit.monster.husk.death.2": {
+      "frame": {
+        "x": 924,
+        "y": 941,
+        "w": 64,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 40
+      }
+    },
+    "unit.monster.rime_wraith.death.2": {
+      "frame": {
+        "x": 989,
+        "y": 941,
+        "w": 58,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 40
+      }
+    },
+    "prop.waypoint": {
+      "frame": {
+        "x": 1048,
+        "y": 941,
+        "w": 19,
+        "h": 39
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 19,
+        "h": 39
+      },
+      "sourceSize": {
+        "w": 19,
+        "h": 39
+      }
+    },
+    "unit.hero.rogue.death.2": {
+      "frame": {
+        "x": 1068,
+        "y": 941,
+        "w": 53,
+        "h": 39
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 39
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 39
+      }
+    },
+    "unit.hero.sorcerer.death.2": {
+      "frame": {
+        "x": 1122,
+        "y": 941,
+        "w": 50,
+        "h": 39
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 39
+      },
+      "sourceSize": {
+        "w": 50,
+        "h": 39
+      }
+    },
+    "unit.monster.boss_tunnel_mother.death.3": {
+      "frame": {
+        "x": 1173,
+        "y": 941,
+        "w": 142,
+        "h": 39
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 142,
+        "h": 39
+      },
+      "sourceSize": {
+        "w": 142,
+        "h": 39
+      }
+    },
+    "unit.monster.cinder_imp.death.2": {
+      "frame": {
+        "x": 1316,
+        "y": 941,
+        "w": 46,
+        "h": 39
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 46,
+        "h": 39
+      },
+      "sourceSize": {
+        "w": 46,
+        "h": 39
+      }
+    },
+    "unit.monster.boss_warden.death.3": {
+      "frame": {
+        "x": 1363,
+        "y": 941,
+        "w": 102,
+        "h": 38
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 102,
+        "h": 38
+      },
+      "sourceSize": {
+        "w": 102,
+        "h": 38
+      }
+    },
+    "unit.monster.gnawling.death.1": {
+      "frame": {
+        "x": 1466,
+        "y": 941,
+        "w": 23,
+        "h": 38
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 23,
+        "h": 38
+      },
+      "sourceSize": {
+        "w": 23,
+        "h": 38
+      }
+    },
+    "unit.monster.boss_ninth_flame.death.3": {
+      "frame": {
+        "x": 1490,
+        "y": 941,
+        "w": 101,
+        "h": 37
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 101,
+        "h": 37
+      },
+      "sourceSize": {
+        "w": 101,
+        "h": 37
+      }
+    },
+    "prop.tent": {
+      "frame": {
+        "x": 1592,
+        "y": 941,
+        "w": 40,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 40,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 40,
+        "h": 36
+      }
+    },
+    "unit.monster.webskitter.death.1": {
+      "frame": {
+        "x": 1633,
+        "y": 941,
+        "w": 34,
+        "h": 34
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 34,
+        "h": 34
+      },
+      "sourceSize": {
+        "w": 34,
+        "h": 34
+      }
+    },
+    "missing": {
+      "frame": {
+        "x": 1668,
+        "y": 941,
+        "w": 32,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 32,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 32,
+        "h": 32
+      }
+    },
+    "prop.house": {
+      "frame": {
+        "x": 1701,
+        "y": 941,
+        "w": 42,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 42,
+        "h": 32
+      }
+    },
+    "tile.abyss.floor.1": {
+      "frame": {
+        "x": 1744,
+        "y": 941,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.abyss.floor.2": {
+      "frame": {
+        "x": 1809,
+        "y": 941,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.abyss.floor.3": {
+      "frame": {
+        "x": 1874,
+        "y": 941,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.cave.floor.1": {
+      "frame": {
+        "x": 1939,
+        "y": 941,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.cave.floor.2": {
+      "frame": {
+        "x": 0,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.cave.floor.3": {
+      "frame": {
+        "x": 65,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.crypt.floor.1": {
+      "frame": {
+        "x": 130,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.crypt.floor.2": {
+      "frame": {
+        "x": 195,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.crypt.floor.3": {
+      "frame": {
+        "x": 260,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.dirt": {
+      "frame": {
+        "x": 325,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.forge.floor.1": {
+      "frame": {
+        "x": 390,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.forge.floor.2": {
+      "frame": {
+        "x": 455,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.forge.floor.3": {
+      "frame": {
+        "x": 520,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.grass": {
+      "frame": {
+        "x": 585,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.grass.dark": {
+      "frame": {
+        "x": 650,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.stone": {
+      "frame": {
+        "x": 715,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "tile.void": {
+      "frame": {
+        "x": 780,
+        "y": 983,
+        "w": 64,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 32
+      }
+    },
+    "unit.monster.cairn_brute.death.3": {
+      "frame": {
+        "x": 845,
+        "y": 983,
+        "w": 89,
+        "h": 32
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 89,
+        "h": 32
+      },
+      "sourceSize": {
+        "w": 89,
+        "h": 32
+      }
+    },
+    "prop.cart": {
+      "frame": {
+        "x": 935,
+        "y": 983,
+        "w": 44,
+        "h": 30
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 44,
+        "h": 30
+      },
+      "sourceSize": {
+        "w": 44,
+        "h": 30
+      }
+    },
+    "prop.torch": {
+      "frame": {
+        "x": 980,
+        "y": 983,
+        "w": 12,
+        "h": 30
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 30
+      },
+      "sourceSize": {
+        "w": 12,
+        "h": 30
+      }
+    },
+    "fx.cinder_orb": {
+      "frame": {
+        "x": 993,
+        "y": 983,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      }
+    },
+    "prop.fence": {
+      "frame": {
+        "x": 1022,
+        "y": 983,
+        "w": 32,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 32,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 32,
+        "h": 28
+      }
+    },
+    "prop.rock": {
+      "frame": {
+        "x": 1055,
+        "y": 983,
+        "w": 32,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 32,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 32,
+        "h": 28
+      }
+    },
+    "unit.monster.ash_seer.death.3": {
+      "frame": {
+        "x": 1088,
+        "y": 983,
+        "w": 56,
+        "h": 26
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 26
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 26
+      }
+    },
+    "unit.monster.gnawling.death.2": {
+      "frame": {
+        "x": 1145,
+        "y": 983,
+        "w": 25,
+        "h": 26
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 25,
+        "h": 26
+      },
+      "sourceSize": {
+        "w": 25,
+        "h": 26
+      }
+    },
+    "unit.monster.blightbloat.death.3": {
+      "frame": {
+        "x": 1171,
+        "y": 983,
+        "w": 47,
+        "h": 25
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 47,
+        "h": 25
+      },
+      "sourceSize": {
+        "w": 47,
+        "h": 25
+      }
+    },
+    "loot.item.amulet": {
+      "frame": {
+        "x": 1219,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.armor": {
+      "frame": {
+        "x": 1244,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.axe": {
+      "frame": {
+        "x": 1269,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.boots": {
+      "frame": {
+        "x": 1294,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.bow": {
+      "frame": {
+        "x": 1319,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.dagger": {
+      "frame": {
+        "x": 1344,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.gloves": {
+      "frame": {
+        "x": 1369,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.helm": {
+      "frame": {
+        "x": 1394,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.mace": {
+      "frame": {
+        "x": 1419,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.ring": {
+      "frame": {
+        "x": 1444,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.shield": {
+      "frame": {
+        "x": 1469,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.staff": {
+      "frame": {
+        "x": 1494,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.sword": {
+      "frame": {
+        "x": 1519,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "loot.item.wand": {
+      "frame": {
+        "x": 1544,
+        "y": 983,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      }
+    },
+    "unit.hero.death.3": {
+      "frame": {
+        "x": 1569,
+        "y": 983,
+        "w": 53,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 24
+      }
+    },
+    "unit.hero.warrior.death.3": {
+      "frame": {
+        "x": 1623,
+        "y": 983,
+        "w": 53,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 24
+      }
+    },
+    "unit.monster.bristleback.death.3": {
+      "frame": {
+        "x": 1677,
+        "y": 983,
+        "w": 67,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 67,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 67,
+        "h": 24
+      }
+    },
+    "unit.monster.webskitter.death.2": {
+      "frame": {
+        "x": 1745,
+        "y": 983,
+        "w": 37,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 37,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 37,
+        "h": 24
+      }
+    },
+    "unit.hero.rogue.death.3": {
+      "frame": {
+        "x": 1783,
+        "y": 983,
+        "w": 56,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 23
+      }
+    },
+    "unit.hero.sorcerer.death.3": {
+      "frame": {
+        "x": 1840,
+        "y": 983,
+        "w": 53,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 53,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 53,
+        "h": 23
+      }
+    },
+    "unit.monster.bonefletcher.death.3": {
+      "frame": {
+        "x": 1894,
+        "y": 983,
+        "w": 68,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 68,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 68,
+        "h": 23
+      }
+    },
+    "unit.monster.cinder_imp.death.3": {
+      "frame": {
+        "x": 1963,
+        "y": 983,
+        "w": 49,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 23
+      }
+    },
+    "unit.monster.hollow_cantor.death.3": {
+      "frame": {
+        "x": 0,
+        "y": 1016,
+        "w": 68,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 68,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 68,
+        "h": 23
+      }
+    },
+    "unit.monster.husk.death.3": {
+      "frame": {
+        "x": 69,
+        "y": 1016,
+        "w": 68,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 68,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 68,
+        "h": 23
+      }
+    },
+    "unit.monster.rime_wraith.death.3": {
+      "frame": {
+        "x": 138,
+        "y": 1016,
+        "w": 61,
+        "h": 23
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 61,
+        "h": 23
+      },
+      "sourceSize": {
+        "w": 61,
+        "h": 23
+      }
+    },
+    "prop.barrel": {
+      "frame": {
+        "x": 200,
+        "y": 1016,
+        "w": 20,
+        "h": 21
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 20,
+        "h": 21
+      },
+      "sourceSize": {
+        "w": 20,
+        "h": 21
+      }
+    },
+    "prop.crate": {
+      "frame": {
+        "x": 221,
+        "y": 1016,
+        "w": 22,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 22,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 22,
+        "h": 20
+      }
+    },
+    "loot.potion.life": {
+      "frame": {
+        "x": 244,
+        "y": 1016,
+        "w": 14,
+        "h": 18
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 14,
+        "h": 18
+      },
+      "sourceSize": {
+        "w": 14,
+        "h": 18
+      }
+    },
+    "loot.potion.mana": {
+      "frame": {
+        "x": 259,
+        "y": 1016,
+        "w": 14,
+        "h": 18
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 14,
+        "h": 18
+      },
+      "sourceSize": {
+        "w": 14,
+        "h": 18
+      }
+    },
+    "loot.potion.rejuv": {
+      "frame": {
+        "x": 274,
+        "y": 1016,
+        "w": 14,
+        "h": 18
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 14,
+        "h": 18
+      },
+      "sourceSize": {
+        "w": 14,
+        "h": 18
+      }
+    },
+    "prop.stash": {
+      "frame": {
+        "x": 289,
+        "y": 1016,
+        "w": 20,
+        "h": 17
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 20,
+        "h": 17
+      },
+      "sourceSize": {
+        "w": 20,
+        "h": 17
+      }
+    },
+    "fx.ember_bolt": {
+      "frame": {
+        "x": 310,
+        "y": 1016,
+        "w": 16,
+        "h": 16
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "sourceSize": {
+        "w": 16,
+        "h": 16
+      }
+    },
+    "fx.frostbolt": {
+      "frame": {
+        "x": 327,
+        "y": 1016,
+        "w": 16,
+        "h": 16
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "sourceSize": {
+        "w": 16,
+        "h": 16
+      }
+    },
+    "fx.shadebolt": {
+      "frame": {
+        "x": 344,
+        "y": 1016,
+        "w": 16,
+        "h": 16
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "sourceSize": {
+        "w": 16,
+        "h": 16
+      }
+    },
+    "unit.monster.gnawling.death.3": {
+      "frame": {
+        "x": 361,
+        "y": 1016,
+        "w": 26,
+        "h": 15
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 26,
+        "h": 15
+      },
+      "sourceSize": {
+        "w": 26,
+        "h": 15
+      }
+    },
+    "loot.gold": {
+      "frame": {
+        "x": 388,
+        "y": 1016,
+        "w": 18,
+        "h": 14
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 18,
+        "h": 14
+      },
+      "sourceSize": {
+        "w": 18,
+        "h": 14
+      }
+    },
+    "prop.brazier": {
+      "frame": {
+        "x": 407,
+        "y": 1016,
+        "w": 23,
+        "h": 14
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 23,
+        "h": 14
+      },
+      "sourceSize": {
+        "w": 23,
+        "h": 14
+      }
+    },
+    "unit.monster.boss_hollow_king.death.4": {
+      "frame": {
+        "x": 431,
+        "y": 1016,
+        "w": 156,
+        "h": 14
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 156,
+        "h": 14
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 14
+      }
+    },
+    "unit.monster.webskitter.death.3": {
+      "frame": {
+        "x": 588,
+        "y": 1016,
+        "w": 39,
+        "h": 14
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 39,
+        "h": 14
+      },
+      "sourceSize": {
+        "w": 39,
+        "h": 14
+      }
+    },
+    "unit.monster.boss_ninth_flame.death.4": {
+      "frame": {
+        "x": 628,
+        "y": 1016,
+        "w": 105,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 105,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 105,
+        "h": 13
+      }
+    },
+    "unit.monster.boss_tunnel_mother.death.4": {
+      "frame": {
+        "x": 734,
+        "y": 1016,
+        "w": 148,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 148,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 148,
+        "h": 13
+      }
+    },
+    "unit.monster.boss_warden.death.4": {
+      "frame": {
+        "x": 883,
+        "y": 1016,
+        "w": 106,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 106,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 106,
+        "h": 13
+      }
+    },
+    "fx.firebolt": {
+      "frame": {
+        "x": 990,
+        "y": 1016,
+        "w": 24,
+        "h": 12
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 12
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 12
+      }
+    },
+    "fx.spark": {
+      "frame": {
+        "x": 1015,
+        "y": 1016,
+        "w": 12,
+        "h": 12
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 12
+      },
+      "sourceSize": {
+        "w": 12,
+        "h": 12
+      }
+    },
+    "fx.venom": {
+      "frame": {
+        "x": 1028,
+        "y": 1016,
+        "w": 12,
+        "h": 12
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 12
+      },
+      "sourceSize": {
+        "w": 12,
+        "h": 12
+      }
+    },
+    "prop.bones": {
+      "frame": {
+        "x": 1041,
+        "y": 1016,
+        "w": 24,
+        "h": 12
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 12
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 12
+      }
+    },
+    "unit.monster.cairn_brute.death.4": {
+      "frame": {
+        "x": 1066,
+        "y": 1016,
+        "w": 93,
+        "h": 11
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 93,
+        "h": 11
+      },
+      "sourceSize": {
+        "w": 93,
+        "h": 11
+      }
+    },
+    "unit.monster.ash_seer.death.4": {
+      "frame": {
+        "x": 1160,
+        "y": 1016,
+        "w": 58,
+        "h": 9
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 9
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 9
+      }
+    },
+    "unit.monster.blightbloat.death.4": {
+      "frame": {
+        "x": 1219,
+        "y": 1016,
+        "w": 49,
+        "h": 9
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 49,
+        "h": 9
+      },
+      "sourceSize": {
+        "w": 49,
+        "h": 9
+      }
+    },
+    "fx.arrow": {
+      "frame": {
+        "x": 1269,
+        "y": 1016,
+        "w": 24,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 8
+      }
+    },
+    "unit.hero.death.4": {
+      "frame": {
+        "x": 1294,
+        "y": 1016,
+        "w": 55,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 55,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 55,
+        "h": 8
+      }
+    },
+    "unit.hero.rogue.death.4": {
+      "frame": {
+        "x": 1350,
+        "y": 1016,
+        "w": 58,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 58,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 58,
+        "h": 8
+      }
+    },
+    "unit.hero.sorcerer.death.4": {
+      "frame": {
+        "x": 1409,
+        "y": 1016,
+        "w": 55,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 55,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 55,
+        "h": 8
+      }
+    },
+    "unit.hero.warrior.death.4": {
+      "frame": {
+        "x": 1465,
+        "y": 1016,
+        "w": 55,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 55,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 55,
+        "h": 8
+      }
+    },
+    "unit.monster.bonefletcher.death.4": {
+      "frame": {
+        "x": 1521,
+        "y": 1016,
+        "w": 71,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 8
+      }
+    },
+    "unit.monster.bristleback.death.4": {
+      "frame": {
+        "x": 1593,
+        "y": 1016,
+        "w": 70,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 70,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 70,
+        "h": 8
+      }
+    },
+    "unit.monster.cinder_imp.death.4": {
+      "frame": {
+        "x": 1664,
+        "y": 1016,
+        "w": 51,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 51,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 51,
+        "h": 8
+      }
+    },
+    "unit.monster.hollow_cantor.death.4": {
+      "frame": {
+        "x": 1716,
+        "y": 1016,
+        "w": 71,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 8
+      }
+    },
+    "unit.monster.husk.death.4": {
+      "frame": {
+        "x": 1788,
+        "y": 1016,
+        "w": 71,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 8
+      }
+    },
+    "unit.monster.rime_wraith.death.4": {
+      "frame": {
+        "x": 1860,
+        "y": 1016,
+        "w": 64,
+        "h": 8
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 8
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 8
+      }
+    },
+    "unit.monster.gnawling.death.4": {
+      "frame": {
+        "x": 1925,
+        "y": 1016,
+        "w": 27,
+        "h": 5
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 27,
+        "h": 5
+      },
+      "sourceSize": {
+        "w": 27,
+        "h": 5
+      }
+    },
+    "unit.monster.webskitter.death.4": {
+      "frame": {
+        "x": 1953,
+        "y": 1016,
+        "w": 41,
+        "h": 5
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 41,
+        "h": 5
+      },
+      "sourceSize": {
+        "w": 41,
+        "h": 5
+      }
+    }
+  },
+  "meta": {
+    "image": "atlas-0.png",
+    "size": {
+      "w": 2046,
+      "h": 1039
+    },
+    "scale": "1"
+  }
+}

@@ -19,9 +19,10 @@ const CLASSIC_WORLD = "classic-world";
 
 /** Catalog entry for the classic mode; the picker always lists it. */
 export const classicInfo: ModeInfo = {
-  id: "classic",
-  name: "Classic",
-  description: "Real-time isometric town. Tap to walk, meet other players.",
+  id: "plaza",
+  name: "Town Plaza",
+  description:
+    "Multiplayer presence demo: a shared isometric town. Tap to walk, meet other players.",
   world: CLASSIC_WORLD,
 };
 
@@ -31,7 +32,7 @@ function wsUrl(token: string): string {
 }
 
 export const classicMode: ClientModeView = {
-  modeId: "classic",
+  modeId: "plaza",
   async mount(host, services) {
     // Own layer inside the host, so cleanup can remove everything this mode added.
     const layer = document.createElement("div");

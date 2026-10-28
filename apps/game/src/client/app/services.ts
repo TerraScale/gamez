@@ -35,7 +35,7 @@ export async function loadManifest(): Promise<AssetManifest> {
   }
 }
 
-/** Picker entries: classic first, then every catalog mode. */
+/** Picker entries: every catalog mode (classic first), then the multiplayer plaza demo. */
 export function modeInfos(): ModeInfo[] {
   const catalog = MODES.filter((m) => m.id !== classicInfo.id).map((m): ModeInfo => ({
     id: m.id,
@@ -43,7 +43,8 @@ export function modeInfos(): ModeInfo[] {
     description: m.description,
     world: m.world,
   }));
-  return [classicInfo, ...catalog];
+  catalog.sort((a, b) => (a.id === "classic" ? -1 : b.id === "classic" ? 1 : 0));
+  return [...catalog, classicInfo];
 }
 
 export interface BootData {

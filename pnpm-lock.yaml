@@ -211,6 +211,9 @@ importers:
       '@gamez/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@gamez/mode-classic':
+        specifier: workspace:*
+        version: link:../../modules/classic
       '@gamez/mode-duel':
         specifier: workspace:*
         version: link:../../modules/duel

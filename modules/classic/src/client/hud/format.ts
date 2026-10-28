@@ -1,0 +1,223 @@
+/**
+ * Pure helpers of the HUD: number formatting, bar fractions, cooldown sweep,
+ * inventory grid occupancy, labels. No React and no DOM, so they are unit-tested.
+ */
+import {
+  hex,
+  MONSTER_COLOR,
+  RARITY_COLOR,
+  type ControlView,
+  type MinimapData,
+} from "../contract.ts";
+import type { Attr, EquipSlot, ItemRarity, MonsterRarity } from "../../types.ts";
+import type { ControlMode, SimSpeed } from "../../resources.ts";
+
+export const TICKS_PER_SECOND = 20;
+export const SPEEDS: readonly SimSpeed[] = [1, 2, 4, 8];
+
+export function clamp(n: number, lo: number, hi: number): number {
+  return n < lo ? lo : n > hi ? hi : n;
+}
+
+function finite(n: number): number {
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Integer with thousands separators ("12,430"); locale independent. */
+export function fmtInt(n: number): string {
+  const v = Math.trunc(finite(n));
+  const digits = String(Math.abs(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return v < 0 ? `-${digits}` : digits;
+}
+
+/** Signed integer for deltas: "+3", "-2", "0". */
+export function fmtSigned(n: number): string {
+  const v = Math.trunc(finite(n));
+  return v > 0 ? `+${fmtInt(v)}` : fmtInt(v);
+}
+
+/** Whole percent points: "35%". */
+export function fmtPct(n: number): string {
+  return `${Math.round(finite(n))}%`;
+}
+
+/** Ticks as seconds: "0s", "4.5s", "12s" (rounded up from 10 s). */
+export function fmtDuration(ticks: number): string {
+  if (!(ticks > 0)) return "0s";
+  const s = ticks / TICKS_PER_SECOND;
+  return s < 10 ? `${(Math.round(s * 10) / 10).toFixed(1)}s` : `${Math.ceil(s)}s`;
+}
+
+/** Regeneration stored x10 per second: 15 -> "1.5/s". */
+export function fmtRegen(x10: number): string {
+  return `${(Math.round(finite(x10)) / 10).toFixed(1)}/s`;
+}
+
+/** value / max clamped to 0..1 (0 when max is not positive). */
+export function fraction(value: number, max: number): number {
+  if (!(max > 0)) return 0;
+  return clamp(finite(value) / max, 0, 1);
+}
+
+export function fillPercent(value: number, max: number): number {
+  return fraction(value, max) * 100;
+}
+
+/**
+ * Degrees of a cooldown sweep still to cover, clockwise from 12 o'clock.
+ * cooldownLeft = cooldown -> 360 (full dark disc), 0 -> 0 (no overlay).
+ */
+export function cooldownSweepDeg(cooldownLeft: number, cooldown: number): number {
+  if (!(cooldown > 0) || !(cooldownLeft > 0)) return 0;
+  return Math.round(clamp((cooldownLeft / cooldown) * 360, 0, 360));
+}
+
+/** Progress from the current level start to the next level, 0..1 (1 at max level). */
+export function xpFraction(xp: number, levelStart: number, nextLevel: number): number {
+  if (!(nextLevel > levelStart)) return 1;
+  return fraction(xp - levelStart, nextLevel - levelStart);
+}
+
+/** Bit test of an ExploreArea (1 bit per tile, row-major, 32 tiles per word). */
+export function isBitSet(bits: readonly number[], width: number, x: number, y: number): boolean {
+  const i = y * width + x;
+  return (((bits[i >> 5] ?? 0) >>> (i & 31)) & 1) === 1;
+}
+
+export interface Footprint {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Horizontal room the panel chrome takes around the bag grid (body padding + frame), px. */
+export const BAG_CHROME_PX = 48;
+
+/**
+ * Bag cell size (px): 44 on desktop. In compact layouts the whole grid
+ * (`cols` cells) fits the viewport minus BAG_CHROME_PX, between 28 and 40 px
+ * (32 px at 375 px wide), so the bag never needs a horizontal scroll.
+ */
+export function bagCellSize(compact: boolean, viewportWidth: number, cols: number): number {
+  if (!compact) return 44;
+  const fit = Math.floor((viewportWidth - BAG_CHROME_PX) / Math.max(1, cols));
+  return Math.max(28, Math.min(40, fit));
+}
+
+/** Row-major flags of the inventory cells covered by items (cols x rows). */
+export function gridOccupancy(cols: number, rows: number, items: readonly Footprint[]): boolean[] {
+  const cells = Array.from({ length: Math.max(0, cols * rows) }, () => false);
+  for (const it of items) {
+    for (let dy = 0; dy < it.h; dy++) {
+      for (let dx = 0; dx < it.w; dx++) {
+        const cx = it.x + dx;
+        const cy = it.y + dy;
+        if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) continue;
+        cells[cy * cols + cx] = true;
+      }
+    }
+  }
+  return cells;
+}
+
+/** The slot a new item goes to: the first free slot it may use, else its first slot. */
+export function pickEquipSlot(
+  slots: readonly EquipSlot[],
+  equipment: Partial<Record<EquipSlot, unknown>>,
+): EquipSlot | null {
+  const free = slots.find((s) => equipment[s] === null || equipment[s] === undefined);
+  return free ?? slots[0] ?? null;
+}
+
+export function controlLabel(mode: ControlMode): string {
+  return mode === "manual" ? "Manual" : mode === "auto" ? "Auto" : "Idle";
+}
+
+const PLAN_TEXT: Record<ControlView["plan"], string> = {
+  none: "Standing by",
+  explore: "Exploring",
+  fight: "Fighting",
+  loot: "Collecting loot",
+  recover: "Recovering",
+  toTown: "Heading to town",
+  town: "In town",
+  toDungeon: "Heading to the dungeon",
+  descend: "Descending",
+  dead: "Dead",
+};
+
+export function planLabel(plan: ControlView["plan"]): string {
+  return PLAN_TEXT[plan];
+}
+
+export const RARITY_LABEL: Record<ItemRarity, string> = {
+  normal: "Normal",
+  magic: "Magic",
+  rare: "Rare",
+  unique: "Unique",
+};
+
+export const ATTR_LABEL: Record<Attr, string> = {
+  str: "Strength",
+  dex: "Dexterity",
+  mag: "Magic",
+  vit: "Vitality",
+};
+
+export const EQUIP_LABEL: Record<EquipSlot, string> = {
+  weapon: "Weapon",
+  offhand: "Off hand",
+  helm: "Helm",
+  armor: "Armour",
+  gloves: "Gloves",
+  boots: "Boots",
+  amulet: "Amulet",
+  ring1: "Ring",
+  ring2: "Ring",
+};
+
+export function rarityHex(r: ItemRarity): string {
+  return hex(RARITY_COLOR[r]);
+}
+
+export function monsterHex(r: MonsterRarity): string {
+  return hex(MONSTER_COLOR[r]);
+}
+
+export function pluralize(n: number, one: string, many = `${one}s`): string {
+  return `${fmtInt(n)} ${n === 1 ? one : many}`;
+}
+
+export function clampText(s: string, max: number): string {
+  return s.length <= max ? s : `${s.slice(0, Math.max(0, max - 1))}…`;
+}
+
+export type MinimapDotKind = MinimapData["dots"][number]["kind"];
+
+/** Dot colours of the minimap and the automap legend (0xRRGGBB). */
+export const DOT_COLOR: Record<MinimapDotKind, number> = {
+  monster: MONSTER_COLOR.normal,
+  champion: MONSTER_COLOR.champion,
+  boss: MONSTER_COLOR.boss,
+  npc: 0xf0c419,
+  loot: RARITY_COLOR.magic,
+  stairs: 0xffffff,
+  waypoint: 0x9fe0a8,
+  portal: 0xb388ff,
+};
+
+export const DOT_LABEL: Record<MinimapDotKind, string> = {
+  monster: "Monster",
+  champion: "Champion",
+  boss: "Boss",
+  npc: "Townsfolk",
+  loot: "Loot",
+  stairs: "Stairs",
+  waypoint: "Waypoint",
+  portal: "Portal",
+};
+
+export function dotColor(kind: MinimapDotKind): number {
+  return DOT_COLOR[kind];
+}
