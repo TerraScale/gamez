@@ -18,6 +18,7 @@ import {
   type ArpgWorldRenderer,
   type ClientModeView,
   type EntityAction,
+  type EntityHighlight,
   type Facing,
 } from "@gamez/ui-host";
 import type { TileMap } from "@gamez/world";
@@ -190,6 +191,60 @@ function heroesSection(reg: FrozenRegistry): GallerySection {
     });
   }
   return unitSection("heroes", "Heroes", headers, cells, 4, 4);
+}
+
+/** Identity outline kinds shown by the outlines section, in row order. */
+export const GALLERY_OUTLINES: readonly EntityHighlight[] = ["self", "party", "ally"];
+
+/**
+ * Identity outlines (highlight "self" | "party" | "ally"): one row per kind on
+ * the first hero class, every action, so the outline can be checked against
+ * each clip and facing (death fades it out). Two sections: the light town
+ * grass and a dark dungeon floor, where the outline must read on both.
+ */
+function outlinesSection(
+  reg: FrozenRegistry,
+  id: string,
+  title: string,
+  ground: string,
+): GallerySection {
+  const cells: GalleryCell[] = [];
+  const headers: string[] = [];
+  const first = reg.all<ClassProto>(KIND.class)[0];
+  if (first) {
+    const [, p] = first;
+    for (const kind of GALLERY_OUTLINES) {
+      headers.push(`${kind} outline\n${p.appearance}`);
+      for (const action of GALLERY_ACTIONS) {
+        const entity: Template = {
+          name: `${p.name} (${kind})`,
+          appearance: p.appearance,
+          fallbackAppearance: "unit.hero",
+          kind: "unit",
+          moving: action === "walk",
+          isSelf: kind === "self",
+          tint: tintOf(p.tint),
+          scale: 100,
+          highlight: kind,
+          showLabel: action === "idle",
+        };
+        if (action === "death") entity.dead = true;
+        if (action === "hit") {
+          entity.bar = 0.55;
+          entity.hitFlash = 0.6;
+        }
+        cells.push({
+          key: `${id}:${kind}:${action}`,
+          kind: "unit",
+          title: `${kind} ${action}`,
+          ref: p.appearance,
+          action,
+          entity,
+        });
+      }
+    }
+  }
+  return { ...unitSection(id, title, headers, cells, 4, 3), ground };
 }
 
 function unitSection(
@@ -870,6 +925,8 @@ export function buildGallerySections(
   const { tiles, props } = collectIds(reg, manifestKeys);
   return [
     heroesSection(reg),
+    outlinesSection(reg, "outlines", "Outlines (town)", "tile.grass"),
+    outlinesSection(reg, "outlines-dungeon", "Outlines (dungeon)", "tile.crypt.floor"),
     monstersSection(reg, false),
     monstersSection(reg, true),
     npcsSection(reg),

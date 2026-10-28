@@ -556,6 +556,8 @@ export interface Settings {
   quality: GraphicsQuality;
   /** Onboarding tips on/off (dismissed tips are remembered separately). */
   tips: boolean;
+  /** Gold outline and pulsing ground ring around the player's own hero (default on). */
+  outlineHero: boolean;
 }
 
 export type GraphicsQuality = "auto" | "low" | "medium" | "high";

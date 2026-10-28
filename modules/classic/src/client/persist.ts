@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   muted: false,
   quality: "auto",
   tips: true,
+  outlineHero: true,
 };
 
 export interface SaveRecord {
@@ -122,6 +123,7 @@ export function sanitizeSettings(v: unknown): Settings {
         ? src.quality
         : DEFAULT_SETTINGS.quality,
     tips: bool(src.tips, DEFAULT_SETTINGS.tips),
+    outlineHero: bool(src.outlineHero, DEFAULT_SETTINGS.outlineHero),
   };
 }
 

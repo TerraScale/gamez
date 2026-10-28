@@ -182,6 +182,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.prims = prims;
     this.entities = new EntityLayer(this.world, visuals, prims, this.labels);
     this.entities.debug = this.tracker;
+    this.entities.setOutlineZoom(this.zoom);
     // Exact ids only: an effect without art is drawn procedurally, never as the "missing" sprite.
     this.fx = new FxLayer(
       (id) => visuals.spriteExact(id)?.texture ?? null,
@@ -328,6 +329,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     if (next === this.zoom) return;
     this.zoom = next;
     this.view.scale.set(next);
+    this.entities?.setOutlineZoom(next);
     this.chunkDirty = true;
   }
 
@@ -449,6 +451,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
       effectsPlayed: t?.effectsPlayed ?? 0,
       floatsShown: t?.floatsShown ?? 0,
       shakes: t?.shakes ?? 0,
+      outlines: this.entities?.outlineCensus() ?? { self: 0, party: 0, ally: 0 },
       activeEffects: this.fx?.activeEffects ?? 0,
     };
   }
@@ -527,7 +530,10 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
   private applyQuality(): void {
     const q = this.quality;
     this.fx?.setQuality(q);
-    if (this.entities) this.entities.glowOn = glowEnabled(q);
+    if (this.entities) {
+      this.entities.glowOn = glowEnabled(q);
+      this.entities.setOutlineQuality(q);
+    }
     this.lighting?.setTextureSize(lightTextureSize(q));
     const app = this.app;
     if (!app) return;

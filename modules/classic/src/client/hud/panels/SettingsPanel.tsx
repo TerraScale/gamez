@@ -14,9 +14,17 @@ import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
 import { C, labelStyle } from "../styles.ts";
 
-type BoolSetting = "showDamageNumbers" | "showLootLabels" | "showMinimap" | "lighting" | "showPerf";
+type BoolSetting =
+  | "showDamageNumbers"
+  | "showLootLabels"
+  | "showMinimap"
+  | "lighting"
+  | "showPerf"
+  | "outlineHero";
 
-const FLAGS: { key: BoolSetting; label: string }[] = [
+/** Display toggles, in display order (exported for tests). */
+export const DISPLAY_FLAGS: readonly { key: BoolSetting; label: string }[] = [
+  { key: "outlineHero", label: "Outline my hero" },
   { key: "showDamageNumbers", label: "Damage numbers" },
   { key: "showLootLabels", label: "Loot labels" },
   { key: "showMinimap", label: "Minimap (M)" },
@@ -336,7 +344,7 @@ export function SettingsPanel({ api }: SlotProps) {
         </p>
       </Section>
       <Section title="Display">
-        {FLAGS.map((f) => (
+        {DISPLAY_FLAGS.map((f) => (
           <Toggle
             key={f.key}
             label={f.label}

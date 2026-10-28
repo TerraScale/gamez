@@ -164,6 +164,8 @@ describe("shopkeeper ghosts", () => {
     expect(e).toBeDefined();
     expect(e!.alpha).toBe(GHOST_ALPHA);
     expect(e!.tint).toBe(GHOST_TINT);
+    // Shop ghosts are fixtures, not players: no identity outline.
+    expect(e!.highlight).toBeNull();
     expect(e!.name).toBe("Aria's Forge");
     expect(e!.subtitle).toBe("Aria · Open");
     expect(e!.x).toBe(46 + 0.5);

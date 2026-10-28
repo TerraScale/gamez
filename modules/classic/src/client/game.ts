@@ -680,6 +680,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       targeted: engagedTarget(world),
       showLootLabels: settings.showLootLabels,
       lighting: settings.lighting,
+      outlineHero: settings.outlineHero,
       tick: sim.tick,
       touch: coarsePointer,
     });
