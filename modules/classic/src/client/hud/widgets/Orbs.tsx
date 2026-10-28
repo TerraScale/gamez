@@ -1,7 +1,7 @@
 /** Life and mana orbs: liquid fill inside a round frame, value text on top (classic.hud.bottom). */
 import { useSelect } from "../hooks.ts";
-import { useCompact, type SlotProps } from "../common.tsx";
-import { bottomOrder } from "../layout.ts";
+import { useHudLayout, type SlotProps } from "../common.tsx";
+import { bottomOrderFor } from "../layout.ts";
 import { fillPercent, fmtInt } from "../format.ts";
 import { C } from "../styles.ts";
 
@@ -14,6 +14,7 @@ interface OrbViewProps {
   dark: string;
   order: number;
   marginLeft?: string;
+  marginRight?: string;
   compact: boolean;
 }
 
@@ -26,6 +27,7 @@ function OrbView({
   dark,
   order,
   marginLeft,
+  marginRight,
   compact,
 }: OrbViewProps) {
   const size = compact ? 64 : 96;
@@ -42,6 +44,7 @@ function OrbView({
         pointerEvents: "auto",
         order,
         marginLeft,
+        marginRight,
         alignSelf: "flex-end",
         position: "relative",
         width: size,
@@ -90,7 +93,7 @@ export function LifeOrb({ api }: SlotProps) {
   const hero = useSelect(api.hud, (s) =>
     s.hero ? { life: s.hero.life, lifeMax: s.hero.lifeMax } : null,
   );
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
   if (!hero) return null;
   return (
     <OrbView
@@ -100,8 +103,10 @@ export function LifeOrb({ api }: SlotProps) {
       color={C.life}
       lighter="#e8574a"
       dark={C.lifeDark}
-      order={bottomOrder(compact, "life")}
-      compact={compact}
+      order={bottomOrderFor(layout, "life")}
+      // Short layout: the orb sits in the left corner and the belt and skills centre between the orbs.
+      marginRight={layout === "short" ? "auto" : undefined}
+      compact={layout !== "desktop"}
     />
   );
 }
@@ -110,7 +115,7 @@ export function ManaOrb({ api }: SlotProps) {
   const hero = useSelect(api.hud, (s) =>
     s.hero ? { mana: s.hero.mana, manaMax: s.hero.manaMax } : null,
   );
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
   if (!hero) return null;
   return (
     <OrbView
@@ -120,9 +125,9 @@ export function ManaOrb({ api }: SlotProps) {
       color={C.mana}
       lighter="#5b9cf0"
       dark={C.manaDark}
-      order={bottomOrder(compact, "mana")}
-      marginLeft={compact ? "auto" : undefined}
-      compact={compact}
+      order={bottomOrderFor(layout, "mana")}
+      marginLeft={layout !== "desktop" ? "auto" : undefined}
+      compact={layout !== "desktop"}
     />
   );
 }

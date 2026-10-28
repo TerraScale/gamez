@@ -68,6 +68,98 @@ export function skillGlyphTag(tags: readonly string[]): string {
   return "none";
 }
 
+/** A skill's own glyph: `fill` paths get a soft tint, `stroke` paths are outlines. */
+export interface SkillGlyph {
+  fill?: string[];
+  stroke: string[];
+}
+
+/**
+ * One distinct glyph per hero skill (client only, keyed by skill id). Skills
+ * that share a tag used to look alike; these never repeat. Skills not listed
+ * here fall back to the tag glyph (SkillIcon).
+ */
+export const SKILL_GLYPHS: Readonly<Record<string, SkillGlyph>> = {
+  // Warrior
+  "classic.skill.attack": { stroke: ["M7 25 L24 8", "M9 20 L12 23", "M22 6 L26 6 L26 10"] },
+  "classic.skill.mend": {
+    fill: ["M13 5 H19 V13 H27 V19 H19 V27 H13 V19 H5 V13 H13 Z"],
+    stroke: ["M13 5 H19 V13 H27 V19 H19 V27 H13 V19 H5 V13 H13 Z"],
+  },
+  "classic.skill.cleave": { stroke: ["M4 20 Q16 4 28 20", "M4 28 Q16 14 28 28"] },
+  "classic.skill.whirl": { stroke: ["M26 16 A10 10 0 1 1 20 6.5", "M20 2 L20 7 L25 7"] },
+  "classic.skill.rally": { stroke: ["M9 4 V28", "M9 5 H25 L21 10.5 L25 16 H9"] },
+  "classic.skill.charge": { stroke: ["M4 16 H23", "M15 8 L23 16 L15 24"] },
+  // Rogue
+  "classic.skill.multishot": { stroke: ["M5 27 L26 6", "M5 27 L27 17", "M5 27 L17 5"] },
+  // A poisoned arrow: a shaft and head with fletching, and three drips falling from the tip.
+  "classic.skill.venom_shot": {
+    fill: ["M27 4 L15 8 L24 17 Z", "M22 19 L24.5 23.5 A2.5 2.5 0 1 1 19.5 23.5 Z"],
+    stroke: [
+      "M27 4 L15 8 L24 17 Z",
+      "M4 28 L14 18",
+      "M3 21 L7 25",
+      "M7 17 L15 25",
+      "M22 19 L24.5 23.5 A2.5 2.5 0 1 1 19.5 23.5 Z",
+    ],
+  },
+  "classic.skill.spark_sentry": { stroke: ["M10 13 H22 V23 H10 Z", "M16 13 V5", "M11 5 H21"] },
+  "classic.skill.tumble": {
+    stroke: ["M8 22 C4 12 12 4 20 8 C26 12 24 20 18 22 C14 24 12 18 16 15"],
+  },
+  // Sorcerer
+  "classic.skill.ember_bolt": {
+    fill: [
+      "M16 28 C10 24 9 18 13 13 C13 17 15 18 16 17 C15 12 18 8 19 4 C23 9 24 13 23 19 C25 17 25 15 25 14 C28 18 27 24 16 28 Z",
+    ],
+    stroke: [
+      "M16 28 C10 24 9 18 13 13 C13 17 15 18 16 17 C15 12 18 8 19 4 C23 9 24 13 23 19 C25 17 25 15 25 14 C28 18 27 24 16 28 Z",
+    ],
+  },
+  "classic.skill.frost_ring": {
+    stroke: [
+      "M16 4 V28",
+      "M5 10 L27 22",
+      "M5 22 L27 10",
+      "M13 6 L16 9 L19 6",
+      "M13 26 L16 23 L19 26",
+    ],
+  },
+  "classic.skill.arc_chain": {
+    fill: ["M18 3 L8 18 H15 L13 29 L24 13 H17 Z"],
+    stroke: ["M18 3 L8 18 H15 L13 29 L24 13 H17 Z"],
+  },
+  "classic.skill.cinder_orb": {
+    fill: ["M16 9 A7 7 0 1 1 15.9 9 Z"],
+    stroke: ["M26 16 A10 10 0 1 1 6 16 A10 10 0 1 1 26 16"],
+  },
+  "classic.skill.phase_step": {
+    stroke: [
+      "M8 27 V14 A8 8 0 0 1 24 14 V27 L20 23 L16 27 L12 23 L8 27",
+      "M13 14 H13.5 M19 14 H19.5",
+    ],
+  },
+};
+
+/** The key a skill glyph is drawn by: its own id when it has a glyph, else its tag glyph. */
+export function skillGlyphKey(skillId: string | null | undefined, tags: readonly string[]): string {
+  return skillId && Object.hasOwn(SKILL_GLYPHS, skillId) ? skillId : skillGlyphTag(tags);
+}
+
+function ownGlyph(glyph: SkillGlyph, color: string): ReactNode {
+  const soft = `${color}44`;
+  return (
+    <>
+      {(glyph.fill ?? []).map((d) => (
+        <path key={`f-${d}`} {...BASE} d={d} stroke={color} fill={soft} />
+      ))}
+      {glyph.stroke.map((d) => (
+        <path key={`s-${d}`} {...BASE} d={d} stroke={color} />
+      ))}
+    </>
+  );
+}
+
 function glyphBody(tag: string, color: string): ReactNode {
   const soft = `${color}44`;
   switch (tag) {
@@ -124,12 +216,16 @@ export function SkillIcon({
   tags,
   color,
   size = 28,
+  skillId,
 }: {
   tags: readonly string[];
   color: string;
   size?: number;
+  /** Skill id: picks the skill's own glyph (falls back to the tag glyph). */
+  skillId?: string | null;
 }) {
-  const tag = skillGlyphTag(tags);
+  const key = skillGlyphKey(skillId, tags);
+  const own = Object.hasOwn(SKILL_GLYPHS, key) ? SKILL_GLYPHS[key] : undefined;
   return (
     <svg
       width={size}
@@ -137,10 +233,10 @@ export function SkillIcon({
       viewBox="0 0 32 32"
       aria-hidden="true"
       focusable="false"
-      data-glyph={tag}
+      data-glyph={key}
       style={{ display: "block", flex: "none" }}
     >
-      {glyphBody(tag, color)}
+      {own ? ownGlyph(own, color) : glyphBody(key, color)}
     </svg>
   );
 }

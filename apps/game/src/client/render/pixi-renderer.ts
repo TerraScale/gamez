@@ -1,15 +1,23 @@
 import { Application, Container, Graphics, GraphicsContext, type Ticker } from "pixi.js";
-import type { AssetManifest } from "@gamez/assets";
 import { DEFAULT_ISO, screenToTile, tileToScreen, type TileMap } from "@gamez/world";
 import type {
+  AppearanceResolution,
   ArpgRenderEntity,
   ArpgWorldRenderer,
   EffectSpec,
+  EntityAction,
+  EntityKind,
+  Facing,
   FloatTextSpec,
+  LabelInsets,
   PointerInfo,
+  RendererDebug,
+  RendererDebugInfo,
   RendererStats,
+  SpriteResolution,
   WorldRenderer,
 } from "@gamez/ui-host";
+import { resolveId, type AssetManifest } from "@gamez/assets";
 import {
   CHUNK_TILES,
   chunkInRange,
@@ -31,9 +39,11 @@ import { loadVisuals, type Visuals } from "./visuals.ts";
 import { EntityLayer } from "./entity-view.ts";
 import { FxLayer } from "./fx.ts";
 import { floatOrigin } from "./fx-plan.ts";
+import { insetRect } from "./label-layout.ts";
 import { LightingOverlay } from "./lighting.ts";
 import { GestureTracker, type GestureEvent } from "./gestures.ts";
 import { FrameStats } from "./stats.ts";
+import { classifyResolution, debugRequested, DebugTracker, sortedRecord } from "./debug.ts";
 
 const CAMERA_RATE = 8;
 const MARKER_MS = 600;
@@ -73,12 +83,14 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
   private ready = false;
   private destroyed = false;
 
-  /** Zoomed world. Children: ground chunks, tap marker, depth-sorted world, effects. */
+  /** Zoomed world. Children: ground chunks, tap marker, depth-sorted world, labels, effects. */
   private readonly view = new Container();
   private readonly ground = new Container();
   private readonly marker = new Graphics();
   /** Depth-sorted: chunk objects (props) and entities, ordered by depthOf. */
   private readonly world = new Container();
+  /** Names, subtitles, quest markers and health bars: above every sprite, below effects. */
+  private readonly labels = new Container();
   /** Stage-space overlay (darkness), above the view. */
   private readonly lightLayer = new Container();
 
@@ -108,14 +120,26 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
   private camY = 0;
   private zoom = 1;
   private readonly rect: ViewRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  /** `rect` minus the HUD label insets (setLabelInsets), written in place every frame. */
+  private readonly labelRect: ViewRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  private readonly labelInsets: LabelInsets = { top: 0, right: 0, bottom: 0, left: 0 };
   private markerMs = 0;
   private timeMs = 0;
   private lightDarkness = 0;
   private lightRadius = 0;
 
+  /** QA: ids that resolved to "missing" or nothing (filled once per id by the sprite cache). */
+  private readonly missingIds = new Set<string>();
+  private manifest: AssetManifest | null = null;
+  /** QA tracking; null until debug.enable(). */
+  private tracker: DebugTracker | null = null;
+  private lastFrameAt = 0;
+  private readonly renderGetter = (): RendererDebugInfo => this.debugInfo();
+  readonly debug: RendererDebug = new DebugApi(this);
+
   constructor() {
     this.world.sortableChildren = true;
-    this.view.addChild(this.ground, this.marker, this.world);
+    this.view.addChild(this.ground, this.marker, this.world, this.labels);
     this.marker.visible = false;
   }
 
@@ -130,7 +154,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
         autoDensity: true,
         background: "#10131a",
       }),
-      loadVisuals(manifest, baseUrl),
+      loadVisuals(manifest, baseUrl, (id) => this.missingIds.add(id)),
     ]);
     if (this.destroyed) {
       app.destroy({ removeView: true });
@@ -139,12 +163,15 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.app = app;
     this.ticker = app.ticker;
     this.visuals = visuals;
+    this.manifest = manifest;
     const prims = buildPrimitives();
     this.prims = prims;
-    this.entities = new EntityLayer(this.world, visuals, prims);
+    this.entities = new EntityLayer(this.world, visuals, prims, this.labels);
+    this.entities.debug = this.tracker;
     // Exact ids only: an effect without art is drawn procedurally, never as the "missing" sprite.
     this.fx = new FxLayer((id) => visuals.spriteExact(id)?.texture ?? null);
-    this.view.addChild(this.fx.layer);
+    // Effects above the name labels, float texts above everything in the view.
+    this.view.addChild(this.fx.layer, this.fx.floatLayer);
     this.lighting = new LightingOverlay(this.lightLayer);
 
     const canvas = app.canvas;
@@ -230,11 +257,22 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
 
   floatText(spec: FloatTextSpec): void {
     if (!this.ready) return;
-    this.fx?.float(spec, floatOrigin(spec));
+    if (this.tracker) this.tracker.floatsShown++;
+    const fx = this.fx;
+    if (!fx) return;
+    const s = tileToScreen(spec.x + 0.5, spec.y + 0.5);
+    const layer = this.entities;
+    const origin = floatOrigin(spec, layer ? layer.headTopNear(s.sx, s.sy) : Number.NaN);
+    if (layer) origin.sy = layer.clearOfLabels(origin.sx, origin.sy);
+    fx.float(spec, origin);
   }
 
   playEffect(spec: EffectSpec): void {
     if (!this.ready) return;
+    if (this.tracker) {
+      const sprite = spec.sprite;
+      this.tracker.effect(spec.kind, sprite, !!sprite && this.hasExactSprite(sprite));
+    }
     const s = tileToScreen(spec.x + 0.5, spec.y + 0.5);
     this.fx?.effect(spec, { sx: s.sx, sy: s.sy });
   }
@@ -249,6 +287,14 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
 
   getZoom(): number {
     return this.zoom;
+  }
+
+  setLabelInsets(insets: LabelInsets): void {
+    const clean = (v: number): number => (Number.isFinite(v) && v > 0 ? v : 0);
+    this.labelInsets.top = clean(insets.top);
+    this.labelInsets.right = clean(insets.right);
+    this.labelInsets.bottom = clean(insets.bottom);
+    this.labelInsets.left = clean(insets.left);
   }
 
   setLighting(opts: { darkness: number; radius: number }): void {
@@ -274,6 +320,21 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     return { x: t.x - 0.5, y: t.y - 0.5 };
   }
 
+  tileToClient(x: number, y: number): { x: number; y: number } | null {
+    const app = this.app;
+    const canvas = this.canvas;
+    if (!app || !canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (app.screen.width === 0 || app.screen.height === 0) return null;
+    const s = tileToScreen(x + 0.5, y + 0.5);
+    const px = this.view.x + s.sx * this.zoom;
+    const py = this.view.y + s.sy * this.zoom;
+    return {
+      x: rect.left + px * (rect.width / app.screen.width),
+      y: rect.top + py * (rect.height / app.screen.height),
+    };
+  }
+
   stats(): RendererStats {
     return {
       fps: this.frameStats.fps,
@@ -284,9 +345,105 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     };
   }
 
+  // ---- QA introspection (ArpgWorldRenderer.debug) ----------------------------
+
+  debugEnabled(): boolean {
+    return this.tracker !== null;
+  }
+
+  /** Starts tracking and publishes window.__gamez.render (a live getter). */
+  enableDebug(): void {
+    if (this.tracker || this.destroyed) return;
+    this.tracker = new DebugTracker();
+    if (this.entities) this.entities.debug = this.tracker;
+    const root = debugRoot();
+    if (root) {
+      Object.defineProperty(root, "render", {
+        get: this.renderGetter,
+        enumerable: true,
+        configurable: true,
+      });
+    }
+  }
+
+  debugInfo(): RendererDebugInfo {
+    const t = this.tracker;
+    const census = this.entities?.census() ?? {
+      drawn: 0,
+      primitives: 0,
+      labels: {
+        nameplate: 0,
+        npc: 0,
+        loot: 0,
+        sign: 0,
+        damage: 0,
+        healthbar: 0,
+        marker: 0,
+        subtitle: 0,
+      },
+    };
+    census.labels.damage = this.fx?.activeFloats ?? 0;
+    const missing = new Set(this.missingIds);
+    if (t) for (const id of t.entityMissing) missing.add(id);
+    return {
+      fps: this.frameStats.fps,
+      frameMs: t ? t.frameMs() : { avg: 0, p95: 0, max: 0 },
+      tickMs: t ? t.tickMs() : { avg: 0, p95: 0 },
+      zoom: this.zoom,
+      entities: this.entities?.size ?? 0,
+      entitiesDrawn: census.drawn,
+      primitivesDrawn: census.primitives,
+      chunks: this.chunks.size,
+      chunksBuilt: t?.chunksBuilt ?? 0,
+      props: this.propCount,
+      missingIds: [...missing].sort(),
+      animationsSeen: t ? sortedRecord(t.anims) : {},
+      labelsVisible: census.labels,
+      effectsSeen: t ? sortedRecord(t.effects) : {},
+      effectsPlayed: t?.effectsPlayed ?? 0,
+      floatsShown: t?.floatsShown ?? 0,
+      activeEffects: this.fx?.activeEffects ?? 0,
+    };
+  }
+
+  resolveAppearance(
+    appearance: string,
+    action: EntityAction,
+    facing: Facing,
+    fallback?: string,
+    entityKind?: EntityKind,
+  ): AppearanceResolution {
+    const hit = this.entities?.lookup(appearance, action, facing, fallback) ?? null;
+    const key = hit ? hit.key : null;
+    const kind = classifyResolution(appearance, action, facing, key, entityKind);
+    if (!hit) return { key, visual: "prim", kind, frames: 0 };
+    const v = hit.value;
+    if (v.kind === "anim") return { key, visual: "anim", kind, frames: v.anim.frames.length };
+    return { key, visual: "still", kind, frames: 1 };
+  }
+
+  resolveSprite(id: string): SpriteResolution {
+    const m = this.manifest;
+    if (!m || !this.visuals) return { id, key: null, kind: "missing" };
+    const key = resolveId(m.sprites, id);
+    const has = Object.prototype.hasOwnProperty.call(m.sprites, key);
+    const real = has && this.visuals.sprite(id) !== null;
+    if (!real) return { id, key: has ? key : null, kind: "missing" };
+    if (key === "missing" && id !== "missing") return { id, key, kind: "missing" };
+    return { id, key, kind: key === id ? "exact" : "generic" };
+  }
+
+  hasExactSprite(id: string): boolean {
+    return this.visuals?.spriteExact(id) != null;
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    const root = debugRoot();
+    if (root && Object.getOwnPropertyDescriptor(root, "render")?.get === this.renderGetter) {
+      delete root.render;
+    }
     const app = this.app;
     if (app && this.ticker) this.ticker.remove(this.tick);
     if (this.canvas) {
@@ -341,7 +498,14 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
       if (this.markerMs <= 0) this.marker.visible = false;
       else this.marker.alpha = this.markerMs / MARKER_MS;
     }
-    this.frameStats.frame(dt, performance.now() - start);
+    const spent = performance.now() - start;
+    this.frameStats.frame(dt, spent);
+    if (this.tracker) {
+      // Wall-clock interval: Pixi clamps deltaMS at 100 ms, which hides slow frames.
+      const real = this.lastFrameAt > 0 ? start - this.lastFrameAt : dt;
+      this.tracker.frame(real, spent);
+    }
+    this.lastFrameAt = start;
   };
 
   private updateCamera(dt: number): void {
@@ -365,6 +529,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.rect.x1 = this.camX + hw;
     this.rect.y0 = this.camY - hh;
     this.rect.y1 = this.camY + hh;
+    insetRect(this.rect, this.labelInsets, this.zoom, this.labelRect);
   }
 
   /**
@@ -417,6 +582,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
           continue;
         }
         const c = buildChunk(ctx, cx, cy, this.ground, this.world);
+        if (this.tracker) this.tracker.chunksBuilt++;
         this.chunks.set(key, c);
         this.propCount += c.props.length;
         built++;
@@ -432,10 +598,14 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     const ticker = this.ticker;
     for (const v of layer.all()) {
       const inView = !cull || inViewRect(v.sx, v.sy, this.rect, CULL_PAD);
-      if (v.root.visible !== inView) v.root.visible = inView;
+      if (v.root.visible !== inView) {
+        v.root.visible = inView;
+        layer.syncTag(v);
+      }
       if (inView && ticker && v.anim && v.anim.visible) v.anim.update(ticker);
     }
     layer.tickPulse(this.timeMs);
+    if (cull) layer.layoutLabels(this.rect, this.labelRect);
   }
 
   private updateLighting(): void {
@@ -521,12 +691,57 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
   };
 }
 
+/** The renderer's QA surface (ArpgWorldRenderer.debug); forwards to the renderer. */
+class DebugApi implements RendererDebug {
+  private readonly r: PixiWorldRenderer;
+  constructor(r: PixiWorldRenderer) {
+    this.r = r;
+  }
+  get enabled(): boolean {
+    return this.r.debugEnabled();
+  }
+  enable(): void {
+    this.r.enableDebug();
+  }
+  info(): RendererDebugInfo {
+    return this.r.debugInfo();
+  }
+  resolveAppearance(
+    appearance: string,
+    action: EntityAction,
+    facing: Facing,
+    fallbackAppearance?: string,
+    kind?: EntityKind,
+  ): AppearanceResolution {
+    return this.r.resolveAppearance(appearance, action, facing, fallbackAppearance, kind);
+  }
+  resolveSprite(id: string): SpriteResolution {
+    return this.r.resolveSprite(id);
+  }
+  hasExactSprite(id: string): boolean {
+    return this.r.hasExactSprite(id);
+  }
+  tileToClient(x: number, y: number): { x: number; y: number } | null {
+    return this.r.tileToClient(x, y);
+  }
+}
+
 function pointerType(t: string): "mouse" | "touch" | "pen" {
   if (t === "touch") return "touch";
   if (t === "pen") return "pen";
   return "mouse";
 }
 
+/** The shared QA object window.__gamez (created on first use). */
+function debugRoot(): Record<string, unknown> | null {
+  const g = globalThis as { __gamez?: Record<string, unknown> };
+  if (typeof g !== "object") return null;
+  g.__gamez ??= {};
+  return g.__gamez;
+}
+
 export function createWorldRenderer(): WorldRenderer {
-  return new PixiWorldRenderer();
+  const r = new PixiWorldRenderer();
+  if (debugRequested()) r.enableDebug();
+  return r;
 }

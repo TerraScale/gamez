@@ -30,6 +30,7 @@ import {
   Dead,
   HeroStats,
   Level,
+  Mana,
 } from "../src/components.ts";
 import { tileCenter } from "../src/fixed.ts";
 import { modules as classicModules } from "../src/index.ts";
@@ -722,6 +723,8 @@ describe("belt and potions", () => {
     const sim = rich(53);
     const hero = spawnTestHero(sim.world, { x: 5, y: 5, depth: 1, life: 100, mana: 50 });
     sim.world.update(hero, Life, { hp: 10 });
+    // Mana is not full (a full mana bar would refuse the mana potion, see below).
+    sim.world.update(hero, Mana, { mp: 20 });
     sim.world.update(hero, Belt, {
       slots: [
         { base: "test.item.potion.rejuv", count: 1 },
@@ -1012,7 +1015,9 @@ describe("grants and commands", () => {
 
   it("reports a failed command with its code and keeps the rest", () => {
     const sim = rich(72);
-    spawnTestHero(sim.world, { x: 5, y: 5, depth: 1 });
+    const hero0 = spawnTestHero(sim.world, { x: 5, y: 5, depth: 1 });
+    // Hurt, so the drink has something to restore (a full-life drink is refused).
+    sim.world.update(hero0, Life, { hp: 40 });
     pushCommand(sim.world, { op: "equip", uid: 999999, slot: null });
     pushCommand(sim.world, { op: "drink", slot: 0 });
     const ev = sim.step(1);
@@ -1065,7 +1070,9 @@ describe("determinism", () => {
   /** A fixed script: town purchases, potions, pickups, grants and rejections. */
   function script(seed: number): { sim: Sim; results: boolean[] } {
     const sim = testSim(["classic.core", "classic.items"], { seed });
-    spawnTestHero(sim.world, { x: 5, y: 5, depth: 0, gold: 300, life: 60 });
+    const hero = spawnTestHero(sim.world, { x: 5, y: 5, depth: 0, gold: 300, life: 60 });
+    // Hurt, so the scripted drink restores life (a full-life drink is refused).
+    sim.world.update(hero, Life, { hp: 30 });
     const smith = spawnNpc(sim, "test.npc.smith", 7, 5);
     const alch = spawnNpc(sim, "test.npc.alchemist", 7, 6);
     spawnNpc(sim, "test.npc.junk", 7, 7);
@@ -1111,7 +1118,7 @@ describe("determinism", () => {
   });
 
   it("pins the hash of the fixed script", () => {
-    expect(script(7).sim.hash()).toBe("ea8ea83b76998111");
+    expect(script(7).sim.hash()).toBe("c6e48fbf2512c240");
   });
 });
 
@@ -1142,5 +1149,87 @@ describe("rejections leave the world unchanged", () => {
       expect(sim.hash(), name).toBe(before);
     }
     expect(sim.world.read(hero, Wallet).gold).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("potion refusal and effect (QA r1)", () => {
+  function eventsOf(events: { type: string }[]) {
+    return events.filter((e) => e.type === "classic.potion") as Array<{
+      type: string;
+      amount: number;
+      lifeBefore: number;
+      lifeAfter: number;
+      manaBefore: number;
+      manaAfter: number;
+    }>;
+  }
+
+  it("refuses a life potion at full life with no change to the world or the belt", () => {
+    const sim = rich(71);
+    const hero = spawnTestHero(sim.world, { x: 5, y: 5, depth: 1, life: 100 });
+    const before = sim.hash();
+    const r = act(sim, ACTION.drinkPotion, { slot: 0 });
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("potion_useless");
+    expect(r.error?.message).toBe("Life is already full");
+    expect(sim.hash()).toBe(before);
+    expect(sim.world.read(hero, Belt).slots[0]).toEqual({
+      base: "test.item.potion.life",
+      count: 3,
+    });
+  });
+
+  it("refuses a mana potion at full mana and a rejuvenation potion at full life and mana", () => {
+    const sim = rich(72);
+    const hero = spawnTestHero(sim.world, { x: 5, y: 5, depth: 1, life: 100, mana: 50 });
+    sim.world.update(hero, Belt, {
+      slots: [
+        { base: "test.item.potion.mana", count: 2 },
+        { base: "test.item.potion.rejuv", count: 2 },
+        { base: null, count: 0 },
+        { base: null, count: 0 },
+      ],
+    });
+    const before = sim.hash();
+    const mana = act(sim, ACTION.drinkPotion, { slot: 0 });
+    expect(mana.ok).toBe(false);
+    expect(mana.error?.message).toBe("Mana is already full");
+    const rejuv = act(sim, ACTION.drinkPotion, { slot: 1 });
+    expect(rejuv.ok).toBe(false);
+    expect(rejuv.error?.message).toBe("Life and mana are already full");
+    expect(sim.hash()).toBe(before);
+  });
+
+  it("a life potion raises life by exactly its amount, capped at max, and reports before and after", () => {
+    const sim = rich(73);
+    const hero = spawnTestHero(sim.world, { x: 5, y: 5, depth: 1, life: 100 });
+    sim.world.update(hero, Life, { hp: 40 });
+    const first = act(sim, ACTION.drinkPotion, { slot: 0 });
+    expect(first.ok).toBe(true);
+    // The test life potion restores 50 (no potion bonus in the test hero).
+    expect(sim.world.read(hero, Life).hp).toBe(90);
+    const ev = eventsOf(first.events);
+    expect(ev).toHaveLength(1);
+    expect(ev[0]).toMatchObject({ amount: 50, lifeBefore: 40, lifeAfter: 90 });
+
+    // Capped: 90 + 50 stops at the max of 100, and the event says so.
+    sim.world.update(hero, Belt, { readyAt: 0 });
+    const second = act(sim, ACTION.drinkPotion, { slot: 0 });
+    expect(second.ok).toBe(true);
+    expect(sim.world.read(hero, Life).hp).toBe(100);
+    expect(eventsOf(second.events)[0]).toMatchObject({ lifeBefore: 90, lifeAfter: 100 });
+  });
+
+  it("a refused drink does not start the cooldown or use a charge", () => {
+    const sim = rich(74);
+    const hero = spawnTestHero(sim.world, { x: 5, y: 5, depth: 1, life: 100 });
+    expect(act(sim, ACTION.drinkPotion, { slot: 0 }).ok).toBe(false);
+    expect(sim.world.read(hero, Belt).readyAt).toBeLessThanOrEqual(sim.tick);
+    expect(sim.world.read(hero, Belt).slots[0]).toEqual({
+      base: "test.item.potion.life",
+      count: 3,
+    });
   });
 });

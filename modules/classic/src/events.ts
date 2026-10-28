@@ -46,7 +46,11 @@ export type ClassicEvent =
       x: number;
       y: number;
       radius: number;
-      /** Chain/beam polyline, sub units (empty otherwise). */
+      /**
+       * Sub units. Chain/beam: the polyline. Arc (cleave-like swings): one
+       * point, the aim tip (caster + radius along the aim) to orient the
+       * slash. Empty otherwise.
+       */
       points: { x: number; y: number }[];
     }
   | { type: "classic.status"; target: Entity; status: string; until: number }
@@ -92,7 +96,17 @@ export type ClassicEvent =
       gold: number;
     }
   | { type: "classic.gold"; amount: number; total: number; reason: string }
-  | { type: "classic.potion"; base: string; kind: "life" | "mana" | "rejuv"; amount: number }
+  /** A potion was drunk. `lifeBefore`/`lifeAfter` (and mana) are the values around the drink (additive fields). */
+  | {
+      type: "classic.potion";
+      base: string;
+      kind: "life" | "mana" | "rejuv";
+      amount: number;
+      lifeBefore: number;
+      lifeAfter: number;
+      manaBefore: number;
+      manaAfter: number;
+    }
   | { type: "classic.item.equipped"; uid: number; slot: EquipSlot; name: string }
   | { type: "classic.item.unequipped"; uid: number; slot: EquipSlot }
   | { type: "classic.vendor.bought"; npc: string; name: string; price: number }

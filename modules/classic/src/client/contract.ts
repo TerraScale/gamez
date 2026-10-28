@@ -42,17 +42,26 @@ export type PanelId =
 /** Display colours (0xRRGGBB) shared by HUD and renderer. */
 export const RARITY_COLOR: Record<ItemRarity, number> = {
   normal: 0xe6e6e6,
-  magic: 0x6b8cff,
-  rare: 0xffd75e,
-  unique: 0xc8873a,
+  magic: 0xa6c4ff,
+  rare: 0xfff06b,
+  unique: 0xffb85c,
 };
 export const MONSTER_COLOR: Record<MonsterRarity, number> = {
   normal: 0xe6e6e6,
   minion: 0xe6e6e6,
   summon: 0x9fe0a8,
   champion: 0x5aa0ff,
-  unique: 0xe8b04a,
+  unique: 0xffb85c,
   boss: 0xff6a3d,
+};
+/**
+ * World nameplate colours of monsters. Same hues as MONSTER_COLOR (HUD), but
+ * the champion blue is lighter: 0x5aa0ff sank into dark and fogged floors.
+ * Elite names also get a dark backing plate (ArpgRenderEntity.labelPlate).
+ */
+export const MONSTER_LABEL_COLOR: Record<MonsterRarity, number> = {
+  ...MONSTER_COLOR,
+  champion: 0x9ac7ff,
 };
 export const ELEMENT_COLOR = {
   phys: 0xf2f2f2,
@@ -63,11 +72,40 @@ export const ELEMENT_COLOR = {
 } as const;
 export const GOLD_COLOR = 0xf0c419;
 
+/** WCAG contrast ratio of two 0xRRGGBB colours (1..21). Used by the colour tests and any HUD-side check. */
+export function contrastRatio(a: number, b: number): number {
+  const lum = (c: number): number => {
+    const ch = (v: number): number => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * ch((c >> 16) & 255) + 0.7152 * ch((c >> 8) & 255) + 0.0722 * ch(c & 255);
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 export const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+
+/**
+ * How an item compares with the equipped item it would replace (its best slot,
+ * the same slot the upgrade score uses). Stat lines are player text, e.g.
+ * "+2 to Armor" / "-3 to Dexterity"; the numeric score stays internal.
+ */
+export interface ItemCompare {
+  slot: EquipSlot;
+  /** The equipped item in that slot (null = the slot is empty). */
+  equipped: { uid: number; name: string } | null;
+  /** Stat differences (own minus equipped), in display order. */
+  stats: { text: string; delta: number }[];
+}
 
 export interface ItemView {
   uid: number;
+  /** Internal item base id (keys and actions only, never shown as text). */
   base: string;
+  /** Player-facing base name ("Sandals"). Optional so older fixtures still compile; the HUD falls back to the category. */
+  baseName?: string;
   name: string;
   rarity: ItemRarity;
   category: ItemCategory;
@@ -84,8 +122,10 @@ export interface ItemView {
   h: number;
   /** Requirements met by the hero. */
   usable: boolean;
-  /** Auto-equip score delta vs the currently equipped item in its best slot (>0 = upgrade). */
+  /** Auto-equip score delta vs the currently equipped item in its best slot (>0 = upgrade). Internal score. */
   upgrade: number;
+  /** Stat comparison with the equipped item (null when the item fits no slot). Optional for older fixtures. */
+  compare?: ItemCompare | null;
 }
 
 export interface SkillBarSlot {

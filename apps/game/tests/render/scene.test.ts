@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Container, Texture } from "pixi.js";
+import { Container, Texture, type Text } from "pixi.js";
 import type { TileMap } from "@gamez/world";
 import type { ArpgRenderEntity } from "@gamez/ui-host";
 import { EntityLayer, type EntityView } from "../../src/client/render/entity-view.ts";
@@ -9,10 +9,19 @@ import { FxLayer } from "../../src/client/render/fx.ts";
 import type { AnimVisual, SpriteVisual, Visuals } from "../../src/client/render/visuals.ts";
 
 /** A Visuals stand-in: exact keys in `anims` and `sprites` resolve, nothing else. */
-function fakeVisuals(anims: string[], sprites: string[] = []): Visuals {
+function fakeVisuals(anims: string[], sprites: string[] = [], frameCount = 1): Visuals {
   const frame = Texture.EMPTY;
-  const anim = (key: string): AnimVisual | null =>
-    anims.includes(key) ? { frames: [frame], anchor: undefined, fps: 10, loop: true } : null;
+  const cache = new Map<string, AnimVisual>();
+  const anim = (key: string): AnimVisual | null => {
+    if (!anims.includes(key)) return null;
+    let v = cache.get(key);
+    if (!v) {
+      const frames = Array.from({ length: frameCount }, () => frame);
+      v = { frames, anchor: undefined, fps: 10, loop: true };
+      cache.set(key, v);
+    }
+    return v;
+  };
   const still = (key: string): SpriteVisual | null =>
     sprites.includes(key) ? { texture: frame, anchor: undefined } : null;
   return {
@@ -41,12 +50,13 @@ function setup(visuals: Visuals) {
   const world = new Container();
   world.sortableChildren = true;
   const prims = buildPrimitives();
-  const layer = new EntityLayer(world, visuals, prims);
+  const labels = new Container();
+  const layer = new EntityLayer(world, visuals, prims, labels);
   const view = (id = "c1"): EntityView => {
     for (const v of layer.all()) if (v.id === id) return v;
     throw new Error(`no view ${id}`);
   };
-  return { world, prims, layer, view };
+  return { world, labels, prims, layer, view };
 }
 
 describe("EntityLayer", () => {
@@ -93,18 +103,23 @@ describe("EntityLayer", () => {
     expect(view().resolvedKey).toBe("unit.hero.idle");
   });
 
-  it("lies down and keeps the entity visible when a dead unit has no death animation", () => {
+  it("fades and squashes (never rotates) a dead unit without a death animation", () => {
     const { layer, view } = setup(fakeVisuals([]));
     layer.upsert(entity({ dead: true }));
-    expect(view().body.rotation).toBeCloseTo(Math.PI / 2, 9);
+    expect(view().body.rotation).toBe(0);
+    expect(view().body.scale.y).toBeLessThan(view().body.scale.x);
     expect(view().root.alpha).toBeLessThan(1);
+    // The scene's corpse fade multiplies in.
+    layer.upsert(entity({ dead: true, alpha: 0.5 }));
+    expect(view().root.alpha).toBeCloseTo(0.5 * 0.55, 9);
   });
 
-  it("does not lie down when a death animation plays", () => {
+  it("does not squash or fade when a death animation plays", () => {
     const { layer, view } = setup(fakeVisuals(["unit.monster.zombie.death"]));
     layer.upsert(entity({ dead: true }));
     expect(view().resolved).toBe("anim");
     expect(view().body.rotation).toBe(0);
+    expect(view().body.scale.y).toBe(1);
     expect(view().root.alpha).toBe(1);
   });
 
@@ -161,6 +176,124 @@ describe("EntityLayer", () => {
     layer.clear();
     expect(layer.size).toBe(0);
     expect(world.children).toHaveLength(0);
+  });
+});
+
+describe("EntityLayer animation and labels", () => {
+  it("drives attack/cast frames from actionProgress and resumes autoplay without it", () => {
+    const { layer, view } = setup(fakeVisuals(["unit.monster.zombie.attack"], [], 4));
+    layer.upsert(entity({ action: "attack", actionProgress: 0.5 }));
+    const sp = view().anim!;
+    expect(sp.playing).toBe(false);
+    expect(sp.currentFrame).toBe(2);
+    layer.upsert(entity({ action: "attack", actionProgress: 1 }));
+    expect(sp.currentFrame).toBe(3);
+    // A cast without its own clip uses the attack clip, with the same frame math.
+    layer.upsert(entity({ action: "cast", actionProgress: 0 }));
+    expect(view().resolvedKey).toBe("unit.monster.zombie.attack");
+    expect(sp.currentFrame).toBe(0);
+    layer.upsert(entity({ action: "attack" }));
+    expect(sp.playing).toBe(true);
+  });
+
+  it("scales the clip speed with animRate", () => {
+    const { layer, view } = setup(fakeVisuals(["unit.monster.zombie.walk"], [], 4));
+    layer.upsert(entity({ action: "walk" }));
+    const base = view().anim!.animationSpeed;
+    layer.upsert(entity({ action: "walk", animRate: 1.5 }));
+    expect(view().anim!.animationSpeed).toBeCloseTo(base * 1.5, 9);
+    layer.upsert(entity({ action: "walk", animRate: 9 }));
+    expect(view().anim!.animationSpeed).toBeCloseTo(base * 1.8, 9);
+  });
+
+  it("flashes red and knocks back on a hit, then restores the tint", () => {
+    const { layer, view } = setup(fakeVisuals([]));
+    layer.upsert(entity({ kind: "unit", hitFlash: 1 }));
+    const flashed = view().paintedTint;
+    expect(flashed).not.toBe(0xffffff);
+    expect((flashed >> 16) & 0xff).toBeGreaterThan(flashed & 0xff);
+    expect(view().body.x).not.toBe(0);
+    layer.upsert(entity({ kind: "unit" }));
+    expect(view().paintedTint).toBe(0xffffff);
+    expect(view().body.x).toBe(0);
+  });
+
+  it("mirrors facing-less art for screen-left facings, never facing-specific clips", () => {
+    const { layer, view } = setup(fakeVisuals(["unit.monster.zombie.walk"]));
+    layer.upsert(entity({ action: "walk", facing: "w" }));
+    expect(view().body.scale.x).toBeLessThan(0);
+    layer.upsert(entity({ action: "walk", facing: "e" }));
+    expect(view().body.scale.x).toBeGreaterThan(0);
+    const per = setup(fakeVisuals(["unit.monster.zombie.walk.w"]));
+    per.layer.upsert(entity({ action: "walk", facing: "w" }));
+    expect(per.view().body.scale.x).toBeGreaterThan(0);
+  });
+
+  it("rotates projectiles along vx/vy", () => {
+    const { layer, view } = setup(fakeVisuals([]));
+    layer.upsert(entity({ kind: "projectile", vx: 1, vy: 1 }));
+    expect(view().body.rotation).toBeCloseTo(Math.PI / 2, 9);
+    layer.upsert(entity({ kind: "projectile", vx: 1, vy: -1 }));
+    expect(view().body.rotation).toBeCloseTo(0, 9);
+  });
+
+  it("draws names, subtitles and markers in the label layer, above every sprite", () => {
+    const { world, labels, layer, view } = setup(fakeVisuals([]));
+    layer.upsert(
+      entity({
+        kind: "npc",
+        name: "Captain Hale",
+        showLabel: true,
+        subtitle: "Watch Captain",
+        marker: "!",
+      }),
+    );
+    const v = view();
+    expect(world.children).toHaveLength(1);
+    expect(labels.children).toHaveLength(1);
+    expect(v.tag?.parent).toBe(labels);
+    expect(v.label?.visible).toBe(true);
+    expect(v.subtitle?.text).toBe("Watch Captain");
+    expect(v.marker?.text).toBe("!");
+    // Stack: marker above the name above the subtitle.
+    expect(v.marker!.y).toBeLessThan(v.label!.y);
+    expect(v.label!.y).toBeLessThan(v.subtitle!.y);
+    const census = layer.census();
+    expect(census.labels.npc).toBe(1);
+    expect(census.labels.subtitle).toBe(1);
+    expect(census.labels.marker).toBe(1);
+    layer.upsert(entity({ kind: "npc", name: "Captain Hale", showLabel: true, marker: "?" }));
+    expect(v.marker?.text).toBe("?");
+    expect(v.subtitle?.visible).toBe(false);
+    layer.upsert(entity({ kind: "npc", name: "Captain Hale", showLabel: true, marker: null }));
+    expect(layer.census().labels.marker).toBe(0);
+    layer.remove("c1");
+    expect(labels.children).toHaveLength(0);
+  });
+
+  it("de-overlaps loot labels by priority and keeps labels inside the view", () => {
+    const { layer, view } = setup(fakeVisuals([]));
+    layer.upsert(
+      entity({ id: "gold", kind: "loot", name: "7 gold", showLabel: true, labelPriority: 0 }),
+    );
+    layer.upsert(
+      entity({ id: "uniq", kind: "loot", name: "Hollow Fang", showLabel: true, labelPriority: 5 }),
+    );
+    const rect = { x0: -10_000, y0: -10_000, x1: 10_000, y1: 10_000 };
+    layer.layoutLabels(rect);
+    expect(view("uniq").texts!.y).toBe(0);
+    expect(view("gold").texts!.y).toBeLessThan(0);
+    // The hero's own name is a fixed obstacle: loot under it steps aside.
+    layer.upsert(entity({ id: "hero", kind: "unit", name: "Hero", isSelf: true }));
+    layer.upsert(entity({ id: "potion", kind: "loot", name: "Potion", showLabel: true, x: 20 }));
+    layer.upsert(entity({ id: "hero", kind: "unit", name: "Hero", isSelf: true, x: 20 }));
+    layer.layoutLabels(rect);
+    expect(view("hero").texts!.y).toBe(0);
+    expect(view("potion").texts!.y).not.toBe(0);
+    // A view whose left edge cuts the label pushes it right.
+    const g = view("gold");
+    layer.layoutLabels({ x0: g.sx - 5, y0: -10_000, x1: g.sx + 10_000, y1: 10_000 });
+    expect(g.texts!.x).toBeGreaterThan(0);
   });
 });
 
@@ -240,6 +373,20 @@ describe("FxLayer", () => {
     expect(fx.activeEffects).toBe(40);
     fx.update(10_000);
     expect(fx.activeEffects).toBe(0);
+    fx.destroy();
+  });
+
+  it("staggers floats that spawn at the same spot and shrinks misses", () => {
+    const fx = new FxLayer(() => null);
+    fx.float({ x: 1, y: 1, text: "12", color: 0xffffff }, { sx: 100, sy: 50 });
+    fx.float({ x: 1, y: 1, text: "miss", color: 0x777777, size: "s" }, { sx: 100, sy: 50 });
+    fx.float({ x: 9, y: 9, text: "3", color: 0xffffff }, { sx: 400, sy: 50 });
+    const [a, b, c] = (fx as unknown as { floats: { active: { text: Text }[] } }).floats.active;
+    expect(a!.text.position.x).toBe(100);
+    expect(b!.text.position.x).not.toBe(100);
+    expect(b!.text.position.y).toBeLessThan(50);
+    expect(c!.text.position.x).toBe(400);
+    expect(Number(b!.text.style.fontSize)).toBeLessThan(Number(a!.text.style.fontSize));
     fx.destroy();
   });
 

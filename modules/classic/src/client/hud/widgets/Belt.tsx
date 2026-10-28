@@ -1,22 +1,24 @@
 /** Four potion slots with counts and the Q W E R keys (classic.hud.bottom). */
 import { useSelect } from "../hooks.ts";
-import { Btn, useCompact, type SlotProps } from "../common.tsx";
-import { bottomOrder } from "../layout.ts";
+import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
+import { bottomOrderFor } from "../layout.ts";
 import { fmtInt } from "../format.ts";
 import { PotionIcon } from "../icons.tsx";
 import { C, labelStyle } from "../styles.ts";
 
 export function Belt({ api }: SlotProps) {
   const belt = useSelect(api.hud, (s) => s.belt);
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
+  const compact = layout !== "desktop";
   const size = compact ? 44 : 52;
   return (
     <div
       role="toolbar"
       aria-label="Belt"
       style={{
-        order: bottomOrder(compact, "belt"),
-        flexBasis: compact ? "100%" : undefined,
+        order: bottomOrderFor(layout, "belt"),
+        // Portrait phones put each row on its own line; the landscape band keeps them inline between the orbs.
+        flexBasis: layout === "compact" ? "100%" : undefined,
         display: "flex",
         justifyContent: "center",
         gap: compact ? 4 : 6,

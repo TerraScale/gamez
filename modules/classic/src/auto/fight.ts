@@ -39,6 +39,8 @@ import {
   FIGHT_LINGER_TICKS,
   FIGHT_RANGE,
   isIgnored,
+  LEAVE_FIGHT_RANGE,
+  leaving,
   lifePct,
   moveTo,
   setIntent,
@@ -97,6 +99,26 @@ export function scanFoes(c: AutoCtx): Foe[] {
   }
   addSummoners(c, out);
   return out;
+}
+
+/**
+ * True when `e` is attacking the hero right now (striking or charging it).
+ * A kiting foe steps away: chasing it would pull the hero off its route.
+ */
+function attackingHero(c: AutoCtx, e: Entity): boolean {
+  const ai = c.world.get(e, Ai);
+  if (!ai || ai.target !== c.hero) return false;
+  return ai.state === "attack" || ai.state === "charge";
+}
+
+/**
+ * The foes the hero engages. While it is leaving the level (descend, toTown:
+ * see util.leaving) only those within LEAVE_FIGHT_RANGE or attacking it;
+ * otherwise all of `foes`. Keeps the order of `foes`.
+ */
+export function engagedFoes(c: AutoCtx, foes: readonly Foe[]): readonly Foe[] {
+  if (foes.length === 0 || !leaving(c)) return foes;
+  return foes.filter((f) => f.dist <= LEAVE_FIGHT_RANGE || attackingHero(c, f.e));
 }
 
 /** Summoners are hunted this far (sub) behind their summons, even without line of sight. */
@@ -516,11 +538,14 @@ export function isStunned(c: AutoCtx): boolean {
   return false;
 }
 
-/** Step 5: fight the best target. */
-export function fightStep(c: AutoCtx, foes: readonly Foe[]): void {
+/**
+ * Step 5: fight the best of `targets` (default: every foe). `foes` is the
+ * whole scan (area counts, buffs and kiting see every foe in range).
+ */
+export function fightStep(c: AutoCtx, foes: readonly Foe[], targets: readonly Foe[] = foes): void {
   const st = c.st;
   const wasFighting = st.plan === "fight";
-  const target = pickTarget(c, foes);
+  const target = pickTarget(c, targets);
   if (target.e !== st.focus || !wasFighting || st.lastTileX !== c.tx || st.lastTileY !== c.ty) {
     st.lastTileX = c.tx;
     st.lastTileY = c.ty;

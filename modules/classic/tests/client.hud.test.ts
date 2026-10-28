@@ -21,8 +21,9 @@ import {
   minimapData,
   shareStructure,
   type HudContext,
+  type ItemContext,
 } from "../src/client/hudModel.ts";
-import { KIND, type ItemBaseProto, type ItemInstance } from "../src/types.ts";
+import { KIND, type EquipSlot, type ItemBaseProto, type ItemInstance } from "../src/types.ts";
 import { sellPrice } from "../src/rules.ts";
 import { spawnTestHero, spawnTestMonster, testSim, useOpenMap } from "./support/harness.ts";
 
@@ -328,5 +329,73 @@ describe("hud helpers", () => {
     );
     expect(potion.upgrade).toBe(0);
     expect(potion.lines).toEqual(["Restores 50 Life"]);
+  });
+});
+
+describe("item comparison with the equipped item", () => {
+  function noEquipment(): Record<EquipSlot, ItemInstance | null> {
+    return {
+      weapon: null,
+      offhand: null,
+      helm: null,
+      armor: null,
+      gloves: null,
+      boots: null,
+      amulet: null,
+      ring1: null,
+      ring2: null,
+    };
+  }
+
+  function ctxWith(
+    sim: ReturnType<typeof testSim>,
+    equipped: Record<EquipSlot, ItemInstance | null> | null,
+  ): ItemContext {
+    return {
+      registry: sim.loaded.registry,
+      heroLevel: 10,
+      attrs: { str: 50, dex: 50, mag: 0, vit: 0 },
+      primary: "str",
+      equipped,
+      junkPct: 10,
+    };
+  }
+
+  it("lists the stat differences against the equipped item in its best slot", () => {
+    const sim = testSim([]);
+    const plain: ItemInstance = { ...sword(2), name: "Plain Test Sword", mods: [] };
+    const view = itemView(sword(1), ctxWith(sim, { ...noEquipment(), weapon: plain }));
+    expect(view.compare).toMatchObject({
+      slot: "weapon",
+      equipped: { uid: 2, name: "Plain Test Sword" },
+      stats: [{ text: "+20% Damage", delta: 20 }],
+    });
+    expect(view.upgrade).toBeGreaterThan(0);
+  });
+
+  it("shows losses as negative differences", () => {
+    const sim = testSim([]);
+    const strong: ItemInstance = { ...sword(2), mods: [{ stat: "dmgPct", value: 30 }] };
+    const view = itemView(sword(1), ctxWith(sim, { ...noEquipment(), weapon: strong }));
+    expect(view.compare?.stats).toEqual([{ text: "-10% Damage", delta: -10 }]);
+    expect(view.upgrade).toBeLessThan(0);
+  });
+
+  it("compares with an empty slot as a plain gain, and names no equipped item", () => {
+    const sim = testSim([]);
+    const view = itemView(sword(1), ctxWith(sim, noEquipment()));
+    expect(view.compare).toMatchObject({ slot: "weapon", equipped: null });
+    expect(view.compare?.stats).toEqual([{ text: "+20% Damage", delta: 20 }]);
+  });
+
+  it("marks an equipped item as its own comparison and carries the base name", () => {
+    const sim = testSim([]);
+    const worn = sword(1);
+    const view = itemView(worn, ctxWith(sim, { ...noEquipment(), weapon: worn }));
+    expect(view.compare?.equipped?.uid).toBe(1);
+    expect(view.compare?.stats).toEqual([]);
+    expect(view.baseName).toBe(
+      sim.loaded.registry.get<ItemBaseProto>(KIND.itemBase, "test.item.sword")?.name,
+    );
   });
 });

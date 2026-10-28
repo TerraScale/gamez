@@ -17,6 +17,7 @@ import type {
   UiState,
 } from "../src/client/contract.ts";
 import { ClassicHud, registerDefaultHud } from "../src/client/hud/index.tsx";
+import { COMBAT_LOG_LINES } from "../src/client/hud/widgets/CombatLog.tsx";
 import { CharacterPanel } from "../src/client/hud/panels/CharacterPanel.tsx";
 import { InventoryPanel } from "../src/client/hud/panels/InventoryPanel.tsx";
 import { SkillsPanel } from "../src/client/hud/panels/SkillsPanel.tsx";
@@ -393,6 +394,20 @@ function withPanels(panels: PanelId[], ui: Partial<UiState> = {}, hud: Partial<H
   return makeApi({ ui: { panels, ...ui }, hud });
 }
 
+/**
+ * The strings a player can read: text nodes plus aria-label and title values.
+ * Styles and data-* attributes (layout slot names such as classic.hud.top) are dropped.
+ */
+function humanText(markup: string): string {
+  const noStyle = markup.replace(/<style[\s\S]*?<\/style>/g, " ");
+  const labels = [...noStyle.matchAll(/(?:aria-label|title)="([^"]*)"/g)].map((m) => m[1]);
+  const text = noStyle
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
+  return `${text} ${labels.join(" ")}`;
+}
+
 function count(markup: string, re: RegExp): number {
   return (markup.match(re) ?? []).length;
 }
@@ -539,7 +554,7 @@ describe("target, quests, log and area", () => {
     expect(markup).not.toContain("Welcome");
   });
 
-  it("shows the last eight log lines in the combat log", () => {
+  it("shows the newest lines that fit the combat log", () => {
     const log: LogLine[] = Array.from({ length: 10 }, (_, i) => ({
       id: i,
       tick: i,
@@ -548,9 +563,10 @@ describe("target, quests, log and area", () => {
       color: 0xe6e6e6,
     }));
     const markup = renderHud(makeApi({ log }).api);
+    const shown = COMBAT_LOG_LINES;
     expect(markup).toContain("Line 9");
-    expect(markup).toContain("Line 2");
-    expect(markup).not.toContain("Line 1<");
+    expect(markup).toContain(`Line ${10 - shown}`);
+    expect(markup).not.toContain(`Line ${9 - shown}<`);
   });
 
   it("shows the area banner with depth and explored share", () => {
@@ -746,7 +762,7 @@ describe("panels", () => {
     expect(markup).toContain("Stashed Ring");
     expect(markup).toContain("Take Stashed Ring");
     expect(markup).toContain("Put Rusted Short Sword");
-    expect(markup).toContain("1 / 40 slots");
+    expect(markup).toContain("1 of 40 slots");
   });
 
   it("waypoint: unlocked depths, current depth marked and not travellable", () => {
@@ -827,7 +843,7 @@ describe("death, toasts, errors and tooltip", () => {
     expect(renderHud(makeApi().api)).not.toContain("Not enough gold");
   });
 
-  it("shows the item under the pointer with the upgrade delta", () => {
+  it("shows the item under the pointer with its base name and how it compares", () => {
     const { api } = makeApi({
       ui: { hover: { uid: 1, x: 100, y: 120 } },
       hud: {
@@ -835,7 +851,24 @@ describe("death, toasts, errors and tooltip", () => {
           cols: 10,
           rows: 4,
           items: [
-            { x: 0, y: 0, item: makeItem({ uid: 1, name: "Rusted Short Sword", upgrade: 3 }) },
+            {
+              x: 0,
+              y: 0,
+              item: makeItem({
+                uid: 1,
+                name: "Rusted Short Sword",
+                baseName: "Short Sword",
+                upgrade: 3,
+                compare: {
+                  slot: "weapon",
+                  equipped: { uid: 2, name: "Oak Staff" },
+                  stats: [
+                    { text: "+2 to Armor", delta: 2 },
+                    { text: "-3 to Dexterity", delta: -3 },
+                  ],
+                },
+              }),
+            },
           ],
         },
       },
@@ -843,10 +876,18 @@ describe("death, toasts, errors and tooltip", () => {
     const markup = renderHud(api);
     expect(markup).toContain('role="tooltip"');
     expect(markup).toContain("Rusted Short Sword");
-    expect(markup).toContain("Upgrade +3");
+    expect(markup).toContain("Short Sword · ilvl");
+    expect(markup).toContain("Better than equipped");
+    expect(markup).toContain("vs equipped:");
+    expect(markup).toContain("+2 to Armor");
+    // Losses are drawn in the danger colour.
+    expect(markup).toMatch(/color:#e0664f">-3 to Dexterity</);
+    // The numeric score is never shown.
+    expect(markup).not.toContain("Upgrade +3");
+    expect(markup).not.toMatch(/\+3\b/);
   });
 
-  it("shows the equipped item the tooltip compares with", () => {
+  it("shows the equipped item the tooltip compares with, and a loss in words", () => {
     const { api } = makeApi({
       ui: { hover: { uid: 1, x: 100, y: 120 } },
       hud: {
@@ -854,14 +895,80 @@ describe("death, toasts, errors and tooltip", () => {
           cols: 10,
           rows: 4,
           items: [
-            { x: 0, y: 0, item: makeItem({ uid: 1, name: "Rusted Short Sword", upgrade: -2 }) },
+            {
+              x: 0,
+              y: 0,
+              item: makeItem({
+                uid: 1,
+                name: "Rusted Short Sword",
+                upgrade: -2,
+                compare: {
+                  slot: "weapon",
+                  equipped: { uid: 2, name: "Oak Staff" },
+                  stats: [{ text: "-2 to Strength", delta: -2 }],
+                },
+              }),
+            },
           ],
         },
       },
     });
     const markup = renderHud(api);
-    expect(markup).toContain("Downgrade -2");
+    expect(markup).toContain("Worse than equipped");
     expect(markup).toContain("Equipped (Weapon): Oak Staff");
+  });
+
+  it("says when an item fills an empty slot, and when it is the equipped item", () => {
+    const empty = renderHud(
+      makeApi({
+        ui: { hover: { uid: 1, x: 100, y: 120 } },
+        hud: {
+          inventory: {
+            cols: 10,
+            rows: 4,
+            items: [
+              {
+                x: 0,
+                y: 0,
+                item: makeItem({
+                  uid: 1,
+                  compare: { slot: "weapon", equipped: null, stats: [] },
+                }),
+              },
+            ],
+          },
+        },
+      }).api,
+    );
+    expect(empty).toContain("Empty Weapon slot");
+
+    const worn = renderHud(
+      makeApi({
+        ui: { hover: { uid: 1, x: 100, y: 120 } },
+        hud: {
+          inventory: {
+            cols: 10,
+            rows: 4,
+            items: [
+              {
+                x: 0,
+                y: 0,
+                item: makeItem({
+                  uid: 1,
+                  compare: {
+                    slot: "weapon",
+                    equipped: { uid: 1, name: "Rusted Short Sword" },
+                    stats: [],
+                  },
+                }),
+              },
+            ],
+          },
+        },
+      }).api,
+    );
+    expect(worn).toContain("Currently equipped");
+    expect(worn).not.toContain("vs equipped");
   });
 
   it("shows no tooltip when nothing is hovered", () => {
@@ -869,7 +976,143 @@ describe("death, toasts, errors and tooltip", () => {
   });
 });
 
+describe("player-facing text", () => {
+  it("never shows an internal id in any HUD string, with items everywhere", () => {
+    const panels: PanelId[] = [
+      "character",
+      "inventory",
+      "skills",
+      "quests",
+      "vendor",
+      "stash",
+      "waypoint",
+      "settings",
+      "log",
+    ];
+    const { api } = makeApi({
+      ui: { panels, hover: { uid: 1, x: 100, y: 120 } },
+      hud: {
+        inventory: {
+          cols: 10,
+          rows: 4,
+          items: [
+            {
+              x: 0,
+              y: 0,
+              item: makeItem({ uid: 1, base: "classic.item.sandals", baseName: "Sandals" }),
+            },
+          ],
+        },
+      },
+    });
+    const markup = renderHud(api);
+    expect(humanText(markup)).toContain("Sandals");
+    expect(humanText(markup)).not.toMatch(/classic\./);
+  });
+
+  it("labels an item without a base name by its category, not its id", () => {
+    const markup = renderHud(
+      makeApi({
+        ui: { hover: { uid: 1, x: 100, y: 120 } },
+        hud: {
+          inventory: {
+            cols: 10,
+            rows: 4,
+            items: [
+              {
+                x: 0,
+                y: 0,
+                item: makeItem({ uid: 1, base: "classic.item.sandals", category: "boots" }),
+              },
+            ],
+          },
+        },
+      }).api,
+    );
+    expect(humanText(markup)).toContain("Boots · ilvl");
+    expect(humanText(markup)).not.toMatch(/classic\./);
+  });
+
+  it("pluralises every count the panels show", () => {
+    const one = makeItem({ uid: 1, w: 1, h: 1 });
+    const { api } = makeApi({
+      hud: {
+        stashSize: 1,
+        stash: [],
+        hero: makeHero({ skillPoints: 1, gold: 1 }),
+        inventory: { cols: 10, rows: 4, items: [{ x: 0, y: 0, item: one }] },
+      },
+      ui: { panels: ["inventory", "stash", "skills"] },
+    });
+    const text = humanText(renderHud(api));
+    expect(text).toContain("1 item");
+    expect(text).not.toContain("1 items");
+    expect(text).toContain("39 free cells");
+    expect(text).not.toContain("1 free cell");
+    expect(text).toContain("1 skill point to spend");
+    expect(text).toContain("0 of 1 slot");
+    expect(text).not.toContain("1 slots");
+  });
+});
+
+describe("skill cards and bag grid", () => {
+  it("states mana and cooldown once, on the stat line", () => {
+    const { api } = makeApi({
+      hud: {
+        hero: makeHero({ skillPoints: 1 }),
+        skills: [
+          {
+            id: "classic.skill.cleave",
+            name: "Cleave",
+            description: "A wide melee swing. · Range: 1.5 tiles",
+            icon: "icon.skill.cleave",
+            rank: 2,
+            maxRank: 5,
+            reqLevel: 1,
+            learnable: true,
+            manaCost: 12,
+            cooldown: 200,
+            onBar: 0,
+            tags: ["melee", "aoe"],
+          },
+        ],
+      },
+    });
+    const markup = renderToStaticMarkup(<SkillsPanel api={api} />);
+    expect(count(markup, /12 mana/g)).toBe(1);
+    expect(count(markup, /10s cooldown/g)).toBe(1);
+    expect(markup).not.toContain("Mana:");
+    expect(markup).not.toContain("Cooldown:");
+    expect(markup).toContain("Requires level 1 · 12 mana · 10s cooldown");
+  });
+
+  it("keeps every bag cell at 44 px on compact screens and lets the card scroll", () => {
+    const markup = renderToStaticMarkup(
+      <InventoryPanel api={makeApi({ ui: { compact: true } }).api} />,
+    );
+    // 10 columns x 44 px, inside an overflow-x card rather than shrunk.
+    expect(markup).toContain("width:440px");
+    expect(markup).toContain("overflow-x:auto");
+    expect(markup).not.toMatch(/width:(2[0-9]|3[0-9])px/);
+    expect(markup).toContain("swipe the bag sideways");
+    expect(markup).not.toContain("right-click");
+  });
+
+  it("uses 44 px cells on desktop too", () => {
+    const markup = renderToStaticMarkup(
+      <InventoryPanel api={makeApi({ ui: { compact: false } }).api} />,
+    );
+    expect(markup).toContain("width:440px");
+  });
+});
+
 describe("optional widgets", () => {
+  it("shows a Map chip (44 px) in the minimap's place while the minimap is hidden", () => {
+    const markup = renderHud(makeApi().api);
+    expect(markup).toContain('aria-label="Show minimap"');
+    expect(markup).not.toContain('aria-label="Hide minimap"');
+  });
+
   it("hides the minimap unless settings.showMinimap is on", () => {
     expect(renderHud(makeApi().api)).not.toContain('aria-label="Minimap panel"');
     const on = makeApi({ ui: { settings: { ...makeUi().settings, showMinimap: true } } });

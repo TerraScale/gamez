@@ -9,8 +9,16 @@ import type { MonsterProto } from "../types.ts";
 
 type Body = Omit<MonsterProto, "appearance" | "fallbackAppearance">;
 
+/**
+ * Fallback art for a monster or NPC whose own clips are missing. It must not
+ * be a real art id (the player's "unit.hero" art would then stand in for the
+ * monster): `unit.unknown` is not in the art manifest, so the renderer falls
+ * through to its placeholder.
+ */
+export const UNKNOWN_ART = "unit.unknown";
+
 function monster(key: string, p: Body): MonsterProto {
-  return { appearance: `unit.monster.${key}`, fallbackAppearance: "unit.hero", ...p };
+  return { appearance: `unit.monster.${key}`, fallbackAppearance: UNKNOWN_ART, ...p };
 }
 
 const CRYPT = "classic.theme.crypt";

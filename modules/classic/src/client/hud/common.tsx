@@ -1,7 +1,14 @@
 /** Small shared React pieces of the HUD: buttons, progress bars, the panel frame and slot props. */
-import type { CSSProperties, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import type { ClassicClientApi, PanelId } from "../contract.ts";
 import { useSelect } from "./hooks.ts";
+import { hudLayoutFor, NO_INSETS, type HudInsets, type HudLayout } from "./layout.ts";
 import { barTrack, buttonStyle, C, panelStyle, titleStyle } from "./styles.ts";
 
 /** Props every HUD slot component receives. */
@@ -9,8 +16,36 @@ export interface SlotProps {
   api: ClassicClientApi;
 }
 
+/** Measured top and bottom region heights, provided by ClassicHud to widgets and panels. */
+export const HudInsetsContext = createContext<HudInsets>(NO_INSETS);
+
+export function useHudInsets(): HudInsets {
+  return useContext(HudInsetsContext);
+}
+
 export function useCompact(api: ClassicClientApi): boolean {
   return useSelect(api.ui, (u) => u.compact);
+}
+
+function subscribeResize(onChange: () => void): () => void {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+
+/** Viewport height in CSS px, re-read on resize (orientation changes on phones). */
+export function useViewportHeight(): number {
+  return useSyncExternalStore(
+    subscribeResize,
+    () => window.innerHeight,
+    () => 900,
+  );
+}
+
+/** The layout this screen uses: desktop, compact (phone portrait) or short (phone landscape). */
+export function useHudLayout(api: ClassicClientApi): HudLayout {
+  const compact = useCompact(api);
+  const height = useViewportHeight();
+  return hudLayoutFor(compact, height);
 }
 
 export interface BtnProps {
@@ -90,7 +125,7 @@ export function ProgressBar({
   );
 }
 
-/** Frame of every panel: title, close button (44 px) and a scrolling body. Full-screen sheet when compact. */
+/** Frame of every panel: title, close button (44 px) and a scrolling body. Full-screen sheet on phones. */
 export function PanelFrame({
   api,
   id,
@@ -105,7 +140,8 @@ export function PanelFrame({
   width?: number;
   children?: ReactNode;
 }) {
-  const compact = useCompact(api);
+  // Phone portrait and landscape both get a full-screen sheet; desktop keeps a floating panel.
+  const compact = useHudLayout(api) !== "desktop";
   return (
     <section
       role="dialog"
@@ -117,9 +153,11 @@ export function PanelFrame({
         width: compact ? "100%" : width,
         maxWidth: compact ? "100%" : "100%",
         height: compact ? "100%" : undefined,
-        maxHeight: compact ? "100%" : "calc(100vh - 220px)",
+        // Desktop: the PanelHost box already stops above the bottom bar, so the panel fills it.
+        maxHeight: "100%",
         minHeight: 0,
-        background: compact ? "rgba(14, 12, 10, 0.97)" : C.panel,
+        // Opaque on phones: HUD text must not show through a full-screen sheet.
+        background: compact ? "#0e0c0a" : C.panel,
       }}
     >
       <header

@@ -1,8 +1,8 @@
-/** Opens and closes panels: C I S L, automap and settings (classic.hud.bottom). */
+/** Opens and closes panels: C I S L, automap, settings, and the Modes control (classic.hud.bottom). */
 import type { PanelId } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, useCompact, type SlotProps } from "../common.tsx";
-import { bottomOrder } from "../layout.ts";
+import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
+import { bottomOrderFor, modesControlVisible } from "../layout.ts";
 
 const BUTTONS: { id: PanelId; label: string; title: string }[] = [
   { id: "character", label: "C", title: "Character (C)" },
@@ -15,18 +15,21 @@ const BUTTONS: { id: PanelId; label: string; title: string }[] = [
 
 export function PanelButtons({ api }: SlotProps) {
   const open = useSelect(api.ui, (u) => u.panels);
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
+  const compact = layout !== "desktop";
+  // The mode picker control. The shell has no back button for classic (ClientModeView.ownsExitControl).
+  const showModes = modesControlVisible(layout, open.length > 0);
   return (
     <div
       role="toolbar"
       aria-label="Panels"
       style={{
-        order: bottomOrder(compact, "panel"),
+        order: bottomOrderFor(layout, "panel"),
         flexBasis: "100%",
         display: "flex",
         justifyContent: "center",
         flexWrap: "wrap",
-        gap: 6,
+        gap: compact ? 4 : 6,
         pointerEvents: "none",
       }}
     >
@@ -43,6 +46,19 @@ export function PanelButtons({ api }: SlotProps) {
           {b.label}
         </Btn>
       ))}
+      {showModes ? (
+        <Btn
+          label="Modes: back to the mode picker"
+          title="Modes"
+          minWidth={44}
+          height={44}
+          fontSize={12}
+          style={{ padding: "0 8px" }}
+          onClick={() => api.exit()}
+        >
+          Modes
+        </Btn>
+      ) : null}
     </div>
   );
 }

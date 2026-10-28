@@ -12,6 +12,7 @@ import { createSim, loadMode, type Sim, type SimSnapshot } from "@gamez/kernel";
 import {
   createSlotRegistry,
   isArpgRenderer,
+  type ArpgWorldRenderer,
   type ClientModeView,
   type ClientServices,
   type WorldRenderer,
@@ -20,10 +21,21 @@ import { mode, modules } from "../index.ts";
 import { ACTION } from "../actions.ts";
 import { RES, type ControlState } from "../resources.ts";
 import { ClassicHud, registerDefaultHud } from "./hud/index.tsx";
+import { hudLayoutFor } from "./hud/layout.ts";
+import { labelInsetsFor } from "./scene.ts";
 import type { ClassicClientApi, Settings } from "./contract.ts";
 import { createClassicGame, type ClassicGame } from "./game.ts";
 import { bindKeyboard, nextMode, stepSpeed, type KeyCommand } from "./input.ts";
 import { browserStorage, createSaveStore, DEFAULT_SETTINGS, type SaveRecord } from "./persist.ts";
+import {
+  defaultHeroName,
+  EventProbe,
+  installClassicDebug,
+  readDebugParams,
+  type DebugParams,
+} from "./debug.ts";
+
+export { classicGalleryView } from "./gallery.ts";
 
 /** Absences longer than this (ms) are credited as offline progress. */
 export const OFFLINE_MIN_MS = 60_000;
@@ -57,6 +69,7 @@ function randomSeed(): number {
 function startSim(
   loaded: ReturnType<typeof loadMode>,
   saved: SaveRecord | null,
+  seed: number,
 ): { sim: Sim; fresh: boolean } {
   if (saved) {
     try {
@@ -68,7 +81,17 @@ function startSim(
       // A snapshot that does not restore is treated as no save.
     }
   }
-  return { sim: createSim(loaded, { seed: randomSeed() }), fresh: true };
+  return { sim: createSim(loaded, { seed }), fresh: true };
+}
+
+/** `?class=…&autostart=1`: creates the hero (replacing a saved one of another class). */
+function autostart(api: ClassicClientApi, params: DebugParams): void {
+  const classId = params.classId;
+  if (!params.autostart || classId === null) return;
+  const hud = api.hud.getSnapshot();
+  if (hud.phase === "play" && hud.hero?.classId === classId) return;
+  if (hud.phase === "play") api.newGame();
+  api.act(ACTION.newHero, { classId, name: params.name ?? defaultHeroName(classId) });
 }
 
 function onKey(api: ClassicClientApi, cmd: KeyCommand): void {
@@ -109,8 +132,37 @@ function onKey(api: ClassicClientApi, cmd: KeyCommand): void {
   }
 }
 
+/**
+ * Keeps the renderer's world-label insets (setLabelInsets, optional) in step
+ * with the HUD layout: recomputed on resize and on UI changes, but only sent
+ * when the layout or the minimap visibility actually changed.
+ */
+function trackLabelInsets(renderer: ArpgWorldRenderer, api: ClassicClientApi): (() => void) | null {
+  if (!renderer.setLabelInsets) return null;
+  let key = "";
+  const update = (): void => {
+    const ui = api.ui.getSnapshot();
+    // Same inputs as the HUD's useHudLayout: ui.compact and the viewport height.
+    const layout = hudLayoutFor(ui.compact, window.innerHeight);
+    const minimap = ui.settings.showMinimap;
+    const next = `${layout}|${minimap ? 1 : 0}`;
+    if (next === key) return;
+    key = next;
+    renderer.setLabelInsets?.(labelInsetsFor(layout, minimap));
+  };
+  update();
+  const unsub = api.ui.subscribe(update);
+  window.addEventListener("resize", update);
+  return () => {
+    unsub();
+    window.removeEventListener("resize", update);
+  };
+}
+
 export const classicView: ClientModeView = {
   modeId: "classic",
+  // The HUD draws its own Modes control (PanelButtons), so the shell skips its back button.
+  ownsExitControl: true,
   mount(host: HTMLElement, services: ClientServices) {
     const worldLayer = layer("");
     const hudLayer = layer("pointer-events:none");
@@ -121,6 +173,8 @@ export const classicView: ClientModeView = {
     let root: ReturnType<typeof createRoot> | null = null;
     let unbindKeys: (() => void) | null = null;
     let saveTimer: number | null = null;
+    let uninstallDebug: (() => void) | null = null;
+    let unsubInsets: (() => void) | null = null;
     const onVisibility = (): void => {
       if (document.visibilityState === "hidden") game?.save();
     };
@@ -134,6 +188,10 @@ export const classicView: ClientModeView = {
       window.removeEventListener("pagehide", onPageHide);
       unbindKeys?.();
       unbindKeys = null;
+      uninstallDebug?.();
+      uninstallDebug = null;
+      unsubInsets?.();
+      unsubInsets = null;
       game?.save();
       game?.destroy();
       game = null;
@@ -157,9 +215,13 @@ export const classicView: ClientModeView = {
       await created.init(worldLayer, services.manifest, services.assetBaseUrl);
 
       const loaded = loadMode(mode, modules);
-      const store = createSaveStore(browserStorage());
+      const params = readDebugParams(globalThis.location?.search ?? "");
+      // A seeded run is a throwaway: it neither restores nor overwrites the local save.
+      const store = createSaveStore(params.seed === null ? browserStorage() : null);
       const saved = store.load(loaded.contentHash);
-      const { sim, fresh } = startSim(loaded, saved);
+      let seed = params.seed ?? randomSeed();
+      const { sim, fresh } = startSim(loaded, saved, seed);
+      const probe = params.debug ? new EventProbe() : null;
       const settings: Settings = saved?.settings ?? { ...DEFAULT_SETTINGS };
       const wall = Date.now();
 
@@ -171,9 +233,13 @@ export const classicView: ClientModeView = {
         settings,
         now: () => performance.now(),
         wall: () => Date.now(),
-        newSeed: randomSeed,
+        newSeed: () => {
+          seed = params.seed ?? randomSeed();
+          return seed;
+        },
         viewportWidth: () => window.innerWidth,
         exit: () => services.exit(),
+        onEvents: probe ? (events) => probe.push(events, game?.currentSim().tick ?? 0) : undefined,
       });
 
       // Offline progress for a long absence, when the hero is in play and the controller drives it.
@@ -191,6 +257,16 @@ export const classicView: ClientModeView = {
       root.render(createElement(ClassicHud, { api: game.api, slots }));
 
       const api = game.api;
+      unsubInsets = trackLabelInsets(created, api);
+      if (probe) {
+        uninstallDebug = installClassicDebug({
+          game,
+          registry: loaded.registry,
+          probe,
+          seed: () => (fresh || game?.currentSim() !== sim ? seed : 0),
+        });
+      }
+      autostart(api, params);
       unbindKeys = bindKeyboard(window, (cmd) => onKey(api, cmd));
       saveTimer = window.setInterval(() => {
         game?.save();

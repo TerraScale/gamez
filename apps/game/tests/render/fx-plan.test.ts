@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { EffectKind, EffectSpec } from "@gamez/ui-host";
-import { planEffect, type FxOp } from "../../src/client/render/fx-plan.ts";
+import { tileToScreen } from "@gamez/world";
+import {
+  FLOAT_LIFT,
+  floatOrigin,
+  planEffect,
+  slashAngle,
+  underStroke,
+  type FxOp,
+} from "../../src/client/render/fx-plan.ts";
 
 const KINDS: EffectKind[] = [
   "nova",
@@ -119,5 +127,73 @@ describe("planEffect", () => {
         (op) => op.alpha <= 0.0001 || op.op !== "dot" || op.alpha === 0,
       ),
     ).toBe(true);
+  });
+});
+
+describe("readability on light floors", () => {
+  it("gives coloured lines a wider, darker under-stroke and skips white highlights", () => {
+    for (const kind of KINDS) {
+      const ops = planEffect(
+        spec(kind, {
+          x2: 14,
+          y2: 12,
+          points: [
+            { x: 10, y: 10 },
+            { x: 14, y: 12 },
+          ],
+        }),
+        0.3,
+      );
+      for (const op of ops) {
+        const u = underStroke(op);
+        if (op.op !== "line" || op.color === 0xffffff || op.alpha <= 0.01) {
+          expect(u).toBeNull();
+          continue;
+        }
+        expect(u, kind).not.toBeNull();
+        expect(u!.width).toBeGreaterThan(op.width);
+        expect(u!.alpha).toBeGreaterThan(0);
+        expect(u!.alpha).toBeLessThanOrEqual(op.alpha);
+      }
+    }
+  });
+
+  it("orients a slash arc along the aim tip in points (the classic arc effect)", () => {
+    const right = slashAngle(spec("slash", { points: [{ x: 12, y: 10 }] }));
+    const down = slashAngle(spec("slash", { points: [{ x: 10, y: 12 }] }));
+    expect(right).toBeCloseTo(0);
+    expect(down).toBeCloseTo(Math.PI / 2);
+    // x2/y2 still win, and a degenerate tip falls back to the default swing.
+    expect(slashAngle(spec("slash", { x2: 8, y2: 10, points: [{ x: 12, y: 10 }] }))).toBeCloseTo(
+      Math.PI,
+    );
+    expect(slashAngle(spec("slash", { points: [{ x: 10, y: 10 }] }))).toBeCloseTo(-Math.PI / 4);
+    // The finished sweep is centred on the aim: its middle point lies along the aim direction.
+    const ops = planEffect(spec("slash", { radius: 1, points: [{ x: 12, y: 10 }] }), 1 / 1.4);
+    const arc = ops.find((op) => op.op === "line" && op.color === 0x66ccff);
+    if (!arc || arc.op !== "line") throw new Error("no arc");
+    const mid = tileToScreen(1, 0);
+    expect(arc.pts[14]).toBeCloseTo(mid.sx, 3);
+    expect(arc.pts[15]).toBeCloseTo(mid.sy, 3);
+  });
+});
+
+describe("floatOrigin", () => {
+  const f = { x: 4, y: 6, text: "12", color: 0xffffff };
+
+  it("starts above the tile centre without a unit", () => {
+    const c = tileToScreen(4.5, 6.5);
+    expect(floatOrigin(f)).toEqual({ sx: c.sx, sy: c.sy - FLOAT_LIFT });
+    expect(floatOrigin(f, Number.NaN)).toEqual({ sx: c.sx, sy: c.sy - FLOAT_LIFT });
+  });
+
+  it("starts above a shown nameplate, never lower than the default", () => {
+    const c = tileToScreen(4.5, 6.5);
+    // Nameplate stack top 61 px above the feet: the float starts above it.
+    const o = floatOrigin(f, c.sy - 61);
+    expect(o.sx).toBe(c.sx);
+    expect(o.sy).toBeLessThan(c.sy - 61);
+    // A short unit (head below the default line) keeps the default start.
+    expect(floatOrigin(f, c.sy - 10).sy).toBe(c.sy - FLOAT_LIFT);
   });
 });

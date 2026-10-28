@@ -2,7 +2,7 @@
 import { ACTION } from "../../../actions.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, type SlotProps } from "../common.tsx";
-import { fmtDuration, fmtInt } from "../format.ts";
+import { fmtDuration, fmtInt, pluralize } from "../format.ts";
 import { SkillIcon } from "../icons.tsx";
 import { badgeStyle, C, labelStyle } from "../styles.ts";
 
@@ -15,7 +15,7 @@ export function SkillsPanel({ api }: SlotProps) {
       id="skills"
       title="Skills"
       width={480}
-      subtitle={`${fmtInt(points)} skill point${points === 1 ? "" : "s"} to spend`}
+      subtitle={`${pluralize(points, "skill point")} to spend`}
     >
       {skills.length === 0 ? <p style={labelStyle}>No skills yet.</p> : null}
       <ul
@@ -42,14 +42,20 @@ export function SkillsPanel({ api }: SlotProps) {
               }}
             >
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <SkillIcon tags={sk.tags} color={sk.rank > 0 ? C.goldBright : C.faint} size={36} />
+                <SkillIcon
+                  skillId={sk.id}
+                  tags={sk.tags}
+                  color={sk.rank > 0 ? C.goldBright : C.faint}
+                  size={36}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700 }}>
                     {sk.name} <span style={labelStyle}>{`${sk.rank} / ${sk.maxRank}`}</span>
                   </div>
                   <div style={labelStyle}>{sk.description}</div>
+                  {/* The one stat line: required level, mana and cooldown (never repeated in the description). */}
                   <div style={labelStyle}>
-                    {`Level ${fmtInt(sk.reqLevel)}`}
+                    {`Requires level ${fmtInt(sk.reqLevel)}`}
                     {sk.manaCost > 0 ? ` · ${fmtInt(sk.manaCost)} mana` : ""}
                     {sk.cooldown > 0 ? ` · ${fmtDuration(sk.cooldown)} cooldown` : ""}
                   </div>

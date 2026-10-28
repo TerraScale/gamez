@@ -87,6 +87,27 @@ function hasEnd(spec: EffectSpec): boolean {
   return spec.x2 !== undefined && spec.y2 !== undefined;
 }
 
+/**
+ * Aim of a slash/arc in tile space (radians): the end point when given, else
+ * the aim tip in `points` (the classic arc effect sends [{x, y}] = the tip; a
+ * longer list uses its last point), else a fixed up-right swing.
+ */
+export function slashAngle(spec: EffectSpec): number {
+  if (hasEnd(spec)) {
+    const dx = (spec.x2 ?? spec.x) - spec.x;
+    const dy = (spec.y2 ?? spec.y) - spec.y;
+    if (dx !== 0 || dy !== 0) return Math.atan2(dy, dx);
+  }
+  const pts = spec.points;
+  const tip = pts && pts.length > 0 ? pts[pts.length - 1] : undefined;
+  if (tip) {
+    const dx = tip.x - spec.x;
+    const dy = tip.y - spec.y;
+    if (dx !== 0 || dy !== 0) return Math.atan2(dy, dx);
+  }
+  return -Math.PI / 4;
+}
+
 /** Ops for one effect at progress p in [0, 1]. Empty when the spec cannot be drawn. */
 export function planEffect(spec: EffectSpec, progress: number): FxOp[] {
   const t = clamp01(progress);
@@ -285,9 +306,7 @@ export function planEffect(spec: EffectSpec, progress: number): FxOp[] {
       break;
     }
     case "slash": {
-      const base = hasEnd(spec)
-        ? Math.atan2((spec.y2 ?? spec.y) - spec.y, (spec.x2 ?? spec.x) - spec.x)
-        : -Math.PI / 4;
+      const base = slashAngle(spec);
       const start = base - 0.9;
       const sweep = 1.8 * Math.min(1, t * 1.4);
       const arc = (radius: number): number[] => {
@@ -321,8 +340,37 @@ export function planEffect(spec: EffectSpec, progress: number): FxOp[] {
   return ops;
 }
 
-/** Stage text placement: the float starts above the tile centre's head line. */
-export function floatOrigin(spec: FloatTextSpec): { sx: number; sy: number } {
+/** Default float start above the tile centre (px), and the gap kept above a unit's nameplate. */
+export const FLOAT_LIFT = 24;
+export const FLOAT_NAME_GAP = 2;
+
+/**
+ * Float text placement: above the tile centre's head line, or, when the float
+ * belongs to a unit with something drawn over its head (`headTop` = world-local
+ * y of the top of its nameplate stack, health bar or head; NaN = none), just
+ * above that, so damage numbers never cover a name. Never lower than the
+ * default.
+ */
+export function floatOrigin(spec: FloatTextSpec, headTop = Number.NaN): { sx: number; sy: number } {
   const v = tileToScreen(spec.x + 0.5, spec.y + 0.5);
-  return { sx: v.sx, sy: v.sy - 24 };
+  const base = v.sy - FLOAT_LIFT;
+  const sy = Number.isFinite(headTop) ? Math.min(base, headTop - FLOAT_NAME_GAP) : base;
+  return { sx: v.sx, sy };
+}
+
+/** Dark under-stroke drawn beneath coloured effect lines so they read on light floors too. */
+export const UNDER_COLOUR = 0x000000;
+export const UNDER_EXTRA_PX = 2;
+export const UNDER_ALPHA = 0.4;
+/** Coloured effect lines are drawn at least this wide (px), so their hue reads over the under-stroke. */
+export const LINE_MIN_PX = 1.5;
+
+/**
+ * Width and opacity of the dark under-stroke for a line op, or null for none
+ * (white highlight lines, which sit inside a coloured line, and invisible ops).
+ */
+export function underStroke(op: FxOp): { width: number; alpha: number } | null {
+  if (op.op !== "line" || op.color === WHITE || op.alpha <= 0.01) return null;
+  const width = Math.max(LINE_MIN_PX, op.width);
+  return { width: width + UNDER_EXTRA_PX, alpha: Math.min(1, op.alpha * UNDER_ALPHA) };
 }

@@ -10,10 +10,12 @@ import type { ArpgRenderEntity, EntityAction, Facing } from "@gamez/ui-host";
 import type { TileMap } from "@gamez/world";
 import {
   AreaTag,
+  CombatStats,
   Dead,
   Hero,
   HeroStats,
   Interactable,
+  Level,
   Life,
   Loot,
   Monster,
@@ -22,24 +24,38 @@ import {
   Pos,
   Projectile,
   Statuses,
+  Summoned,
   Casting,
   Dash,
 } from "../components.ts";
 import { SUB, facingOf } from "../fixed.ts";
-import { RES, type AreaState } from "../resources.ts";
+import { RES, type AreaState, type QuestState } from "../resources.ts";
 import {
+  BALANCE_ID,
   KIND,
+  type BalanceProto,
   type ClassProto,
   type ItemBaseProto,
+  type ItemRarity,
   type MonsterModProto,
   type MonsterProto,
+  type MonsterRarity,
   type NpcProto,
+  type QuestProto,
   type SkillProto,
   type StatusProto,
   type ThemeProto,
 } from "../types.ts";
 import { getAreaMap, type ClassicMap } from "../world/maps.ts";
-import { GOLD_COLOR, MONSTER_COLOR, RARITY_COLOR } from "./contract.ts";
+import { GOLD_COLOR, MONSTER_LABEL_COLOR, RARITY_COLOR } from "./contract.ts";
+import {
+  BOTTOM_BAR_HEIGHT,
+  HUD_EDGE,
+  minimapBlockHeight,
+  TARGET_TOP,
+  topRightInset,
+  type HudLayout,
+} from "./hud/layout.ts";
 
 /** The renderer calls the scene needs (ArpgWorldRenderer satisfies this). */
 export interface SceneRenderer {
@@ -72,6 +88,13 @@ export interface SceneInput {
   targeted: Entity;
   showLootLabels: boolean;
   lighting: boolean;
+  /**
+   * sim.tick at render time (ticks processed so far). The render time used for
+   * hit flashes, swing progress and corpse fades is `tick - 1 + alpha`.
+   */
+  tick: number;
+  /** Coarse pointer (touch): interact hints say "tap" instead of "click". */
+  touch?: boolean;
 }
 
 export interface SceneStats {
@@ -121,17 +144,194 @@ export function sameEntity(a: ArpgRenderEntity, b: ArpgRenderEntity): boolean {
   return true;
 }
 
-function heroAction(
+// ---------------------------------------------------------------------------
+// Client-only animation timing. Everything below is keyed on sim ticks (the
+// render time is `tick - 1 + alpha`), never on the wall clock, so speed x8
+// plays the same sequence faster and a paused sim freezes it.
+// ---------------------------------------------------------------------------
+
+/** Ticks a hit flash (and the "hit" pose of an idle unit) lasts: 200 ms at 20 Hz. */
+export const HIT_TICKS = 4;
+/** A finished swing is held (last frame) this long, so back-to-back attacks never flash idle. */
+export const SWING_HOLD_TICKS = 2;
+/**
+ * Clip progress at the cast's hit tick. Progress runs 0 -> HIT_PROGRESS from
+ * startedAt to hitAt, then HIT_PROGRESS -> 1 from hitAt to the end of the
+ * lock. The renderer shows frame floor(p * n), so the blow lands on frame
+ * floor(n / 2): frame 2 of the 4-frame swings (lean [0, 6, 12, 4] px, frame 2
+ * = the peak). The whole clip stretches with attack/cast speed and slows.
+ */
+export const HIT_PROGRESS = 0.5;
+/** Monsters hit this recently (ticks, ~3 s) show their nameplate. */
+export const RECENT_HIT_TICKS = 60;
+/** Corpses (and expiring summons) fade out over their last ticks before removal. */
+export const FADE_TICKS = 10;
+/** Walk cycles are authored for the hero's base move speed (sub per tick). */
+export const WALK_REF_SPEED = 51;
+/** Interactables: labels for portal and stash within this range (tiles); the use hint within HINT_RANGE. */
+export const STATION_LABEL_RANGE = 5;
+export const HINT_RANGE = 3;
+/** Closer than this (tiles) the hero stands on or next to the station: the use hint is dropped. */
+export const HINT_NEAR = 1.5;
+
+/** Nameplate de-overlap priority of monsters: bosses keep their place, then uniques, then champions. */
+export const MONSTER_LABEL_PRIORITY: Readonly<Record<MonsterRarity, number>> = {
+  boss: 3,
+  unique: 2,
+  champion: 1,
+  normal: 0,
+  minion: 0,
+  summon: 0,
+};
+
+/** Monster rarities whose names get a dark backing plate. */
+function platedRarity(r: MonsterRarity): boolean {
+  return r === "champion" || r === "unique" || r === "boss";
+}
+
+/** Screen insets (CSS px) that keep world labels out from under the HUD chrome. */
+export interface LabelInsetsPx {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * World label insets for a HUD layout (ArpgWorldRenderer.setLabelInsets),
+ * from the HUD layout constants: the top region (area header, mode bar) down
+ * to the target bar line, the bottom bar of the phone layouts, and, when the
+ * minimap block reaches below that top line on a phone layout, the minimap
+ * column on the right. The desktop minimap is left out: a 186 px column over
+ * the whole height would hide too many labels on a wide screen.
+ */
+export function labelInsetsFor(layout: HudLayout, minimapShown: boolean): LabelInsetsPx {
+  const top = TARGET_TOP[layout];
+  const minimapBottom = HUD_EDGE + minimapBlockHeight(layout);
+  const right =
+    layout !== "desktop" && minimapShown && minimapBottom > top ? topRightInset(layout) : 0;
+  return { top, right, bottom: BOTTOM_BAR_HEIGHT[layout], left: 0 };
+}
+
+/** Rounds v to 1/steps (keeps upserts from firing every frame for invisible changes). */
+function quantize(v: number, steps: number): number {
+  return Math.round(v * steps) / steps;
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * Swing/cast clip progress 0..1 at render time `t` (see HIT_PROGRESS). The
+ * Casting component is removed at endAt - 1, so the clip ends there (at least
+ * one tick after the hit).
+ */
+export function castProgress(t: number, startedAt: number, hitAt: number, endAt: number): number {
+  if (t < hitAt && hitAt > startedAt) {
+    return HIT_PROGRESS * clamp01((t - startedAt) / (hitAt - startedAt));
+  }
+  const end = Math.max(hitAt + 1, endAt - 1);
+  return HIT_PROGRESS + (1 - HIT_PROGRESS) * clamp01((t - hitAt) / (end - hitAt));
+}
+
+/** Hit flash strength 1 -> 0 over HIT_TICKS after the hit tick (0 when none or over). */
+export function hitFlashAt(t: number, hitTick: number | undefined): number {
+  if (hitTick === undefined) return 0;
+  const age = Math.max(0, t - hitTick);
+  if (age >= HIT_TICKS) return 0;
+  return quantize(1 - age / HIT_TICKS, 8);
+}
+
+/** Opacity of something removed at tick `removeAt`: 1, then a ramp to 0 over FADE_TICKS. */
+export function fadeAlpha(t: number, removeAt: number): number {
+  const left = removeAt - t;
+  if (left >= FADE_TICKS) return 1;
+  return quantize(clamp01(left / FADE_TICKS), 20);
+}
+
+/**
+ * Render scale of a monster (percent). The art build already sizes each
+ * monster (cairn brute, bosses...), so MonsterProto.scale is not applied a
+ * second time; elites get a small bump so they stand out beyond their tint.
+ */
+export function monsterScale(rarity: MonsterRarity): number {
+  if (rarity === "champion") return 110;
+  if (rarity === "unique") return 115;
+  return 100;
+}
+
+/** Walk clip speed for a move speed (sub/tick): speed / WALK_REF_SPEED, clamped 0.6..1.8. */
+export function walkRate(speed: number): number {
+  if (!(speed > 0)) return 1;
+  const r = speed / WALK_REF_SPEED;
+  return quantize(r < 0.6 ? 0.6 : r > 1.8 ? 1.8 : r, 20);
+}
+
+/** Loot label priority: rarer items keep their place, the rest stack above them. */
+export const LOOT_PRIORITY: Readonly<Record<ItemRarity | "gold" | "potion", number>> = {
+  unique: 5,
+  rare: 4,
+  magic: 3,
+  normal: 2,
+  potion: 1,
+  gold: 0,
+};
+
+/**
+ * Quest marker of a quest-giver NPC (proto id `npc`): "?" when one of its
+ * active quests is done (turn in), else "!" when one of its quests can be
+ * accepted (level and chain met, not completed, not active), else null.
+ * Same rules as the quest panel and the auto controller.
+ */
+export function questMarker(
+  registry: FrozenRegistry,
+  quests: QuestState | undefined,
+  npc: string,
+  level: number,
+): "!" | "?" | null {
+  let available = false;
+  const completed = quests?.completed ?? [];
+  const active = quests?.active ?? [];
+  for (const [id, q] of registry.all<QuestProto>(KIND.quest)) {
+    if (q.giver !== npc || completed.includes(id)) continue;
+    const a = active.find((x) => x.id === id);
+    if (a) {
+      if (a.done) return "?";
+      continue;
+    }
+    if (q.reqLevel <= level && (q.after === "" || completed.includes(q.after))) available = true;
+  }
+  return available ? "!" : null;
+}
+
+/** Move speed (sub/tick) a unit walks at right now: base x move speed % x (100 - slow)%. */
+function moveSpeedOf(world: World, registry: FrozenRegistry, e: Entity, base: number): number {
+  const pct = world.get(e, CombatStats)?.moveSpeed ?? 100;
+  let slow = 0;
+  for (const st of world.get(e, Statuses)?.list ?? []) {
+    const proto = registry.get<StatusProto>(KIND.status, st.id);
+    if (proto?.kind === "slow" && st.power > slow) slow = st.power;
+  }
+  if (slow > 90) slow = 90;
+  return Math.floor((Math.floor((base * pct) / 100) * (100 - slow)) / 100);
+}
+
+/** Adds the optional animation fields of a unit (progress, hit flash, walk rate). */
+function decorateUnit(
+  ent: ArpgRenderEntity,
+  a: UnitAnim,
   world: World,
   registry: FrozenRegistry,
   e: Entity,
-  moving: boolean,
-): EntityAction {
-  if (world.has(e, Dead)) return "death";
-  const cast = world.get(e, Casting);
-  if (cast) return castAction(registry, cast.skill);
-  if (moving || world.has(e, Dash)) return "walk";
-  return "idle";
+  baseSpeed: number,
+): void {
+  if (a.progress !== undefined) ent.actionProgress = a.progress;
+  if (a.flash > 0) ent.hitFlash = a.flash;
+  if (a.action === "walk" && baseSpeed > 0) {
+    const rate = walkRate(moveSpeedOf(world, registry, e, baseSpeed));
+    if (rate !== 1) ent.animRate = rate;
+  }
 }
 
 function castAction(registry: FrozenRegistry, skill: string): EntityAction {
@@ -148,30 +348,43 @@ function statusTintOf(world: World, registry: FrozenRegistry, e: Entity): number
   return 0;
 }
 
-function itemSprite(registry: FrozenRegistry, base: string): { appearance: string; color: number } {
+export function itemSprite(
+  registry: FrozenRegistry,
+  base: string,
+): { appearance: string; color: number } {
   const b = registry.get<ItemBaseProto>(KIND.itemBase, base);
   if (!b) return { appearance: "loot.item", color: RARITY_COLOR.normal };
   if (b.category === "potion") {
+    // Tiered id (loot.potion.life.3); resolves to loot.potion.<kind> until the tier art exists.
     const kind = b.potion?.kind ?? "life";
-    return { appearance: `loot.potion.${kind}`, color: RARITY_COLOR.normal };
+    const tier = b.potion?.tier ?? 0;
+    const appearance = tier > 0 ? `loot.potion.${kind}.${tier}` : `loot.potion.${kind}`;
+    return { appearance, color: RARITY_COLOR.normal };
   }
   return { appearance: `loot.item.${b.weaponClass ?? b.category}`, color: RARITY_COLOR.normal };
 }
 
-const STATION_APPEARANCE = {
+export const STATION_APPEARANCE = {
   stairsDown: "prop.stairs.down",
   stairsUp: "prop.stairs.up",
   waypoint: "prop.waypoint",
   portal: "fx.portal",
   stash: "prop.stash",
 } as const;
-const STATION_NAME = {
+export const STATION_NAME = {
   stairsDown: "Stairs down",
   stairsUp: "Stairs up",
   waypoint: "Waypoint",
   portal: "Town portal",
   stash: "Stash",
 } as const;
+
+/** Action and clip progress of one unit this frame (scratch, reused). */
+interface UnitAnim {
+  action: EntityAction;
+  progress: number | undefined;
+  flash: number;
+}
 
 export class SceneSync {
   private readonly drawn = new Map<string, ArpgRenderEntity>();
@@ -181,6 +394,13 @@ export class SceneSync {
   private lightingKey = "";
   private picks: Pick[] = [];
   private stats: SceneStats = { entities: 0, monsters: 0, heroX: null, heroY: null };
+  /** Client-only: last tick each entity took a (non-dot) hit. */
+  private readonly hits = new Map<Entity, number>();
+  /** Champion packs whose nameplate is already shown this sync (one plate per pack). */
+  private readonly packPlates = new Set<number>();
+  /** Client-only: the last swing of each unit and the render time it was last seen. */
+  private readonly swings = new Map<Entity, { action: EntityAction; at: number }>();
+  private readonly anim: UnitAnim = { action: "idle", progress: undefined, flash: 0 };
 
   constructor(private readonly target: SceneRenderer) {}
 
@@ -192,6 +412,66 @@ export class SceneSync {
     this.map = null;
     this.lightingKey = "";
     this.picks = [];
+    this.hits.clear();
+    this.swings.clear();
+  }
+
+  /**
+   * A unit took a direct hit at sim tick `tick` (game.ts calls this for every
+   * non-dot classic.hit). Drives the hit flash, the idle "hit" pose and the
+   * nameplate of recently damaged monsters.
+   */
+  noteHit(target: Entity, tick: number): void {
+    if (target !== 0) this.hits.set(target, tick);
+  }
+
+  /**
+   * Action, clip progress and hit flash of a unit at render time t. Casting ->
+   * attack/cast with progress; a swing that just ended is held at its last
+   * frame for SWING_HOLD_TICKS instead of dropping to idle; an idle unit that
+   * was just hit plays "hit".
+   */
+  private unitAnim(
+    world: World,
+    registry: FrozenRegistry,
+    e: Entity,
+    moving: boolean,
+    dead: boolean,
+    t: number,
+  ): UnitAnim {
+    const out = this.anim;
+    out.progress = undefined;
+    out.flash = hitFlashAt(t, this.hits.get(e));
+    if (dead) {
+      out.action = "death";
+      this.swings.delete(e);
+      return out;
+    }
+    const cast = world.get(e, Casting);
+    if (cast) {
+      out.action = castAction(registry, cast.skill);
+      out.progress = quantize(castProgress(t, cast.startedAt, cast.hitAt, cast.endAt), 32);
+      const rec = this.swings.get(e);
+      if (rec) {
+        rec.action = out.action;
+        rec.at = t;
+      } else {
+        this.swings.set(e, { action: out.action, at: t });
+      }
+      return out;
+    }
+    out.action = moving || world.has(e, Dash) ? "walk" : "idle";
+    if (out.action === "idle") {
+      const rec = this.swings.get(e);
+      if (rec && t - rec.at <= SWING_HOLD_TICKS) {
+        out.action = rec.action;
+        out.progress = 1;
+        return out;
+      }
+      if (out.flash > 0) out.action = "hit";
+    }
+    this.swings.delete(e);
+    return out;
   }
 
   /** Remembers the sim positions before a step(), so the next render can interpolate. */
@@ -211,6 +491,9 @@ export class SceneSync {
     const depth = currentDepthOf(world);
     const hero = heroEntityOf(world);
     const heroPos = hero !== 0 ? interpolatedHero(world, hero, this.prev, input.alpha) : null;
+    /** Render time in ticks: the last processed tick plus the interpolation alpha. */
+    const t = input.tick - 1 + Math.min(1, Math.max(0, input.alpha));
+    const corpseTicks = registry.get<BalanceProto>(KIND.balance, BALANCE_ID)?.corpseTicks ?? 40;
 
     this.updateMap(input, hero, heroPos);
     this.updateLighting(input);
@@ -234,6 +517,7 @@ export class SceneSync {
       const m = world.get(hero, Mover);
       const heroComp = world.get(hero, Hero);
       const proto = heroComp ? registry.get<ClassProto>(KIND.class, heroComp.classId) : undefined;
+      const a = this.unitAnim(world, registry, hero, m?.moving ?? false, world.has(hero, Dead), t);
       const ent: ArpgRenderEntity = {
         id: `c${hero}`,
         name: heroComp?.name ?? HERO_NAME_FALLBACK,
@@ -245,16 +529,18 @@ export class SceneSync {
         facing: (m?.facing ?? "s") as Facing,
         moving: m?.moving ?? false,
         isSelf: true,
-        action: heroAction(world, registry, hero, m?.moving ?? false),
+        action: a.action,
         tint: tintOf(proto?.tint),
         scale: 100,
         highlight: false,
         statusTint: statusTintOf(world, registry, hero),
       };
+      decorateUnit(ent, a, world, registry, hero, m?.speed ?? 0);
       put(hero, ent, null);
     }
 
     // Monsters.
+    this.packPlates.clear();
     for (const e of world.query(Monster, Pos, AreaTag)) {
       if (world.read(e, AreaTag).depth !== depth) continue;
       const mon = world.read(e, Monster);
@@ -270,6 +556,19 @@ export class SceneSync {
       const tint = mod !== 0 ? multiplyTint(tintOf(proto?.tint), mod) : tintOf(proto?.tint);
       const damaged = life !== undefined && life.hp < life.max;
       const targeted = e === input.targeted || e === input.hovered;
+      const mover = world.get(e, Mover);
+      const a = this.unitAnim(world, registry, e, mover?.moving ?? false, dead, t);
+      const lastHit = this.hits.get(e);
+      const recentlyHit = lastHit !== undefined && t - lastHit <= RECENT_HIT_TICKS;
+      // Uniques and bosses always show their plate. A champion pack (same name) shows one
+      // plate, on its lowest entity id (query order), so a pack's names do not stack.
+      let elite = mon.rarity === "unique" || mon.rarity === "boss";
+      if (mon.rarity === "champion" && !dead) {
+        if (mon.pack === 0 || !this.packPlates.has(mon.pack)) {
+          elite = true;
+          if (mon.pack !== 0) this.packPlates.add(mon.pack);
+        }
+      }
       const ent: ArpgRenderEntity = {
         id: `c${e}`,
         name: mon.name,
@@ -278,23 +577,30 @@ export class SceneSync {
         kind: "unit",
         x: pos.x / SUB,
         y: pos.y / SUB,
-        facing: (world.get(e, Mover)?.facing ?? "s") as Facing,
-        moving: world.get(e, Mover)?.moving ?? false,
+        facing: (mover?.facing ?? "s") as Facing,
+        moving: mover?.moving ?? false,
         isSelf: false,
-        action: dead
-          ? "death"
-          : world.get(e, Casting)
-            ? castAction(registry, world.read(e, Casting).skill)
-            : world.get(e, Mover)?.moving
-              ? "walk"
-              : "idle",
+        action: a.action,
         tint,
-        scale: proto?.scale ?? 100,
-        labelColor: MONSTER_COLOR[mon.rarity],
+        scale: monsterScale(mon.rarity),
+        labelColor: MONSTER_LABEL_COLOR[mon.rarity],
         highlight: e === input.hovered,
         statusTint: statusTintOf(world, registry, e),
       };
+      decorateUnit(ent, a, world, registry, e, mover?.speed ?? 0);
       if (dead) ent.dead = true;
+      if (!dead && (elite || targeted || recentlyHit)) {
+        ent.showLabel = true;
+        if (platedRarity(mon.rarity)) ent.labelPlate = true;
+        const priority = MONSTER_LABEL_PRIORITY[mon.rarity];
+        if (priority !== 0) ent.labelPriority = priority;
+      }
+      // Corpses fade before removal; summons fade before they expire.
+      let removeAt = dead ? world.read(e, Dead).at + corpseTicks : Number.POSITIVE_INFINITY;
+      const summon = world.get(e, Summoned);
+      if (summon && summon.until > 0 && summon.until < removeAt) removeAt = summon.until;
+      const fade = fadeAlpha(t, removeAt);
+      if (fade < 1) ent.alpha = fade;
       if (life && (damaged || targeted) && !dead) ent.bar = life.hp / Math.max(1, life.max);
       if (!dead) monsters++;
       put(e, ent, dead ? null : "unit");
@@ -317,6 +623,8 @@ export class SceneSync {
           facing: facingOf(pr.vx, pr.vy, "e"),
           moving: true,
           isSelf: false,
+          vx: pr.vx,
+          vy: pr.vy,
           zLift: 24,
           tint: 0xffffff,
           scale: 100,
@@ -325,33 +633,37 @@ export class SceneSync {
       );
     }
 
-    // NPCs.
+    // NPCs: name, title line and quest marker.
+    const quests = world.getResource<QuestState>(RES.quests);
+    const heroLevel = hero !== 0 ? (world.get(hero, Level)?.level ?? 1) : 1;
     for (const e of world.query(Npc, Pos, AreaTag)) {
       if (world.read(e, AreaTag).depth !== depth) continue;
       const n = world.read(e, Npc);
       const proto = registry.get<NpcProto>(KIND.npc, n.proto);
       const pos = interpolate(this.prev.get(e), world.read(e, Pos), input.alpha);
-      put(
-        e,
-        {
-          id: `c${e}`,
-          name: proto?.name ?? "Townsfolk",
-          appearance: proto?.appearance ?? "unit.npc",
-          fallbackAppearance: proto?.fallbackAppearance ?? "unit.hero",
-          kind: "npc",
-          x: pos.x / SUB,
-          y: pos.y / SUB,
-          facing: "s",
-          moving: false,
-          isSelf: false,
-          tint: tintOf(proto?.tint),
-          scale: 100,
-          labelColor: GOLD_COLOR,
-          showLabel: true,
-          highlight: e === input.hovered,
-        },
-        "npc",
-      );
+      const ent: ArpgRenderEntity = {
+        id: `c${e}`,
+        name: proto?.name ?? "Townsfolk",
+        appearance: proto?.appearance ?? "unit.npc",
+        fallbackAppearance: proto?.fallbackAppearance ?? "unit.hero",
+        kind: "npc",
+        x: pos.x / SUB,
+        y: pos.y / SUB,
+        facing: "s",
+        moving: false,
+        isSelf: false,
+        tint: tintOf(proto?.tint),
+        scale: 100,
+        labelColor: GOLD_COLOR,
+        showLabel: true,
+        highlight: e === input.hovered,
+      };
+      if (proto?.title) ent.subtitle = proto.title;
+      if (proto?.role === "quest") {
+        const marker = questMarker(registry, quests, n.proto, heroLevel);
+        if (marker !== null) ent.marker = marker;
+      }
+      put(e, ent, "npc");
     }
 
     // Loot.
@@ -362,16 +674,19 @@ export class SceneSync {
       let appearance = "loot.gold";
       let name = `${loot.gold} gold`;
       let color = GOLD_COLOR;
+      let priority = LOOT_PRIORITY.gold;
       if (loot.kind === "item" && loot.item) {
         const s = itemSprite(registry, loot.item.base);
         appearance = s.appearance;
         name = loot.item.name;
         color = RARITY_COLOR[loot.item.rarity];
+        priority = LOOT_PRIORITY[loot.item.rarity];
       } else if (loot.kind === "potion") {
         const s = itemSprite(registry, loot.potion);
         appearance = s.appearance;
         name = registry.get<ItemBaseProto>(KIND.itemBase, loot.potion)?.name ?? "Potion";
         color = RARITY_COLOR.normal;
+        priority = LOOT_PRIORITY.potion;
       }
       put(
         e,
@@ -390,35 +705,57 @@ export class SceneSync {
           scale: 100,
           labelColor: color,
           showLabel: input.showLootLabels,
+          labelPriority: priority,
           highlight: e === input.hovered,
         },
         "loot",
       );
     }
 
-    // Interactables: stairs, waypoint, town portal, stash.
+    // Interactables: stairs, waypoint, town portal, stash. Stairs and the
+    // waypoint are always labelled; portal and stash near the hero; the
+    // nearest one within reach also says how to use it.
+    const stations: {
+      e: Entity;
+      kind: keyof typeof STATION_NAME;
+      x: number;
+      y: number;
+      d: number;
+    }[] = [];
+    let nearest = -1;
     for (const e of world.query(Interactable, Pos, AreaTag)) {
       if (world.read(e, AreaTag).depth !== depth) continue;
       const it = world.read(e, Interactable);
       const pos = interpolate(this.prev.get(e), world.read(e, Pos), input.alpha);
-      put(
-        e,
-        {
-          id: `c${e}`,
-          name: STATION_NAME[it.kind],
-          appearance: STATION_APPEARANCE[it.kind],
-          kind: "prop",
-          x: pos.x / SUB,
-          y: pos.y / SUB,
-          facing: "s",
-          moving: false,
-          isSelf: false,
-          tint: 0xffffff,
-          scale: 100,
-          highlight: e === input.hovered,
-        },
-        "interactable",
-      );
+      const d =
+        heroPos !== null
+          ? Math.hypot(pos.x - heroPos.x, pos.y - heroPos.y) / SUB
+          : Number.POSITIVE_INFINITY;
+      if (d <= HINT_RANGE && (nearest < 0 || d < stations[nearest]!.d)) nearest = stations.length;
+      stations.push({ e, kind: it.kind, x: pos.x / SUB, y: pos.y / SUB, d });
+    }
+    const hint = input.touch ? "tap to use" : "click to use";
+    for (let i = 0; i < stations.length; i++) {
+      const st = stations[i]!;
+      const always = st.kind === "stairsDown" || st.kind === "stairsUp" || st.kind === "waypoint";
+      const ent: ArpgRenderEntity = {
+        id: `c${st.e}`,
+        name: STATION_NAME[st.kind],
+        appearance: STATION_APPEARANCE[st.kind],
+        kind: "prop",
+        x: st.x,
+        y: st.y,
+        facing: "s",
+        moving: false,
+        isSelf: false,
+        tint: 0xffffff,
+        scale: 100,
+        highlight: st.e === input.hovered,
+      };
+      if (always || st.d <= STATION_LABEL_RANGE || i === nearest) ent.showLabel = true;
+      // No hint once the hero stands on or right next to it (the name alone is enough there).
+      if (i === nearest && st.d > HINT_NEAR) ent.subtitle = hint;
+      put(st.e, ent, "interactable");
     }
 
     for (const id of this.drawn.keys()) {
@@ -428,6 +765,7 @@ export class SceneSync {
       }
     }
     this.picks = picks;
+    this.prune(t);
     if (heroPos !== null) this.target.follow(heroPos.x / SUB, heroPos.y / SUB);
     this.stats = {
       entities: seen.size,
@@ -436,6 +774,13 @@ export class SceneSync {
       heroY: heroPos !== null ? heroPos.y / SUB : null,
     };
     return this.stats;
+  }
+
+  /** Drops hit and swing records nobody can see any more (small maps, cheap). */
+  private prune(t: number): void {
+    for (const [e, at] of this.hits) if (t - at > RECENT_HIT_TICKS) this.hits.delete(e);
+    for (const [e, rec] of this.swings)
+      if (t - rec.at > SWING_HOLD_TICKS + 1) this.swings.delete(e);
   }
 
   /** Counts and hero position of the last render. */
@@ -489,6 +834,9 @@ export class SceneSync {
     }
     if (map === this.map) return;
     this.map = map;
+    // A new area: hit and swing timers belong to entities that are gone.
+    this.hits.clear();
+    this.swings.clear();
     this.target.setMap(map);
     this.lightingKey = "";
     if (heroPos !== null) {

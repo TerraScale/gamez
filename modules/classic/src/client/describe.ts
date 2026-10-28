@@ -13,6 +13,7 @@ import {
   type SkillProto,
   type StatId,
 } from "../types.ts";
+import { fmtDuration } from "./hud/format.ts";
 
 type Fmt = (v: number) => string;
 
@@ -113,21 +114,18 @@ export function itemLines(registry: FrozenRegistry, item: ItemInstance): string[
   return lines;
 }
 
-/** Seconds with one decimal from ticks (20 Hz). */
+/** Ticks (20 Hz) as a duration, the one format used everywhere ("10s", "0.3s"). */
 export function ticksToSeconds(ticks: number): string {
-  return `${(Math.round(ticks / 2) / 10).toFixed(1)} s`;
+  return fmtDuration(ticks);
 }
 
 /**
- * Tooltip lines of a skill at `rank` (the description first). `rank` 0 shows
- * the cost of the first rank.
+ * Detail lines of a skill at `rank`, without the description, mana and
+ * cooldown (those are shown once, by the stat line). Empty for plain skills.
  */
-export function skillTooltip(skill: SkillProto, rank: number): string[] {
+export function skillDetailLines(skill: SkillProto, rank: number): string[] {
   const r = Math.max(1, rank);
-  const lines: string[] = [skill.description];
-  const mana = skillManaCost(skill, r);
-  if (mana > 0) lines.push(`Mana: ${mana}`);
-  if (skill.cooldown > 0) lines.push(`Cooldown: ${ticksToSeconds(skill.cooldown)}`);
+  const lines: string[] = [];
   if (skill.range > 0) lines.push(`Range: ${(skill.range / 256).toFixed(1)} tiles`);
   if (skill.weaponPct > 0) {
     lines.push(`Weapon damage: ${skill.weaponPct + skill.weaponPctPerRank * (r - 1)}%`);
@@ -142,4 +140,47 @@ export function skillTooltip(skill: SkillProto, rank: number): string[] {
     lines.push(`Radius: ${(skill.radius / 256).toFixed(1)} tiles`);
   }
   return lines;
+}
+
+/**
+ * Tooltip lines of a skill at `rank` (the description first). `rank` 0 shows
+ * the cost of the first rank.
+ */
+export function skillTooltip(skill: SkillProto, rank: number): string[] {
+  const r = Math.max(1, rank);
+  const lines: string[] = [skill.description];
+  const mana = skillManaCost(skill, r);
+  if (mana > 0) lines.push(`Mana: ${mana}`);
+  if (skill.cooldown > 0) lines.push(`Cooldown: ${ticksToSeconds(skill.cooldown)}`);
+  return [...lines, ...skillDetailLines(skill, r)];
+}
+
+/** Stats an item grants in total (implicits plus rolled mods), for comparisons. */
+export function statTotals(
+  item: ItemInstance,
+  base: ItemBaseProto | undefined,
+): Partial<Record<StatId, number>> {
+  const out: Partial<Record<StatId, number>> = {};
+  const add = (stat: StatId, value: number): void => {
+    out[stat] = (out[stat] ?? 0) + value;
+  };
+  for (const m of base?.implicit ?? []) add(m.stat, m.value);
+  for (const m of item.mods) add(m.stat, m.value);
+  return out;
+}
+
+/**
+ * Stat differences (`own` minus `equipped`) in STAT_TEXT order. Zero
+ * differences are left out. Each text is the player line, e.g. "-3 to Dexterity".
+ */
+export function statDiffs(
+  own: Partial<Record<StatId, number>>,
+  equipped: Partial<Record<StatId, number>>,
+): { text: string; delta: number }[] {
+  const out: { text: string; delta: number }[] = [];
+  for (const stat of Object.keys(STAT_TEXT) as StatId[]) {
+    const delta = (own[stat] ?? 0) - (equipped[stat] ?? 0);
+    if (delta !== 0) out.push({ text: statText(stat, delta), delta });
+  }
+  return out;
 }

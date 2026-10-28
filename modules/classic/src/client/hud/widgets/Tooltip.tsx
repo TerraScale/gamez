@@ -2,14 +2,7 @@
 import type { ItemView } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import type { SlotProps } from "../common.tsx";
-import {
-  EQUIP_LABEL,
-  fmtInt,
-  fmtSigned,
-  pickEquipSlot,
-  RARITY_LABEL,
-  rarityHex,
-} from "../format.ts";
+import { CATEGORY_LABEL, EQUIP_LABEL, fmtInt, RARITY_LABEL, rarityHex } from "../format.ts";
 import { C, labelStyle, panelStyle } from "../styles.ts";
 
 export const TOOLTIP_WIDTH = 270;
@@ -25,10 +18,75 @@ export function findItem(
   return null;
 }
 
-export function upgradeText(delta: number): string {
-  if (delta > 0) return `Upgrade ${fmtSigned(delta)}`;
-  if (delta < 0) return `Downgrade ${fmtSigned(delta)}`;
-  return "Same score as equipped";
+/** Heading of a comparison with the equipped item (the score itself is never shown). */
+export function compareHeading(delta: number): string {
+  if (delta > 0) return "Better than equipped";
+  if (delta < 0) return "Worse than equipped";
+  return "Same as equipped";
+}
+
+/**
+ * Rarity and kind of an item, for the line under its name: "Magic Boots",
+ * plus the base name when the item's own name does not already say it
+ * ("Magic Boots · Sandals" for "Sturdy Sandals of the Fox", not for "Sandals").
+ */
+export function itemKindLabel(
+  item: Pick<ItemView, "name" | "baseName" | "category" | "rarity">,
+): string {
+  const kind = `${RARITY_LABEL[item.rarity]} ${CATEGORY_LABEL[item.category]}`;
+  const base = item.baseName;
+  return base && base !== item.name && base !== CATEGORY_LABEL[item.category]
+    ? `${kind} · ${base}`
+    : kind;
+}
+
+/** One stat difference per entry: gains in the normal colour, losses in red. */
+function StatDiffs({ stats }: { stats: { text: string; delta: number }[] }) {
+  return (
+    <>
+      {stats.map((s, i) => (
+        <span key={s.text}>
+          {i > 0 ? ", " : null}
+          <span style={{ color: s.delta < 0 ? C.danger : C.text }}>{s.text}</span>
+        </span>
+      ))}
+    </>
+  );
+}
+
+function Comparison({ item }: { item: ItemView }) {
+  const cmp = item.compare ?? null;
+  if (!cmp) return null;
+  if (cmp.equipped?.uid === item.uid) {
+    return <div style={labelStyle}>Currently equipped</div>;
+  }
+  const heading =
+    cmp.equipped === null ? `Empty ${EQUIP_LABEL[cmp.slot]} slot` : compareHeading(item.upgrade);
+  const headingColor =
+    cmp.equipped === null ? C.text : item.upgrade > 0 ? C.ok : item.upgrade < 0 ? C.danger : C.text;
+  return (
+    <>
+      <div style={{ color: headingColor, fontWeight: 600 }}>{heading}</div>
+      {cmp.equipped ? (
+        <>
+          <div
+            style={labelStyle}
+          >{`Equipped (${EQUIP_LABEL[cmp.slot]}): ${cmp.equipped.name}`}</div>
+          <div style={{ ...labelStyle, marginTop: 2 }}>
+            {cmp.stats.length === 0 ? (
+              "No stat changes"
+            ) : (
+              <>
+                vs equipped: <StatDiffs stats={cmp.stats} />
+              </>
+            )}
+          </div>
+        </>
+      ) : (
+        <div style={labelStyle}>{`Fits: ${item.slots.map((s) => EQUIP_LABEL[s]).join(" / ")}`}</div>
+      )}
+    </>
+  );
 }
 
 export function Tooltip({ api }: SlotProps) {
@@ -44,8 +102,6 @@ export function Tooltip({ api }: SlotProps) {
   const equipped = Object.values(pool.equipment);
   const item = findItem(hover.uid, [pool.bag, equipped, pool.stash, pool.stock]);
   if (!item) return null;
-  const slot = pickEquipSlot(item.slots, pool.equipment);
-  const current = slot ? (pool.equipment[slot] ?? null) : null;
   const flip = typeof window !== "undefined" && hover.x > window.innerWidth - TOOLTIP_WIDTH - 24;
   const left = Math.max(0, flip ? hover.x - TOOLTIP_WIDTH - 12 : hover.x + 16);
   return (
@@ -67,7 +123,7 @@ export function Tooltip({ api }: SlotProps) {
       </div>
       <div
         style={labelStyle}
-      >{`${RARITY_LABEL[item.rarity]} · ${item.base} · ilvl ${fmtInt(item.ilvl)} · req ${fmtInt(item.reqLevel)}`}</div>
+      >{`${itemKindLabel(item)} · ilvl ${fmtInt(item.ilvl)} · req ${fmtInt(item.reqLevel)}`}</div>
       <div style={{ marginTop: 6 }}>
         {item.lines.map((line, i) => (
           <div key={`${i}-${line}`}>{line}</div>
@@ -84,12 +140,7 @@ export function Tooltip({ api }: SlotProps) {
         <div
           style={{ marginTop: 6, borderTop: `1px solid ${C.border}`, paddingTop: 6, fontSize: 12 }}
         >
-          <div>{item.upgrade !== 0 || current ? upgradeText(item.upgrade) : "Empty slot"}</div>
-          <div style={labelStyle}>
-            {current && current.uid !== item.uid
-              ? `Equipped (${EQUIP_LABEL[slot ?? item.slots[0] ?? "weapon"]}): ${current.name}`
-              : `Fits: ${item.slots.map((s) => EQUIP_LABEL[s]).join(" / ")}`}
-          </div>
+          <Comparison item={item} />
         </div>
       )}
     </div>

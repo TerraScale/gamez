@@ -4,6 +4,7 @@
  * and town portal scrolls; the junk buyer is the only lowball sink.
  */
 import type { NpcProto } from "../types.ts";
+import { UNKNOWN_ART } from "./monsters.ts";
 
 const POTION_IDS: string[] = [
   "classic.item.potion_life_1",
@@ -22,7 +23,7 @@ export const NPCS: Record<string, NpcProto> = {
     title: "Healer",
     role: "healer",
     appearance: "unit.npc.healer",
-    fallbackAppearance: "unit.hero",
+    fallbackAppearance: UNKNOWN_ART,
     tint: 0xf5f0ff,
     buyPct: 0,
     greeting: "Rest, traveller. The light will mend what the dark has done.",
@@ -32,7 +33,7 @@ export const NPCS: Record<string, NpcProto> = {
     title: "Smith",
     role: "smith",
     appearance: "unit.npc.smith",
-    fallbackAppearance: "unit.hero",
+    fallbackAppearance: UNKNOWN_ART,
     tint: 0xc0a080,
     sells: {
       // 12 items incl. jewelry and rares (vendor.ts): the smith is the main late gold sink.
@@ -49,7 +50,7 @@ export const NPCS: Record<string, NpcProto> = {
     title: "Alchemist",
     role: "alchemist",
     appearance: "unit.npc.alchemist",
-    fallbackAppearance: "unit.hero",
+    fallbackAppearance: UNKNOWN_ART,
     tint: 0x9fe0a0,
     sells: {
       categories: [],
@@ -65,7 +66,7 @@ export const NPCS: Record<string, NpcProto> = {
     title: "Rag Buyer",
     role: "junk",
     appearance: "unit.npc.junk",
-    fallbackAppearance: "unit.hero",
+    fallbackAppearance: UNKNOWN_ART,
     tint: 0xb8a890,
     buyPct: 10,
     greeting: "Anything you don't need, I'll take off your hands. Cheap, mind.",
@@ -75,7 +76,7 @@ export const NPCS: Record<string, NpcProto> = {
     title: "Watch Captain",
     role: "quest",
     appearance: "unit.npc.quest",
-    fallbackAppearance: "unit.hero",
+    fallbackAppearance: UNKNOWN_ART,
     tint: 0xe0c060,
     buyPct: 0,
     greeting: "The town needs someone brave, and you look like you have been looking for work.",

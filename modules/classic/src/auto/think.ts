@@ -8,6 +8,10 @@
  * Priority (first that applies wins):
  *  1 dead -> respawn   2 busy   3 potions   4 retreat   5 fight   6 loot
  *  7 equip (side action)   8 go to town   9 town routine   10 descend   11 explore
+ *
+ * Once descend or toTown is chosen the hero is leaving the level (AutoLeave):
+ * until it gets there, step 5 only fights foes within LEAVE_FIGHT_RANGE or
+ * attacking it, and step 6 only picks up loot within LEAVE_LOOT_RANGE.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { pushCommand } from "../bus.ts";
@@ -33,12 +37,19 @@ import { PICKUP_RANGE } from "../actions.ts";
 import { autoActive } from "../control.ts";
 import { SYSTEM } from "../ids.ts";
 import { emit } from "../events.ts";
-import { currentDepth, heroOf, RES, type AreaState, type RunStats } from "../resources.ts";
+import {
+  currentDepth,
+  heroOf,
+  RES,
+  type AreaState,
+  type QuestState,
+  type RunStats,
+} from "../resources.ts";
 import { rarityRank } from "../rules.ts";
-import { KIND, type ItemBaseProto } from "../types.ts";
+import { KIND, type ItemBaseProto, type NpcProto, type QuestProto } from "../types.ts";
 import { getAreaMap } from "../world/maps.ts";
 import { dungeonStep, giveUpFrontier, travel } from "./explore.ts";
-import { fightStep, isStunned, scanFoes, type Foe } from "./fight.ts";
+import { engagedFoes, fightStep, isStunned, scanFoes, type Foe } from "./fight.ts";
 import { pickEquip } from "./gear.ts";
 import { walkTo } from "./route.ts";
 import { restockPrice, skipTownStep, townFreesBag, townStep } from "./town.ts";
@@ -56,6 +67,8 @@ import {
   heroClass,
   inReach,
   isIgnored,
+  LEAVE_LOOT_RANGE,
+  leaving,
   lifePct,
   LOOT_RANGE,
   LOOT_SAFE_RANGE,
@@ -69,6 +82,7 @@ import {
   STALL_TICKS,
   stopIntent,
   STUCK_TICKS,
+  syncLeave,
   TOWN_STEPS,
   TRAVEL_RETRY_TICKS,
   TRIP_COOLDOWN_TICKS,
@@ -213,6 +227,8 @@ export function choosePotion(c: AutoCtx, kind: "life" | "mana"): number {
   const cur = vit?.hp ?? mag?.mp ?? 0;
   if (max <= 0) return -1;
   const missing = max - cur;
+  // Nothing to restore: a potion would be wasted (the drink op refuses it too).
+  if (missing <= 0) return -1;
   const bonus = c.world.get(c.hero, HeroStats)?.potionPct ?? 0;
   const pick = (allowRejuv: boolean): number => {
     let fit = -1;
@@ -276,18 +292,20 @@ function retreatStep(c: AutoCtx): boolean {
 /**
  * Nearest Loot within 12 tiles that passes the pickup filter, or 0. The
  * loot being walked to stays eligible up to twice that range (the route
- * around walls may lead away from it first).
+ * around walls may lead away from it first). While leaving the level only
+ * loot within LEAVE_LOOT_RANGE counts.
  */
 export function pickLoot(c: AutoCtx): Entity {
   const pickRank = rarityRank(c.cfg.pickupRarity);
   const keep = c.st.plan === "loot" ? c.st.focus : 0;
+  const leave = leaving(c);
   let best = 0;
   let bestD = Number.MAX_SAFE_INTEGER;
   for (const e of c.world.query(Loot, Pos, AreaTag)) {
     if (c.world.read(e, AreaTag).depth !== c.depth) continue;
     const p = c.world.read(e, Pos);
     const d = d2To(c, p.x, p.y);
-    const range = e === keep ? 2 * LOOT_RANGE : LOOT_RANGE;
+    const range = leave ? LEAVE_LOOT_RANGE : e === keep ? 2 * LOOT_RANGE : LOOT_RANGE;
     if (d > range * range || d >= bestD) continue;
     if (isIgnored(c.st, p.x >> 8, p.y >> 8)) continue;
     const l = c.world.read(e, Loot);
@@ -352,10 +370,46 @@ function equipStep(c: AutoCtx): void {
   if (eq) pushCommand(c.world, { op: "equip", uid: eq.uid, slot: eq.slot });
 }
 
+/**
+ * True when a finished quest waits for its giver (turned in by the town
+ * routine's quests step). Checked against the registry, because the giver
+ * is only an entity while the hero is in town.
+ */
+export function questTurnInWaiting(c: AutoCtx): boolean {
+  const qs = c.world.getResource<QuestState>(RES.quests);
+  if (!qs) return false;
+  return qs.active.some((a) => {
+    if (!a.done) return false;
+    const qp = c.reg.get<QuestProto>(KIND.quest, a.id);
+    return qp !== undefined && c.reg.get<NpcProto>(KIND.npc, qp.giver) !== undefined;
+  });
+}
+
+/**
+ * True when a quest the hero may accept now (level >= reqLevel, its `after`
+ * quest done, not active nor completed) has a giver NPC: the town routine's
+ * quests step accepts it. Like questTurnInWaiting, a voluntary trip reason:
+ * only at a safe point (no fight), after the trip cooldown, outside a stall;
+ * once accepted the quest is active and the reason is gone (no ping-pong).
+ */
+export function questAcceptWaiting(c: AutoCtx): boolean {
+  const qs = c.world.getResource<QuestState>(RES.quests);
+  if (!qs) return false;
+  const level = c.world.get(c.hero, Level)?.level ?? 1;
+  for (const [id, q] of c.reg.all<QuestProto>(KIND.quest)) {
+    if (q.reqLevel > level || qs.completed.includes(id)) continue;
+    if (q.after !== "" && !qs.completed.includes(q.after)) continue;
+    if (qs.active.some((a) => a.id === id)) continue;
+    if (c.reg.get<NpcProto>(KIND.npc, q.giver) !== undefined) return true;
+  }
+  return false;
+}
+
 /** Why a voluntary town trip is due now ("" = none). */
-export function townTripReason(c: AutoCtx): "" | "bag full" | "restock" {
+export function townTripReason(c: AutoCtx): "" | "bag full" | "quest" | "restock" {
   if (c.depth === 0 || c.tick < c.st.tripAt || stalled(c)) return "";
   if (!bagFits(c, 2, 3) && townFreesBag(c)) return "bag full";
+  if (questTurnInWaiting(c) || questAcceptWaiting(c)) return "quest";
   const gold = c.world.get(c.hero, Wallet)?.gold ?? 0;
   if (beltCount(c, "life") === 0 && gold >= restockPrice(c)) return "restock";
   return "";
@@ -435,7 +489,12 @@ function plan(c: AutoCtx, foes: readonly Foe[]): void {
 
 export function think(world: World, ctx: SimContext, hero: Entity): void {
   const c = makeAutoCtx(world, ctx, hero);
-  const st = c.st;
+  thinkTick(c);
+  syncLeave(c);
+}
+
+function thinkTick(c: AutoCtx): void {
+  const { world, ctx, hero, st } = c;
   const area = world.getResource<AreaState>(RES.area);
   if (area && area.enteredAt === ctx.tick) onAreaEntered(c);
   watchdog(c);
@@ -456,9 +515,11 @@ export function think(world: World, ctx: SimContext, hero: Entity): void {
   }
   trackStuck(c);
   if (retreatStep(c)) return;
-  if (foes.length > 0) {
+  // While leaving the level only close foes and attackers are fought (see engagedFoes).
+  const targets = engagedFoes(c, foes);
+  if (targets.length > 0) {
     st.foeAt = ctx.tick;
-    fightStep(c, foes);
+    fightStep(c, foes, targets);
     return;
   }
   // Hysteresis: a foe that just left the scan (line of sight, range) often comes back at once.

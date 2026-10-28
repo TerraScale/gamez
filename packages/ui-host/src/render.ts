@@ -57,10 +57,34 @@ export interface ArpgRenderEntity extends RenderEntity {
   /**
    * Animation key; overrides `moving`. Resolution order (first hit wins), for
    * each prefix p of `appearance` (a.b.c -> a.b.c, a.b, a):
-   * `${p}.${action}.${facing}`, `${p}.${action}`, `${p}.idle.${facing}`, `${p}.idle`, `${p}`;
-   * then the same for `fallbackAppearance`; then the primitive shape.
+   * `${p}.${action}.${facing}`, `${p}.${action}`, then the action's stand-ins
+   * (cast -> `${p}.attack.${facing}`, `${p}.attack`; other actions have none),
+   * then `${p}.idle.${facing}`, `${p}.idle`, `${p}`; then the same for
+   * `fallbackAppearance`; then the primitive shape. A "hit" without its own
+   * clip shows idle; `hitFlash` still makes the hit read.
+   *
+   * Units (and NPCs) whose resolved key has no facing suffix are mirrored for
+   * the screen-left facings (sw, w, nw): the base art faces screen-right.
    */
   action?: EntityAction;
+  /**
+   * Manual clip position 0..1 for attack/cast (and their stand-in clips): the
+   * renderer stops autoplay and shows frame min(n - 1, floor(p * n)). Omitted =
+   * autoplay. The classic scene maps the sim cast so the hit tick lands at 0.5
+   * (frame 2 of a 4-frame swing), which stretches the clip with attack speed.
+   */
+  actionProgress?: number;
+  /** Clip speed multiplier (walk cycles follow the real move speed). Default 1. */
+  animRate?: number;
+  /** 0..1 strength of the "just got hit" flash (red tint + 1-2 px knockback). 0/omitted = none. */
+  hitFlash?: number;
+  /**
+   * Projectile travel direction in tile space (any length). The renderer
+   * rotates the sprite (whose art points screen-right) along the screen
+   * projection of this vector.
+   */
+  vx?: number;
+  vy?: number;
   fallbackAppearance?: string;
   /** 0xRRGGBB multiply tint (0xffffff = none). */
   tint?: number;
@@ -75,9 +99,23 @@ export interface ArpgRenderEntity extends RenderEntity {
   labelColor?: number;
   /** Always show the label (loot); otherwise labels show only for isSelf/highlight. */
   showLabel?: boolean;
+  /** Second, smaller muted line under the name (NPC titles, "click to use" hints). Shown with the label. */
+  subtitle?: string;
+  /** Quest marker drawn above the name ("!" quest available, "?" ready to turn in). */
+  marker?: "!" | "?" | null;
+  /**
+   * Loot label stacking priority (higher keeps its place; lower ones are
+   * pushed up when they overlap). Default 0.
+   */
+  labelPriority?: number;
+  /**
+   * Dark backing plate behind the name (elite monsters), so tinted names stay
+   * readable on dark, fogged or light floors. Default false.
+   */
+  labelPlate?: boolean;
   /** Hover/target highlight outline. */
   highlight?: boolean;
-  /** Dead units lie down/fade (used when no death animation resolves). */
+  /** Dead units fade and squash (used when no death animation resolves). */
   dead?: boolean;
   /** Pixel lift above the ground (projectiles ~24). */
   zLift?: number;
@@ -128,6 +166,14 @@ export interface EffectSpec {
   sprite?: string;
 }
 
+/** HUD chrome insets (CSS px) for ArpgWorldRenderer.setLabelInsets. */
+export interface LabelInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export interface PointerInfo {
   kind: "down" | "move" | "up" | "tap" | "hold";
   /** Fractional tile coordinates under the pointer (may be outside the map). */
@@ -167,11 +213,119 @@ export interface ArpgWorldRenderer extends WorldRenderer {
   /** Zoom factor 0.5..2 (default 1). */
   setZoom(z: number): void;
   getZoom(): number;
+  /**
+   * Optional: screen (CSS px) insets of HUD chrome per edge. World labels are
+   * clamped inside the view minus these insets, and labels whose entity
+   * stands under the chrome are hidden. Cheap; call it on resize or layout
+   * change only. Default all 0.
+   */
+  setLabelInsets?(insets: LabelInsets): void;
   /** Darkness 0..1 outside a light circle of `radius` tiles around the followed point (0 = off). */
   setLighting(opts: { darkness: number; radius: number }): void;
   /** Fractional tile under a client (CSS px) point, or null before init. */
   tileAtClient(clientX: number, clientY: number): { x: number; y: number } | null;
   stats(): RendererStats;
+  /**
+   * QA introspection (optional; fakes may omit it). Lookups work at any time;
+   * per-frame tracking (frame times, animations seen, effects seen) only runs
+   * after enable(), which the app calls for `?debug=1` (window.__gamez.render).
+   */
+  readonly debug?: RendererDebug;
+}
+
+// ---------------------------------------------------------------------------
+// QA introspection (tools/qa). Never used for gameplay; zero cost until enabled.
+// ---------------------------------------------------------------------------
+
+/** Label kinds counted by RendererDebugInfo.labelsVisible. */
+export type LabelKind =
+  | "nameplate"
+  | "npc"
+  | "loot"
+  | "sign"
+  | "damage"
+  | "healthbar"
+  | "marker"
+  | "subtitle";
+
+/**
+ * How an appearance resolved for one (action, facing):
+ * - exact: own appearance with the requested action (`a.b.walk[.dir]`, or `a.b` for idle)
+ * - action-fallback: own appearance, another action (usually `.idle`)
+ * - generic: a shorter prefix of the appearance (`unit.monster` for `unit.monster.x`)
+ * - fallback: the fallbackAppearance chain
+ * - primitive: nothing resolved; drawn as a Graphics shape
+ */
+export type ResolutionKind = "exact" | "action-fallback" | "generic" | "fallback" | "primitive";
+
+export interface AppearanceResolution {
+  /** Manifest key that resolved (animation or sprite), null when primitive. */
+  key: string | null;
+  visual: "anim" | "still" | "prim";
+  kind: ResolutionKind;
+  /** Animation frame count (1 for stills, 0 for primitives). */
+  frames: number;
+}
+
+export interface SpriteResolution {
+  id: string;
+  /** Manifest key after segment fallback (resolveId), or null when nothing (not even "missing") exists. */
+  key: string | null;
+  /** exact = the id itself; generic = a shorter prefix; missing = the "missing" sprite or nothing. */
+  kind: "exact" | "generic" | "missing";
+}
+
+export interface RendererDebugInfo {
+  fps: number;
+  /** Wall-clock frame-to-frame time (ms) over the last ~240 frames (not clamped like Pixi's deltaMS). */
+  frameMs: { avg: number; p95: number; max: number };
+  /** Time spent inside the renderer tick (ms), same window. */
+  tickMs: { avg: number; p95: number };
+  zoom: number;
+  /** Entity views alive / visible after culling / drawn as primitives (visible ones). */
+  entities: number;
+  entitiesDrawn: number;
+  primitivesDrawn: number;
+  /** Live ground chunks and how many were built since enable(). */
+  chunks: number;
+  chunksBuilt: number;
+  props: number;
+  /** Logical ids (tiles, props, entity appearances) that fell back to "missing" or a primitive. Sorted. */
+  missingIds: string[];
+  /** "appearance|action|facing" -> "resolvedKey (kind)", for every combination drawn since enable(). */
+  animationsSeen: Record<string, string>;
+  /** Visible labels by kind (in view, right now); damage = live float texts. */
+  labelsVisible: Record<LabelKind, number>;
+  /** "effectKind|spriteId" -> "sprite" | "procedural", for every effect played since enable(). */
+  effectsSeen: Record<string, string>;
+  effectsPlayed: number;
+  floatsShown: number;
+  activeEffects: number;
+}
+
+export interface RendererDebug {
+  readonly enabled: boolean;
+  /** Starts per-frame tracking. Idempotent. */
+  enable(): void;
+  info(): RendererDebugInfo;
+  /**
+   * The renderer's own resolution of an entity appearance (same chain as
+   * upsertEntity). `kind` (default "unit") only affects the classification:
+   * single-sprite kinds (loot, projectile, prop) count their bare sprite as exact.
+   */
+  resolveAppearance(
+    appearance: string,
+    action: EntityAction,
+    facing: Facing,
+    fallbackAppearance?: string,
+    kind?: EntityKind,
+  ): AppearanceResolution;
+  /** Resolution of a tile/prop/sprite id (the path ground chunks and props use). */
+  resolveSprite(id: string): SpriteResolution;
+  /** True when the manifest has this exact sprite key (effects use exact ids only). */
+  hasExactSprite(id: string): boolean;
+  /** Client (CSS px) position of a fractional tile, or null before init. */
+  tileToClient(x: number, y: number): { x: number; y: number } | null;
 }
 
 export function isArpgRenderer(r: WorldRenderer): r is ArpgWorldRenderer {

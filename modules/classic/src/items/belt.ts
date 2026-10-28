@@ -48,6 +48,9 @@ export function beltAccept(
   return { slots: out, left };
 }
 
+/** Error code of a drink that restores nothing (the potion is kept). */
+export const POTION_USELESS = ERR.potionUseless;
+
 /** Drinks the potion of a belt slot (heal / mana / rejuvenation). */
 export function execDrink(world: World, ctx: SimContext, slot: number): OpResult {
   const h = liveHero(world);
@@ -71,6 +74,9 @@ export function execDrink(world: World, ctx: SimContext, slot: number): OpResult
   const potionPct = world.get(hero, HeroStats)?.potionPct ?? 0;
   const life = world.get(hero, Life);
   const mana = world.get(hero, Mana);
+  // Values before the drink (world.update may mutate the component objects read above).
+  const lifeBefore = life?.hp ?? 0;
+  const manaBefore = mana?.mp ?? 0;
   let lifeAdd = 0;
   let manaAdd = 0;
   if (potion.kind === "life") lifeAdd = pct(potion.amount, 100 + potionPct);
@@ -79,17 +85,25 @@ export function execDrink(world: World, ctx: SimContext, slot: number): OpResult
     lifeAdd = pct(pct(life?.max ?? 0, potion.pct), 100 + potionPct);
     manaAdd = pct(pct(mana?.max ?? 0, potion.pct), 100 + potionPct);
   }
+  // Refuse a drink that restores nothing: the potion is not consumed.
+  const lifeGain = life && lifeAdd > 0 ? Math.min(life.max, life.hp + lifeAdd) - life.hp : 0;
+  const manaGain = mana && manaAdd > 0 ? Math.min(mana.max, mana.mp + manaAdd) - mana.mp : 0;
+  if (lifeGain <= 0 && manaGain <= 0) {
+    const message =
+      potion.kind === "life"
+        ? "Life is already full"
+        : potion.kind === "mana"
+          ? "Mana is already full"
+          : "Life and mana are already full";
+    return fail(POTION_USELESS, message);
+  }
 
   const slots = belt.slots.map((c) => ({ base: c.base, count: c.count }));
   const cur = slots[slot]!;
   cur.count -= 1;
   if (cur.count === 0) cur.base = null;
-  if (life && lifeAdd > 0) {
-    world.update(hero, Life, { hp: Math.min(life.max, life.hp + lifeAdd) });
-  }
-  if (mana && manaAdd > 0) {
-    world.update(hero, Mana, { mp: Math.min(mana.max, mana.mp + manaAdd) });
-  }
+  if (life && lifeGain > 0) world.update(hero, Life, { hp: lifeBefore + lifeGain });
+  if (mana && manaGain > 0) world.update(hero, Mana, { mp: manaBefore + manaGain });
   world.update(hero, Belt, { slots, readyAt: ctx.tick + bal.potionCooldown });
   const stats = world.getResource<RunStats>(RES.stats);
   if (stats) stats.potionsUsed++;
@@ -98,6 +112,10 @@ export function execDrink(world: World, ctx: SimContext, slot: number): OpResult
     base: s.base,
     kind: potion.kind,
     amount: potion.kind === "mana" ? manaAdd : lifeAdd,
+    lifeBefore,
+    lifeAfter: lifeBefore + lifeGain,
+    manaBefore,
+    manaAfter: manaBefore + manaGain,
   });
   return OK;
 }

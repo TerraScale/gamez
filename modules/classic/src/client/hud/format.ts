@@ -9,7 +9,7 @@ import {
   type ControlView,
   type MinimapData,
 } from "../contract.ts";
-import type { Attr, EquipSlot, ItemRarity, MonsterRarity } from "../../types.ts";
+import type { Attr, EquipSlot, ItemCategory, ItemRarity, MonsterRarity } from "../../types.ts";
 import type { ControlMode, SimSpeed } from "../../resources.ts";
 
 export const TICKS_PER_SECOND = 20;
@@ -41,7 +41,7 @@ export function fmtPct(n: number): string {
   return `${Math.round(finite(n))}%`;
 }
 
-/** Ticks as seconds: "0s", "4.5s", "12s" (rounded up from 10 s). */
+/** Ticks as a duration, the one format of the HUD: "0s", "0.3s", "4.5s", "12s" (rounded up from 10 s). */
 export function fmtDuration(ticks: number): string {
   if (!(ticks > 0)) return "0s";
   const s = ticks / TICKS_PER_SECOND;
@@ -91,19 +91,11 @@ export interface Footprint {
   h: number;
 }
 
-/** Horizontal room the panel chrome takes around the bag grid (body padding + frame), px. */
-export const BAG_CHROME_PX = 48;
-
 /**
- * Bag cell size (px): 44 on desktop. In compact layouts the whole grid
- * (`cols` cells) fits the viewport minus BAG_CHROME_PX, between 28 and 40 px
- * (32 px at 375 px wide), so the bag never needs a horizontal scroll.
+ * Bag cell size (px): always 44, the touch target of AGENTS.md §10. On compact
+ * layouts the bag does not shrink: its card scrolls horizontally instead.
  */
-export function bagCellSize(compact: boolean, viewportWidth: number, cols: number): number {
-  if (!compact) return 44;
-  const fit = Math.floor((viewportWidth - BAG_CHROME_PX) / Math.max(1, cols));
-  return Math.max(28, Math.min(40, fit));
-}
+export const BAG_CELL_PX = 44;
 
 /** Row-major flags of the inventory cells covered by items (cols x rows). */
 export function gridOccupancy(cols: number, rows: number, items: readonly Footprint[]): boolean[] {
@@ -169,12 +161,25 @@ export const EQUIP_LABEL: Record<EquipSlot, string> = {
   weapon: "Weapon",
   offhand: "Off hand",
   helm: "Helm",
-  armor: "Armour",
+  armor: "Armor",
   gloves: "Gloves",
   boots: "Boots",
   amulet: "Amulet",
   ring1: "Ring",
   ring2: "Ring",
+};
+
+/** Player-facing name of an item category (fallback when an item has no base name). */
+export const CATEGORY_LABEL: Record<ItemCategory, string> = {
+  weapon: "Weapon",
+  shield: "Shield",
+  helm: "Helm",
+  armor: "Armor",
+  gloves: "Gloves",
+  boots: "Boots",
+  ring: "Ring",
+  amulet: "Amulet",
+  potion: "Potion",
 };
 
 export function rarityHex(r: ItemRarity): string {
@@ -185,6 +190,10 @@ export function monsterHex(r: MonsterRarity): string {
   return hex(MONSTER_COLOR[r]);
 }
 
+/**
+ * "1 item", "3 items", "2 free cells" (the count is formatted with separators).
+ * Use it for every count a panel shows.
+ */
 export function pluralize(n: number, one: string, many = `${one}s`): string {
   return `${fmtInt(n)} ${n === 1 ? one : many}`;
 }

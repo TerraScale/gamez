@@ -148,6 +148,7 @@ export const ERR = {
   questState: "quest_state",
   modeNotIdle: "mode_not_idle",
   empty: "empty",
+  potionUseless: "potion_useless",
 } as const;
 
 export type OpResult = { ok: true } | { ok: false; code: string; message: string };

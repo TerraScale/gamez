@@ -4,9 +4,12 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   itemLines,
   potionText,
+  skillDetailLines,
   skillTooltip,
   STAT_TEXT,
+  statDiffs,
   statText,
+  statTotals,
   ticksToSeconds,
 } from "../src/client/describe.ts";
 import {
@@ -129,6 +132,34 @@ describe("item lines", () => {
   });
 });
 
+describe("stat comparison", () => {
+  it("totals implicits and rolled mods, then lists only the differences", () => {
+    const own = statTotals(
+      {
+        uid: 1,
+        base: "x",
+        rarity: "magic",
+        ilvl: 1,
+        name: "n",
+        mods: [{ stat: "armor", value: 5 }],
+        affixes: [],
+        value: 1,
+      },
+      undefined,
+    );
+    const cur = { armor: 3, dex: 3 };
+    // STAT_TEXT order: Dexterity comes before Armor.
+    expect(statDiffs(own, cur)).toEqual([
+      { text: "-3 to Dexterity", delta: -3 },
+      { text: "+2 to Armor", delta: 2 },
+    ]);
+  });
+
+  it("reports an empty difference list for identical stats", () => {
+    expect(statDiffs({ dex: 2 }, { dex: 2 })).toEqual([]);
+  });
+});
+
 describe("skill tooltips", () => {
   it("shows cost, range and damage of a skill at a rank", () => {
     const lines = skillTooltip(TEST_SKILLS["test.skill.bolt"]!, 1);
@@ -138,9 +169,18 @@ describe("skill tooltips", () => {
     expect(lines).toContain("6-10 fire damage");
   });
 
-  it("formats seconds from ticks", () => {
-    expect(ticksToSeconds(40)).toBe("2.0 s");
-    expect(ticksToSeconds(5)).toBe("0.3 s");
+  it("formats seconds from ticks with the one HUD duration format", () => {
+    expect(ticksToSeconds(40)).toBe("2.0s");
+    expect(ticksToSeconds(5)).toBe("0.3s");
+    expect(ticksToSeconds(200)).toBe("10s");
+  });
+
+  it("shows mana and cooldown once: the detail lines leave them out", () => {
+    const bolt = TEST_SKILLS["test.skill.bolt"]!;
+    const details = skillDetailLines(bolt, 1);
+    expect(details.some((l) => /^(Mana|Cooldown):/.test(l))).toBe(false);
+    expect(details).toContain("Range: 10.0 tiles");
+    expect(skillTooltip(bolt, 1).filter((l) => l.startsWith("Mana:"))).toHaveLength(1);
   });
 
   it("uses the registry balance id constant", () => {

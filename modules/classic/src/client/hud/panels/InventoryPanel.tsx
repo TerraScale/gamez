@@ -10,10 +10,11 @@ import type { ItemView } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, useCompact, type SlotProps } from "../common.tsx";
 import {
-  bagCellSize,
+  BAG_CELL_PX,
   EQUIP_LABEL,
   fmtInt,
   gridOccupancy,
+  pluralize,
   RARITY_LABEL,
   rarityHex,
 } from "../format.ts";
@@ -35,6 +36,8 @@ interface BagItemProps {
   x: number;
   y: number;
   cell: number;
+  /** Gap between the item box and its cell edge (0 on compact layouts, so the box is the full cell). */
+  inset: number;
   selected: boolean;
   onPick: (item: ItemView) => void;
   onMenu: (uid: number) => void;
@@ -42,7 +45,18 @@ interface BagItemProps {
   onLeave: () => void;
 }
 
-function BagItem({ item, x, y, cell, selected, onPick, onMenu, onHover, onLeave }: BagItemProps) {
+function BagItem({
+  item,
+  x,
+  y,
+  cell,
+  inset,
+  selected,
+  onPick,
+  onMenu,
+  onHover,
+  onLeave,
+}: BagItemProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fired = useRef(false);
   const clear = () => {
@@ -70,6 +84,7 @@ function BagItem({ item, x, y, cell, selected, onPick, onMenu, onHover, onLeave 
       onPointerDown={() => {
         fired.current = false;
         clear();
+        onLeave();
         timer.current = setTimeout(() => {
           fired.current = true;
           onMenu(item.uid);
@@ -87,10 +102,10 @@ function BagItem({ item, x, y, cell, selected, onPick, onMenu, onHover, onLeave 
       style={{
         position: "absolute",
         zIndex: 1,
-        left: x * cell + 2,
-        top: y * cell + 2,
-        width: item.w * cell - 4,
-        height: item.h * cell - 4,
+        left: x * cell + inset,
+        top: y * cell + inset,
+        width: item.w * cell - 2 * inset,
+        height: item.h * cell - 2 * inset,
         padding: 0,
         cursor: "pointer",
         display: "flex",
@@ -112,19 +127,6 @@ function BagItem({ item, x, y, cell, selected, onPick, onMenu, onHover, onLeave 
   );
 }
 
-/** Window width in CSS px, updated on resize (375 when there is no window, e.g. SSR tests). */
-function useViewportWidth(): number {
-  const read = (): number => (typeof window === "undefined" ? 375 : window.innerWidth);
-  const [w, setW] = useState(read);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const on = (): void => setW(read());
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []);
-  return w;
-}
-
 export function InventoryPanel({ api }: SlotProps) {
   const inv = useSelect(api.hud, (s) => s.inventory);
   const equipment = useSelect(api.hud, (s) => s.equipment);
@@ -137,8 +139,14 @@ export function InventoryPanel({ api }: SlotProps) {
   const [moving, setMoving] = useState<number | null>(null);
   const [menu, setMenu] = useState<number | null>(null);
 
-  const viewport = useViewportWidth();
-  const cell = bagCellSize(compact, viewport, inv.cols);
+  // Closing the panel (Escape, closeAll) unmounts it without a pointer-leave, so the
+  // item tooltip would stay on screen. Clear it on unmount.
+  useEffect(() => () => api.setHover(null), [api]);
+
+  // Cells keep the 44 px touch target on every layout; on compact screens the
+  // bag card scrolls sideways instead of shrinking the cells.
+  const cell = BAG_CELL_PX;
+  const inset = compact ? 0 : 2;
   const occupied = useMemo(
     () =>
       gridOccupancy(
@@ -152,8 +160,15 @@ export function InventoryPanel({ api }: SlotProps) {
   const menuItem = inv.items.find((p) => p.item.uid === menu)?.item ?? null;
   const movingItem = inv.items.find((p) => p.item.uid === moving)?.item ?? null;
 
-  const hover = (uid: number, x: number, y: number) => api.setHover({ uid, x, y });
+  // While the item menu is open the tooltip stays away (it would cover the menu's title).
+  const hover = (uid: number, x: number, y: number) => {
+    if (menu === null) api.setHover({ uid, x, y });
+  };
   const leave = () => api.setHover(null);
+  const openMenu = (uid: number) => {
+    api.setHover(null);
+    setMenu(uid);
+  };
 
   const place = (x: number, y: number) => {
     if (moving === null) return;
@@ -174,10 +189,10 @@ export function InventoryPanel({ api }: SlotProps) {
           onClick={() => place(x, y)}
           style={{
             position: "absolute",
-            left: x * cell + 2,
-            top: y * cell + 2,
-            width: cell - 4,
-            height: cell - 4,
+            left: x * cell + inset,
+            top: y * cell + inset,
+            width: cell - 2 * inset,
+            height: cell - 2 * inset,
             padding: 0,
             borderRadius: 4,
             background: moving === null ? "rgba(255, 240, 210, 0.03)" : "rgba(243, 210, 122, 0.12)",
@@ -195,7 +210,7 @@ export function InventoryPanel({ api }: SlotProps) {
       id="inventory"
       title="Inventory"
       width={compact ? 380 : 700}
-      subtitle={`${fmtInt(gold)} gold · ${inv.items.length} items`}
+      subtitle={`${fmtInt(gold)} gold · ${pluralize(inv.items.length, "item")}`}
     >
       <div
         style={{
@@ -288,6 +303,7 @@ export function InventoryPanel({ api }: SlotProps) {
                   x={p.x}
                   y={p.y}
                   cell={cell}
+                  inset={inset}
                   selected={p.item.uid === moving}
                   onPick={(item) => {
                     if (moving !== null) {
@@ -297,16 +313,18 @@ export function InventoryPanel({ api }: SlotProps) {
                     }
                     api.act(ACTION.equip, { uid: item.uid, slot: null });
                   }}
-                  onMenu={(uid) => setMenu(uid)}
+                  onMenu={openMenu}
                   onHover={hover}
                   onLeave={leave}
                 />
               ))}
             </div>
           </div>
-          <div
-            style={{ ...labelStyle, marginTop: 6 }}
-          >{`${fmtInt(freeCells)} free cells · click an item to equip it, right-click or hold for actions`}</div>
+          <div style={{ ...labelStyle, marginTop: 6 }}>
+            {compact
+              ? `${pluralize(freeCells, "free cell")} · tap an item to equip it, hold for actions · swipe the bag sideways to see every cell`
+              : `${pluralize(freeCells, "free cell")} · click an item to equip it, right-click or hold for actions`}
+          </div>
           {menuItem ? (
             <div
               role="menu"

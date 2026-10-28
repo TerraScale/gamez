@@ -27,8 +27,13 @@ export interface Visuals {
 /**
  * Loads every atlas in the manifest and returns id lookups. A failed atlas
  * leaves its ids unresolved, so the renderer falls back to primitives.
+ * `onMissing` (QA) hears each id, once, that resolves to "missing" or nothing.
  */
-export async function loadVisuals(manifest: AssetManifest, baseUrl: string): Promise<Visuals> {
+export async function loadVisuals(
+  manifest: AssetManifest,
+  baseUrl: string,
+  onMissing?: (id: string) => void,
+): Promise<Visuals> {
   const sheets = new Map<string, Spritesheet>();
   await Promise.all(
     manifest.atlases.map(async (atlas) => {
@@ -56,6 +61,7 @@ export async function loadVisuals(manifest: AssetManifest, baseUrl: string): Pro
       ? sheets.get(ref.atlas)?.textures[ref.frame]
       : undefined;
     const v = ref && texture ? { texture, anchor: ref.anchor } : null;
+    if (onMissing && id !== "missing" && (v === null || key === "missing")) onMissing(id);
     sprites.set(id, v);
     return v;
   };

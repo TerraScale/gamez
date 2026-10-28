@@ -17,7 +17,10 @@ import {
   SAVE_KEY,
   type KeyValueStorage,
 } from "../src/client/persist.ts";
-import { spawnTestHero, testSim, useOpenMap } from "./support/harness.ts";
+import type { GameEvent } from "@gamez/kernel";
+import { CastOrder, Pos } from "../src/components.ts";
+import { DEFAULT_AUTO_CONFIG, heroOf, RES, type ControlState } from "../src/resources.ts";
+import { spawnTestHero, spawnTestMonster, testSim, useOpenMap } from "./support/harness.ts";
 
 class FakeRenderer implements ArpgWorldRenderer {
   readonly arpg = true as const;
@@ -88,10 +91,11 @@ class MemoryStorage implements KeyValueStorage {
   }
 }
 
-function setup(opts: { hero?: boolean } = {}) {
-  const sim = testSim([]);
+function setup(opts: { hero?: boolean; modules?: string[] } = {}) {
+  const sim = testSim(opts.modules ?? []);
   useOpenMap(sim, 1);
   if (opts.hero !== false) spawnTestHero(sim.world, { x: 5, y: 5 });
+  const events: GameEvent[] = [];
   const renderer = new FakeRenderer();
   const storage = new MemoryStorage();
   const clock = { now: 1000, wall: 1_700_000_000_000 };
@@ -109,8 +113,11 @@ function setup(opts: { hero?: boolean } = {}) {
     exit: () => {
       exits++;
     },
+    onEvents: (evs) => {
+      events.push(...evs);
+    },
   });
-  return { sim, renderer, storage, clock, game, exits: () => exits };
+  return { sim, renderer, storage, clock, game, events, exits: () => exits };
 }
 
 describe("classic client game", () => {
@@ -186,6 +193,60 @@ describe("classic client game", () => {
     expect(game.api.hud.getSnapshot().phase).toBe("choose");
     expect(game.api.hud.getSnapshot().hero).toBeNull();
     expect(sim.tick).toBeGreaterThanOrEqual(0);
+  });
+
+  it("flashes the target of a direct hit in the next rendered frame", () => {
+    const { sim, renderer, clock, events } = setup({ modules: ["classic.core", "classic.combat"] });
+    const hero = heroOf(sim.world);
+    const monster = spawnTestMonster(sim.world, { x: 6, y: 5, life: 500 });
+    let hit: GameEvent | undefined;
+    for (let i = 0; i < 40 && !hit; i++) {
+      if (!sim.world.has(hero, CastOrder)) {
+        const p = sim.world.read(monster, Pos);
+        sim.world.add(hero, CastOrder, {
+          skill: "test.skill.strike",
+          target: monster,
+          x: p.x,
+          y: p.y,
+        });
+      }
+      events.length = 0;
+      clock.now += 50;
+      renderer.frame(50);
+      hit = events.find((e) => e.type === "classic.hit" && e.target === monster && e.dot !== true);
+    }
+    expect(hit).toBeDefined();
+    const drawn = renderer.entities.get(`c${monster}`);
+    expect(drawn?.hitFlash).toBeGreaterThan(0);
+  });
+
+  it("thins out float texts in Full Idle x8 (no small floats, shorter life, capped per frame)", () => {
+    const { sim, renderer, clock } = setup({ modules: ["classic.core", "classic.combat"] });
+    const control: ControlState = {
+      mode: "idle",
+      speed: 8,
+      overrideUntil: 0,
+      config: DEFAULT_AUTO_CONFIG,
+    };
+    sim.world.setResource(RES.control, control);
+    const hero = heroOf(sim.world);
+    const monsters = [6, 7, 8].map((x) => spawnTestMonster(sim.world, { x, y: 5, life: 5000 }));
+    for (let i = 0; i < 40; i++) {
+      for (const m of monsters) {
+        if (sim.world.has(hero, CastOrder)) break;
+        const p = sim.world.read(m, Pos);
+        sim.world.add(hero, CastOrder, { skill: "test.skill.strike", target: m, x: p.x, y: p.y });
+      }
+      const before = renderer.texts.length;
+      clock.now += 50;
+      renderer.frame(50);
+      expect(renderer.texts.length - before).toBeLessThanOrEqual(6);
+    }
+    expect(renderer.texts.length).toBeGreaterThan(0);
+    for (const t of renderer.texts) {
+      expect(t.size).not.toBe("s");
+      expect(t.ms).toBe(550);
+    }
   });
 
   it("stops frame work after destroy and exit leaves the mode", () => {

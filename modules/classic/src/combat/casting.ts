@@ -258,10 +258,26 @@ function aimAngle(f: Fire): number {
   return FACING_ANGLE[f.world.get(f.caster, Mover)?.facing ?? "s"] ?? 8;
 }
 
+/**
+ * Every enemy within reach inside the cone is hit. One classic.effect per
+ * swing, hit or miss, centred on the caster with radius = reach and one
+ * point: the aim tip (caster + reach along the aim), so the client can
+ * orient the slash.
+ */
 function fireArc(f: Fire): void {
   const aim = aimAngle(f);
   const half = f.skill.arc ?? 8;
-  for (const t of enemiesInRadius(f.world, f.grid, f.px, f.py, reachOf(f), f.team, f.depth)) {
+  const reach = reachOf(f);
+  const [ax, ay] = angleVec(aim, reach);
+  emit(f.ctx, {
+    type: "classic.effect",
+    effect: f.skill.effect,
+    x: f.px,
+    y: f.py,
+    radius: reach,
+    points: [{ x: f.px + ax, y: f.py + ay }],
+  });
+  for (const t of enemiesInRadius(f.world, f.grid, f.px, f.py, reach, f.team, f.depth)) {
     const tp = f.world.read(t, Pos);
     const inCone =
       (tp.x === f.px && tp.y === f.py) || angleDiff(angleOf(tp.x - f.px, tp.y - f.py), aim) <= half;

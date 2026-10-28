@@ -3,7 +3,14 @@
  * context, intent writing, plan changes, and small read-only queries over
  * the hero's gear, belt and bag. Everything here is deterministic sim code.
  */
-import type { ComponentType, Entity, FrozenRegistry, SimContext, World } from "@gamez/kernel";
+import {
+  defineComponent,
+  type ComponentType,
+  type Entity,
+  type FrozenRegistry,
+  type SimContext,
+  type World,
+} from "@gamez/kernel";
 import { INTERACT_RANGE } from "../actions.ts";
 import {
   AreaTag,
@@ -36,6 +43,16 @@ import {
 } from "../types.ts";
 import type { ClassicMap } from "../world/maps.ts";
 
+/**
+ * Travel commitment of the auto controller (owner: classic.auto, on the
+ * hero): set while the plan is descend or toTown, kept through the fights
+ * and pickups that interrupt the walk, removed on any other plan or when the
+ * area changes. While it holds, fights and loot stay close (LEAVE_*_RANGE).
+ */
+export const AutoLeave = defineComponent<{ plan: "descend" | "toTown"; depth: number }>(
+  "classic.autoLeave",
+);
+
 export type ValueOf<C> = C extends ComponentType<infer T> ? T : never;
 export type AutoStateValue = ValueOf<typeof AutoState>;
 
@@ -43,8 +60,17 @@ export type AutoStateValue = ValueOf<typeof AutoState>;
 export const REPLAN_TICKS = 10;
 /** Fight engagement radius (sub): 12 tiles. */
 export const FIGHT_RANGE = 12 * 256;
+/**
+ * While the hero is leaving the level (plan descend/toTown, AutoLeave), only
+ * foes this close (sub, 4 tiles) or attacking it are fought: a crowded level
+ * always has an awake foe within FIGHT_RANGE, which would keep the hero from
+ * ever reaching the stairs.
+ */
+export const LEAVE_FIGHT_RANGE = 4 * 256;
 /** Loot search radius (sub): 12 tiles. */
 export const LOOT_RANGE = 12 * 256;
+/** Loot search radius while leaving the level (sub): 3 tiles, so loot does not pull the hero away. */
+export const LEAVE_LOOT_RANGE = 3 * 256;
 /** No looting with an awake enemy this close (sub): 6 tiles. */
 export const LOOT_SAFE_RANGE = 6 * 256;
 /** Same tile this long while walking = stuck. */
@@ -387,4 +413,35 @@ export function potionAmount(
   potionPctBonus: number,
 ): number {
   return pct(p.amount + pct(max, p.pct), 100 + potionPctBonus);
+}
+
+// ---------------------------------------------------------------------------
+// Leaving the level (AutoLeave)
+// ---------------------------------------------------------------------------
+
+/**
+ * True while the hero is committed to leaving the level: the plan is descend
+ * or toTown, or a fight/pickup interrupted one on this level (AutoLeave).
+ */
+export function leaving(c: AutoCtx): boolean {
+  if (c.depth === 0) return false;
+  const plan = c.st.plan;
+  if (plan === "descend" || plan === "toTown") return true;
+  if (plan !== "fight" && plan !== "loot") return false;
+  const l = c.world.get(c.hero, AutoLeave);
+  return l !== undefined && l.depth === c.depth;
+}
+
+/** Keeps AutoLeave in step with the plan; called once at the end of every controller tick. */
+export function syncLeave(c: AutoCtx): void {
+  const plan = c.st.plan;
+  const cur = c.world.get(c.hero, AutoLeave);
+  if (c.depth > 0 && (plan === "descend" || plan === "toTown")) {
+    if (!cur || cur.plan !== plan || cur.depth !== c.depth)
+      c.world.add(c.hero, AutoLeave, { plan, depth: c.depth });
+    return;
+  }
+  if (!cur) return;
+  if (c.depth === 0 || cur.depth !== c.depth || (plan !== "fight" && plan !== "loot"))
+    c.world.remove(c.hero, AutoLeave);
 }

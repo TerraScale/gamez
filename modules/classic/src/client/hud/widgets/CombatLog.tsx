@@ -2,13 +2,16 @@
 import { useState } from "react";
 import { hex } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, useCompact, type SlotProps } from "../common.tsx";
+import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
 import { labelStyle, panelStyle } from "../styles.ts";
 
-export const COMBAT_LOG_LINES = 8;
+/** Whole entries only: the newest lines, each clamped to two lines (no half-clipped text). */
+export const COMBAT_LOG_LINES = 6;
+const ENTRY_LINES = 2;
 
 export function CombatLog({ api }: SlotProps) {
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
+  const compact = layout !== "desktop";
   const lines = useSelect(api.log, (l) => l.slice(-COMBAT_LOG_LINES));
   const [open, setOpen] = useState(!compact);
   return (
@@ -34,18 +37,22 @@ export function CombatLog({ api }: SlotProps) {
         </Btn>
       </div>
       {open ? (
-        <ol
-          role="log"
-          style={{
-            listStyle: "none",
-            margin: "6px 0 0",
-            padding: 0,
-            maxHeight: 190,
-            overflow: "hidden",
-          }}
-        >
+        <ol role="log" style={{ listStyle: "none", margin: "6px 0 0", padding: 0 }}>
           {lines.map((l) => (
-            <li key={l.id} style={{ color: hex(l.color), fontSize: 12, lineHeight: 1.4 }}>
+            <li
+              key={l.id}
+              title={l.text}
+              style={{
+                color: hex(l.color),
+                fontSize: 12,
+                lineHeight: 1.4,
+                display: "-webkit-box",
+                WebkitLineClamp: ENTRY_LINES,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                overflowWrap: "anywhere",
+              }}
+            >
               {l.text}
             </li>
           ))}

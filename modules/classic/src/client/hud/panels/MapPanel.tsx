@@ -1,9 +1,8 @@
 /** Large automap overlay (panel "map", Tab): explored tiles and dots, with a legend. */
-import { DOT_COLOR, DOT_LABEL } from "../format.ts";
-import { hex } from "../../contract.ts";
-import { MinimapCanvas } from "../widgets/Minimap.tsx";
+import { DOT_LABEL, type MinimapDotKind } from "../format.ts";
+import { HeroSwatch, MarkerSwatch, MinimapCanvas } from "../widgets/Minimap.tsx";
 import { PanelFrame, type SlotProps } from "../common.tsx";
-import { labelStyle } from "../styles.ts";
+import { C, labelStyle } from "../styles.ts";
 import { useSelect } from "../hooks.ts";
 
 export function MapPanel({ api }: SlotProps) {
@@ -20,15 +19,33 @@ export function MapPanel({ api }: SlotProps) {
     >
       <MinimapCanvas api={api} size={512} cssWidth="100%" label="Automap" />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-        {(Object.keys(DOT_LABEL) as (keyof typeof DOT_LABEL)[]).map((kind) => (
+        <span style={{ ...labelStyle, width: "100%", marginBottom: -4 }}>Legend</span>
+        <span
+          style={{
+            ...labelStyle,
+            color: C.text,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            minHeight: 28,
+          }}
+        >
+          <HeroSwatch />
+          Hero
+        </span>
+        {(Object.keys(DOT_LABEL) as MinimapDotKind[]).map((kind) => (
           <span
             key={kind}
-            style={{ ...labelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}
+            style={{
+              ...labelStyle,
+              color: C.text,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              minHeight: 28,
+            }}
           >
-            <span
-              aria-hidden="true"
-              style={{ width: 9, height: 9, borderRadius: 2, background: hex(DOT_COLOR[kind]) }}
-            />
+            <MarkerSwatch kind={kind} />
             {DOT_LABEL[kind]}
           </span>
         ))}

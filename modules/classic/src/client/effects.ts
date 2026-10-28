@@ -8,6 +8,7 @@
 import type { Entity, FrozenRegistry, GameEvent, World } from "@gamez/kernel";
 import type { EffectKind, EffectSpec } from "@gamez/ui-host";
 import type { ClassicEvent } from "../events.ts";
+import { ERR } from "../actions.ts";
 import { Hero, Monster } from "../components.ts";
 import { SUB } from "../fixed.ts";
 import {
@@ -84,6 +85,9 @@ export const LOG_COLOR = {
 const TOAST_MS = 4000;
 const TOAST_LONG_MS = 7000;
 
+/** Healing numbers and heal effects: a white-green, distinct from poison. */
+export const HEAL_COLOR = 0xb8ffcc;
+
 interface EffectRow {
   kind: EffectKind;
   color: number;
@@ -96,13 +100,13 @@ export const EFFECT_TABLE: Readonly<Record<string, EffectRow>> = {
   "fx.cinder_orb": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 1.5 },
   "fx.arc_chain": { kind: "chain", color: ELEMENT_COLOR.lightning, radius: 0 },
   "fx.phase_step": { kind: "blink", color: 0xb8c4ff, radius: 0.5 },
-  "fx.tumble": { kind: "blink", color: 0xd9d9d9, radius: 0.5 },
-  "fx.mend": { kind: "heal", color: ELEMENT_COLOR.poison, radius: 0.8 },
-  "fx.whirl": { kind: "nova", color: 0xe6e6e6, radius: 1.5 },
+  "fx.tumble": { kind: "blink", color: 0x8a6bd1, radius: 0.5 },
+  "fx.mend": { kind: "heal", color: HEAL_COLOR, radius: 0.8 },
+  "fx.whirl": { kind: "nova", color: 0xb8d4ff, radius: 1.5 },
   "fx.slam": { kind: "nova", color: 0xc8873a, radius: 2 },
   "fx.burst": { kind: "explosion", color: ELEMENT_COLOR.poison, radius: 1.5 },
-  "fx.rally": { kind: "levelup", color: GOLD_COLOR, radius: 1.5 },
-  "fx.charge": { kind: "slash", color: 0xf2f2f2, radius: 1 },
+  "fx.rally": { kind: "nova", color: GOLD_COLOR, radius: 1.5 },
+  "fx.charge": { kind: "slash", color: 0xffd27a, radius: 1 },
   // Hero skills.
   "fx.attack": { kind: "slash", color: ELEMENT_COLOR.phys, radius: 0.8 },
   "fx.cleave": { kind: "slash", color: 0xffd28a, radius: 1.5 },
@@ -111,7 +115,7 @@ export const EFFECT_TABLE: Readonly<Record<string, EffectRow>> = {
   "fx.spark_sentry": { kind: "cast", color: ELEMENT_COLOR.lightning, radius: 0.8 },
   "fx.ember_bolt": { kind: "explosion", color: ELEMENT_COLOR.fire, radius: 0.8 },
   // Monster and boss skills.
-  "fx.claw": { kind: "slash", color: 0xd0d0d0, radius: 0.8 },
+  "fx.claw": { kind: "slash", color: 0xd9534f, radius: 0.8 },
   "fx.bite": { kind: "slash", color: 0xc84040, radius: 0.6 },
   "fx.gore": { kind: "slash", color: 0xe0a060, radius: 1 },
   "fx.arrow": { kind: "hit", color: ELEMENT_COLOR.phys, radius: 0.5 },
@@ -127,6 +131,53 @@ export const EFFECT_TABLE: Readonly<Record<string, EffectRow>> = {
   "fx.boss_summon": { kind: "portal", color: 0x8a5a3a, radius: 1.5 },
 };
 const DEFAULT_EFFECT: EffectRow = { kind: "cast", color: 0xffffff, radius: 0.6 };
+
+/** How float texts are thinned out at a sim speed (Full Idle x2-x8). */
+export interface FloatPolicy {
+  /** Drop small floats ("miss", damage over time). */
+  dropMinor: boolean;
+  /** Float lifetime (ms); undefined keeps the renderer default (900 ms). */
+  ms: number | undefined;
+  /** At most this many floats per simulated batch (one frame's ticks). */
+  perBatch: number;
+}
+
+/**
+ * Float volume by sim speed. At x1/x2 every float shows. From x4 the many
+ * small floats ("miss", dots) are dropped, floats live shorter (they would
+ * otherwise pile up around the hero) and each frame's batch is capped.
+ */
+export function floatPolicy(speed: number): FloatPolicy {
+  if (speed >= 8) return { dropMinor: true, ms: 550, perBatch: 6 };
+  if (speed >= 4) return { dropMinor: true, ms: 700, perBatch: 8 };
+  return { dropMinor: false, ms: undefined, perBatch: Number.POSITIVE_INFINITY };
+}
+
+/** Dimmed grey for "miss" floats so they do not compete with damage numbers. */
+const MISS_COLOR = 0x6b7380;
+
+/** Human message for a failed cast, by ActionError / order code. */
+export const CAST_FAIL_MESSAGE: Readonly<Record<string, string>> = {
+  [ERR.noMana]: "Not enough mana",
+  [ERR.cooldown]: "Not ready yet",
+  [ERR.tooFar]: "Out of range",
+  [ERR.busy]: "You are busy",
+  [ERR.dead]: "You are dead",
+  [ERR.badTarget]: "Invalid target",
+  [ERR.notKnown]: "You have not learned this skill",
+  [ERR.unknownId]: "Unknown skill",
+};
+
+/** Error text for a failed cast by the hero (falls back to naming the skill). */
+export function castFailMessage(code: string, skillLabel: string): string {
+  return CAST_FAIL_MESSAGE[code] ?? `Cannot cast ${skillLabel}`;
+}
+
+/** "1 skill point" / "5 skill points" (zero yields an empty string). */
+function countOf(n: number, one: string): string {
+  if (n <= 0) return "";
+  return `+${n} ${n === 1 ? one : `${one}s`}`;
+}
 
 /** Renderer effect for an effect id at a fractional tile position. */
 export function effectSpec(effect: string, x: number, y: number, radiusSub = 0): EffectSpec {
@@ -144,6 +195,9 @@ export function effectSpec(effect: string, x: number, y: number, radiusSub = 0):
 
 const tile = (sub: number): number => sub / SUB;
 
+/** nameOf when the entity is gone or has no name. */
+const UNKNOWN_NAME = "something";
+
 function nameOf(env: EffectEnv, e: Entity): string {
   if (e !== 0 && env.world.exists(e)) {
     const m = env.world.get(e, Monster);
@@ -151,11 +205,16 @@ function nameOf(env: EffectEnv, e: Entity): string {
     const h = env.world.get(e, Hero);
     if (h) return h.name;
   }
-  return "something";
+  return UNKNOWN_NAME;
 }
 
 function skillName(registry: FrozenRegistry, id: string): string {
   return registry.get<SkillProto>(KIND.skill, id)?.name ?? id;
+}
+
+/** True for arc-shape skills (cleave): their swing is drawn by classic.effect at fire time. */
+function isArcSkill(registry: FrozenRegistry, id: string): boolean {
+  return registry.get<SkillProto>(KIND.skill, id)?.shape === "arc";
 }
 
 /** Plans the visuals of one event. Unknown events produce no visuals. */
@@ -200,7 +259,15 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
           ev.crit ? LOG_COLOR.gold : LOG_COLOR.combat,
         );
       } else if (ev.heroHit && !ev.dot) {
-        log("combat", `${nameOf(env, ev.source)} hits you for ${ev.amount}`, LOG_COLOR.hurt);
+        // The source can be gone already (a projectile from a monster that died since).
+        const who = nameOf(env, ev.source);
+        log(
+          "combat",
+          who === UNKNOWN_NAME
+            ? `You are hit for ${ev.amount}`
+            : `${who} hits you for ${ev.amount}`,
+          LOG_COLOR.hurt,
+        );
       }
       return out;
     }
@@ -211,20 +278,48 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
           x: tile(ev.x),
           y: tile(ev.y),
           text: "miss",
-          color: 0x9aa4b2,
+          color: MISS_COLOR,
           size: "s",
         });
       }
       return out;
     }
     case "classic.cast": {
-      out.push({ kind: "effect", spec: effectSpec(ev.effect, tile(ev.x), tile(ev.y)) });
+      // Arc swings (cleave) are drawn when they fire, oriented, by their
+      // classic.effect; a real caster's cast event would only double them.
+      if (ev.caster !== 0 && env.world.exists(ev.caster) && isArcSkill(env.registry, ev.skill))
+        return out;
+      const spec = effectSpec(ev.effect, tile(ev.x), tile(ev.y));
+      // Slashes point at the aim (the renderer orients them from x,y toward x2,y2).
+      if (spec.kind === "slash" && (ev.tx !== ev.x || ev.ty !== ev.y)) {
+        spec.x2 = tile(ev.tx);
+        spec.y2 = tile(ev.ty);
+      }
+      out.push({ kind: "effect", spec });
+      return out;
+    }
+    case "classic.cast.failed": {
+      // Only the hero's own failed casts are shown; monsters fail silently.
+      if (ev.caster === env.hero && env.hero !== 0) {
+        const label = skillName(env.registry, ev.skill);
+        out.push({
+          kind: "error",
+          code: ev.code,
+          message: castFailMessage(ev.code, label),
+        });
+      }
       return out;
     }
     case "classic.effect": {
       const spec = effectSpec(ev.effect, tile(ev.x), tile(ev.y), ev.radius);
-      if (ev.points.length > 0)
+      const tip = ev.points.length === 1 ? ev.points[0] : undefined;
+      if (spec.kind === "slash" && tip !== undefined) {
+        // Arc swing: one point = the aim tip; the slash sweeps around it.
+        spec.x2 = tile(tip.x);
+        spec.y2 = tile(tip.y);
+      } else if (ev.points.length > 0) {
         spec.points = ev.points.map((p) => ({ x: tile(p.x), y: tile(p.y) }));
+      }
       out.push({ kind: "effect", spec });
       return out;
     }
@@ -247,14 +342,16 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       return out;
     }
     case "classic.heal": {
-      out.push({
-        kind: "float",
-        x: tile(ev.x),
-        y: tile(ev.y),
-        text: `+${ev.amount}`,
-        color: ELEMENT_COLOR.poison,
-        size: "m",
-      });
+      if (ev.amount > 0) {
+        out.push({
+          kind: "float",
+          x: tile(ev.x),
+          y: tile(ev.y),
+          text: `+${ev.amount}`,
+          color: HEAL_COLOR,
+          size: "m",
+        });
+      }
       return out;
     }
     case "classic.xp": {
@@ -265,12 +362,11 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
         kind: "effect",
         spec: { kind: "levelup", x: env.heroX, y: env.heroY, radius: 2, color: LOG_COLOR.level },
       });
-      toast(
-        "levelUp",
-        `Level ${ev.level}`,
-        `+${ev.statPoints} attribute points, +${ev.skillPoints} skill points`,
-        TOAST_LONG_MS,
-      );
+      const points = [
+        countOf(ev.statPoints, "attribute point"),
+        countOf(ev.skillPoints, "skill point"),
+      ].filter((p) => p !== "");
+      toast("levelUp", `Level ${ev.level}`, points.join(", "), TOAST_LONG_MS);
       log("level", `You reached level ${ev.level}`, LOG_COLOR.level);
       return out;
     }

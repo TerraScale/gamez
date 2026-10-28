@@ -625,6 +625,28 @@ describe("skill shapes", () => {
     const ev = sim.step(6);
     expect(of(ev, "classic.hit").map((e) => e.target)).toEqual([front, side]);
     expect(hp(sim, back)).toBe(200);
+    // One swing effect per cast, hits or not.
+    expect(of(ev, "classic.effect")).toHaveLength(1);
+  });
+
+  it("arc emits one oriented classic.effect per swing, even when it hits nothing", () => {
+    const sim = newSim();
+    const h = hero(sim, { x: 10, y: 10 });
+    const m = monster(sim, { x: 11, y: 10 });
+    // Aimed east (+x) at the monster, which then steps out of reach (still east) before the swing lands.
+    order(sim, h, "test.skill.arc", m);
+    const ev = sim.step(1);
+    expect(sim.world.has(h, Casting)).toBe(true);
+    sim.world.update(m, Pos, { x: sub(20), y: sub(10) });
+    ev.push(...sim.step(5));
+    expect(of(ev, "classic.hit")).toHaveLength(0);
+    const fx = of(ev, "classic.effect");
+    expect(fx).toHaveLength(1);
+    const reach = tiles(2);
+    expect(fx[0]).toMatchObject({ x: sub(10), y: sub(10), radius: reach });
+    // One point: the aim tip, `reach` along the aim from the caster.
+    expect(fx[0]!.points).toEqual([{ x: sub(10) + reach, y: sub(10) }]);
+    for (const k of ["x", "y", "radius"]) expect(Number.isInteger(fx[0]![k])).toBe(true);
   });
 
   it("aoeTarget hits around the target point", () => {
@@ -1000,6 +1022,6 @@ describe("determinism", () => {
   });
 
   it("pins the hash after a fixed script", () => {
-    expect(script(7).hash()).toBe("fa4685a441d7aca9");
+    expect(script(7).hash()).toBe("bc994e4a541b173d");
   });
 });

@@ -1,7 +1,8 @@
 /** Level up, quest, area, loot and offline toasts. Each expires on its own (ui.toasts). */
 import type { Toast } from "../../contract.ts";
 import { useSelect, useVisibleUntil } from "../hooks.ts";
-import { useCompact, type SlotProps } from "../common.tsx";
+import { useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
+import { toastLayout } from "../layout.ts";
 import { C, panelStyle } from "../styles.ts";
 
 const KIND_COLOR: Record<Toast["kind"], string> = {
@@ -23,7 +24,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       className="cl-toast"
       style={{
         ...panelStyle,
-        padding: "8px 10px",
+        padding: "6px 10px",
         display: "flex",
         gap: 8,
         alignItems: "flex-start",
@@ -48,8 +49,6 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
           font: "inherit",
           fontSize: 18,
           cursor: "pointer",
-          marginTop: -8,
-          marginRight: -6,
         }}
       >
         ×
@@ -60,24 +59,26 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
 
 export function Toasts({ api }: SlotProps) {
   const toasts = useSelect(api.ui, (u) => u.toasts);
-  const compact = useCompact(api);
-  if (toasts.length === 0) return null;
+  const layout = useHudLayout(api);
+  const panelOpen = useSelect(api.ui, (u) => u.panels.length > 0);
+  const minimapShown = useSelect(api.ui, (u) => u.settings.showMinimap);
+  const insets = useHudInsets();
+  const placement = toastLayout(layout, minimapShown, panelOpen, insets.bottom);
+  if (!placement.visible || toasts.length === 0) return null;
+  // Newest toasts win when more are queued than the layout can show.
+  const shown = toasts.slice(-placement.max);
   return (
     <div
       aria-live="polite"
       style={{
-        position: "absolute",
-        right: 8,
-        top: compact ? 112 : 190,
-        width: compact ? 240 : 280,
-        maxWidth: "calc(100% - 16px)",
+        ...placement.style,
         display: "flex",
         flexDirection: "column",
         gap: 6,
         pointerEvents: "none",
       }}
     >
-      {toasts.map((t) => (
+      {shown.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => api.dismissToast(t.id)} />
       ))}
     </div>

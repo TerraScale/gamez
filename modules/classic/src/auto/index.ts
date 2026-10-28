@@ -27,7 +27,7 @@ import { thinkSystem } from "./think.ts";
 
 export const classicAuto = defineModule({
   id: MODULE.auto,
-  version: "0.2.0",
+  version: "0.2.1",
   deps: [MODULE.core],
   optionalDeps: [
     MODULE.content,

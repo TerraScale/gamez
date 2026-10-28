@@ -393,6 +393,10 @@ death skill), `sentry_bolt` (projectile lightning 100, speed 90, range 8), boss 
   `classic.effect` blink), summon (push `SpawnRequest`s with owner/team/until, respecting `max` alive
   per owner), self (heal; buff on caster and hero-team allies in `radius`; `status` to enemies in
   `radius`), pulse (one nova every `pulse.every` ticks, `pulse.count` times).
+- Arc swings emit one `classic.effect` per fired cast, hit or miss: centred on the caster, `radius`
+  = reach, `points` = `[aim tip]` (caster + reach along the aim) so the client orients the slash
+  (`EffectSpec.x2/y2`). The client skips the cast-time visual of arc skills by a live caster (no
+  double slash) and orients every slash cast toward its target point.
 - Damage per hit = `rollSkillDamage(skill, effectiveRank, casterStats, heroAttrs|null, ctx.rng)`;
   crit rolled by the caster (`critPct`); pushed as `HitRequest` with the skill's `status`.
 - **Projectiles**: move `vx, vy` per tick (aim from `angleOf`/`angleVec`), collide with enemy bodies
@@ -773,13 +777,19 @@ Runs when `autoActive(world, tick)`. Reacts every tick to danger; full re-plan e
 
 1. **Dead** → after `respawnDelay` push `{op:"respawn"}`.
 2. **Busy** (Casting/Dash) → nothing (potions still allowed).
-3. **Potions**: life < `lifePotionPct` → drink the lowest-tier life/rejuv potion that is not wasted
-   (belt cooldown ready); mana < `manaPotionPct` → mana potion.
+3. **Potions**: life < `lifePotionPct` (strictly below; default 50) → drink the lowest-tier life/rejuv
+   potion that is not wasted (belt cooldown ready); mana < `manaPotionPct` → mana potion. A drink
+   that restores nothing (life or mana already full) is refused by the op (`potion_useless`, nothing
+   consumed), and Auto never queues one. A life potion adds exactly its amount, capped at max
+   (`classic.potion` carries `lifeBefore`/`lifeAfter`).
 4. **Retreat**: life < `retreatPct`, no life potion, in the dungeon, scroll available → `townPortal`.
 5. **Fight**: awake hostile units within 12 tiles with LOS, plus the living owner (≤ 18 tiles, no
    LOS needed) of any summon among them. Target score = distance (tiles) + 4 for a summon farther
    than 2 tiles − 6 exploder within 4 tiles − 3 caster/summoner − 2 boss/unique − 2 current focus;
    lowest wins. The fight plan holds 10 ticks after the last foe left the scan (hysteresis).
+   **While leaving the level** (see 10) only foes within 4 tiles (`LEAVE_FIGHT_RANGE`) or attacking
+   the hero (its `Ai.target`, state `attack`/`charge`) are engaged; the rest of the scan still
+   counts for AoE, buffs and kiting.
    Skill choice over the bar's known skills (affordable: mana − cost ≥ reserve, except basic attack):
    heal when life < 60 %; buff when not active and enemies within 6; summon when below max; AoE when
    enemies within its area ≥ `minTargets`; mobility to close > 5 tiles (melee) or escape (ranged,
@@ -789,15 +799,24 @@ Runs when `autoActive(world, tick)`. Reacts every tick to danger; full re-plan e
    away (≤ once per 20 ticks).
 6. **Loot**: no awake enemy within 6 tiles and no watchdog stall → nearest Loot within 12 tiles (the
    loot being walked to stays eligible up to 24) passing the filter (gold, potions when the belt has
-   room, items ≥ `pickupRarity` that fit) → `pickup` intent.
+   room, items ≥ `pickupRarity` that fit) → `pickup` intent. While leaving the level only loot
+   within 3 tiles (`LEAVE_LOOT_RANGE`).
 7. **Equip**: any bag item with `itemScore` > equipped by 5 % and requirements met → `equip`. A
    weapon keeps the current weapon style (bow, other ranged, melee). `itemScore` weighs weapon
    damage ×3 for str/dex classes.
 8. **Go to town** (plan toTown), at most once per 60 s after a town visit (`AutoState.tripAt`) and
-   never during a watchdog stall: bag cannot fit a 2×3 item **and** the town routine would free
-   space, or no life potion and gold ≥ the price of the life potion the routine would buy now →
-   `townPortal` (no scroll: walk to this level's waypoint, else keep playing).
-9. **Town routine** (depth 0, `todo` = heal → sell → stash → buy → quests → return): walk to each
+   never during a watchdog stall. Trip reasons, checked in this order (`townTripReason`):
+   - `bag full`: bag cannot fit a 2×3 item **and** the town routine would free space;
+   - `quest`: a finished quest (`done`, not yet completed) whose giver exists, so the town
+     routine's quests step turns it in; or a quest the hero may accept now (level ≥ `reqLevel`,
+     `after` done, neither active nor completed) whose giver exists, so the quests step accepts it.
+     Like every trip reason it is only checked at a safe point (no foe engaged), after the trip
+     cooldown and outside a stall; once accepted the quest is active and the reason is gone;
+   - `restock`: no life potion and gold ≥ the price of the life potion the routine would buy now.
+
+   The trip uses `townPortal`; with no scroll it walks to this level's waypoint, else keeps playing.
+
+9. **Town routine** (depth 0, `todo` = heal → sell → stash → buy → smith → quests → return): walk to each
    NPC (`interact` intent) and queue the ops: heal; sell items below `keepRarity` that are not
    upgrades, and kept rarities that no longer fit the stash (`classic.auto.notice` "stash_full");
    stash the rest that are not upgrades; buy potions first when the belt has no life potion, else 2
@@ -814,9 +833,16 @@ Runs when `autoActive(world, tick)`. Reacts every tick to danger; full re-plan e
     `monsterLevel(depth + 1) − 2` and no living boss (or the hero is ready for the next depth's
     level + 2) → interact stairsDown. Otherwise (under-levelled, at maxDepth, not ready for the
     boss) → stairs up then down again (fresh population) to farm.
+    **Leaving the level** (`AutoLeave` on the hero: `{plan, depth}`): set while the plan is
+    descend or toTown, kept through the fight and loot plans that interrupt the walk, removed on
+    any other plan or area change. While it holds, steps 5 and 6 stay close (see above), so a
+    crowded level (≈190 spawns on a Crypt level) no longer keeps the hero from the stairs.
 11. **Explore**: BFS from the hero tile (≤ 8 000 nodes) to the nearest frontier (explored walkable
     tile next to an unexplored walkable tile) not in `ignore`; move intent there; re-plan when within
     2 tiles, every 40 ticks, or when stuck (same tile 40 ticks while moving → add to `ignore`).
+
+Normal-rarity items are left on the ground by default: `pickupRarity` defaults to `magic` (a user
+setting), so Auto only picks up magic and better unless the player lowers it.
 
 **Progress watchdog** (`AutoState.hops/killAt/stallUntil`): 6 area changes without a kill (a travel
 loop) or 2 minutes in a dungeon without a kill (a drought) start a 3-minute **stall**: no voluntary
@@ -1076,9 +1102,66 @@ killed, full stash handled (no livelock), longest kill gap ≤ 99 s, 4–6 death
   can be flagged as a travel loop even while the boss loses life.
 - Monster roster: several behaviour clones (husk/cinder imp rushers, gnawling/webskitter swarms,
   ash seer/rime wraith casters) and theme tiers gate first appearances beyond `minDepth`
-  (cinder imp and rime wraith first at depth 9). The 32 px compact bag cells are below the 44 px
-  touch target (10 columns cannot reach 44 px at 375 px).
+  (cinder imp and rime wraith first at depth 9).
 - Skill points can go to skills that have no free bar slot (the sorcerer's Phase Step); mobility
   skills are only used to escape at low life.
-- No per-facing character animations (the art source has none); dungeon walls are slightly shorter
-  than heroes.
+- Dungeon walls are slightly shorter than heroes. Monster art is derived procedurally from one
+  Kenney character (distinct silhouettes, not bespoke art).
+
+### 21.6 Browser QA round 1 (`tools/qa`, headless Chrome against the dev server)
+
+A headless-browser QA pass (animations, labels, panels, spells, art coverage, performance) found
+and fixed:
+
+- **Art** (`modules/art.kenney`): the 8 Kenney views are one character seen from 8 directions
+  (0 = ne, clockwise). Every unit now has `<id>.<action>.<facing>` for all 8 facings; fighters get
+  idle, walk, attack (impact on frame 2), cast, hit and death (ends on a full-alpha corpse); the
+  unsuffixed clip is the south one. Families get procedural silhouettes (hunch, ears, legs, hoods,
+  horns, crowns…). Trimmed frames with one source box per unit; 4 atlas pages ≤ 2048².
+- **Renderer** (`apps/game/src/client/render`, contract `render.ts`): new optional fields
+  `actionProgress`, `animRate`, `hitFlash`, `vx/vy`, `subtitle`, `marker`, `labelPriority`.
+  Lookup: cast → `cast.<f>`, `cast`, `attack.<f>`, `attack`, idle; hit → `hit`, idle; bodies
+  mirror for w-side facings only when the clip has no facing suffix. Labels live in their own
+  layer above sprites, start at the visible top of the trimmed sprite, loot labels are
+  de-overlapped by rarity rank (hero name as a fixed obstacle) and every label is kept inside the
+  view. Hits flash red with a 1–2 px knockback; projectiles rotate along their heading; dead units
+  without a death clip fade and squash; nearby floats are staggered.
+- **Scene** (`scene.ts`): animation time runs on sim ticks (`tick - 1 + alpha`), the hit tick is
+  the middle of the swing, a finished swing holds 2 ticks, hits drive a 4-tick flash and a 3 s
+  nameplate, corpses fade over their last 10 ticks. Nameplates: uniques and bosses always, one per
+  champion pack (lowest entity id), normal monsters when targeted, hovered or hit. NPC titles show
+  as subtitles; the quest giver shows `!`/`?` (same rules as Auto); stairs and the waypoint are
+  always labelled, portal and stash within 5 tiles, the nearest within 3 says "click/tap to use".
+- **Floats** (`effects.ts` `floatPolicy`, applied in `game.ts`): from Full Idle x4 small floats
+  (miss, dots) are dropped, floats live 700 ms (x4) / 550 ms (x8) and each frame's batch is capped
+  at 8 / 6, so x8 combat stays readable.
+- **Sim/Auto**: Auto turns in finished quests (trip reason `quest`); a potion that restores
+  nothing is refused (`ERR.potionUseless`, not consumed, no cooldown); `classic.potion` carries
+  `lifeBefore/After`, `manaBefore/After`; unknown art falls back to `unit.unknown` → `missing`.
+- **HUD**: toasts clear the minimap (desktop) and the bottom bar (phone), the classic view owns its
+  exit control (`ClientModeView.ownsExitControl`), a short-landscape layout (< 500 px tall), opaque
+  phone panels, distinct minimap markers, a 6-entry combat log; tooltips read "Magic Boots ·
+  Sandals", "Armor" spelled one way, item comparison against the equipped item, per-skill glyphs
+  in the Skills panel and the skill bar, 44 px bag cells (the bag scrolls sideways at 375 px).
+- **Effects**: failed hero casts show an error flash with a readable reason; no float for a
+  0-amount heal; level-up toast pluralised; distinct colours for whirl/charge/tumble/claw/rally.
+- **QA tooling**: `?qa=gallery` lays out every appearance × action × facing, item, effect, tile and
+  prop with what each id resolved to; the harness records long frames and longtasks split at 5 s
+  and survives dev-server reloads in long scenarios (`tools/qa/README.md`).
+
+Open after round 1: monster nameplates other than champion packs are not de-overlapped; the hit
+flash is a red multiply tint (a white flash needs a filter); atlas PNGs total ~18 MB (WebP/KTX2 or
+a half-resolution mobile atlas would cut it); float texts re-rasterise a Pixi `Text` per spawn
+(a BitmapText font would be cheaper); headless x8 runs on software GL show multi-second longtasks
+that still need profiling on real hardware.
+
+### 21.7 Browser QA round 2 (sim: auto descend, quests, cleave)
+
+- **Idle descends**: with seed 4242 Idle never took the stairs (fights within 12 tiles always
+  preempted the descend plan). Now the descend/toTown commitment (`AutoLeave`, §15.2 step 10)
+  limits fights to foes within 4 tiles or attacking the hero and loot to 3 tiles. Headless, seed
+  4242: warrior reaches depth 2 at ~7 300 ticks, sorcerer ~7 350, rogue ~9 100
+  (`tests/qa-r2.sim.test.ts`).
+- **Quest acceptance**: a quest the hero newly qualifies for (Deeper Still, reqLevel 4) is a
+  `quest` trip reason (§15.2 step 8).
+- **Cleave** emits one oriented `classic.effect` per swing, so misses are visible (§7.3).

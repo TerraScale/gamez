@@ -124,12 +124,12 @@ export const HUD_CSS = `
 }
 .cl-hud input[type="number"], .cl-hud input[type="text"], .cl-hud select {
   font: inherit; color: ${C.text}; background: #120e0a; border: 1px solid ${C.border};
-  border-radius: 6px; min-height: 40px; padding: 4px 8px;
+  border-radius: 6px; min-height: 44px; padding: 4px 8px;
 }
 .cl-hud ::-webkit-scrollbar { width: 8px; height: 8px; }
 .cl-hud ::-webkit-scrollbar-thumb { background: rgba(201, 160, 80, 0.35); border-radius: 4px; }
 @keyframes cl-flash { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@keyframes cl-toast { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes cl-toast { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @keyframes cl-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(243, 210, 122, 0); } 50% { box-shadow: 0 0 0 4px rgba(243, 210, 122, 0.35); } }
 @keyframes cl-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 .cl-hud .cl-glow { animation: cl-glow 1.4s ease-in-out infinite; }

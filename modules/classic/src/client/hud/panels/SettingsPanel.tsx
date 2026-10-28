@@ -110,7 +110,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        style={{ width: 22, height: 22 }}
+        style={{ width: 24, height: 24, flex: "none", margin: 0 }}
       />
       <span>{label}</span>
     </label>
@@ -143,7 +143,7 @@ function AutoConfigEditor({ api }: SlotProps) {
             max={f.max}
             value={draft[f.key]}
             onChange={(e) => set(f.key, Math.trunc(Number(e.target.value) || 0))}
-            style={{ width: 84 }}
+            style={{ width: 84, minHeight: 44 }}
           />
         </label>
       ))}

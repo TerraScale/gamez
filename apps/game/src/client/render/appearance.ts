@@ -1,12 +1,13 @@
-import type { EntityAction, Facing } from "@gamez/ui-host";
+import type { EntityAction, EntityKind, Facing } from "@gamez/ui-host";
 
 /**
  * Pure animation-key resolution for ARPG entities (no Pixi imports, so it is
  * unit-tested directly). The chain follows the doc comment of
  * `ArpgRenderEntity.action`: for each prefix p of the appearance (a.b.c ->
- * a.b.c, a.b, a) try `${p}.${action}.${facing}`, `${p}.${action}`,
- * `${p}.idle.${facing}`, `${p}.idle`, `${p}`; then the same for the fallback
- * appearance. The caller decides what "hit" means (animation or static sprite).
+ * a.b.c, a.b, a) try `${p}.${action}.${facing}`, `${p}.${action}`, the
+ * action's stand-ins (cast -> attack), `${p}.idle.${facing}`, `${p}.idle`,
+ * `${p}`; then the same for the fallback appearance. The caller decides what
+ * "hit" means (animation or static sprite).
  */
 export function appearanceCandidates(
   appearance: string,
@@ -22,11 +23,29 @@ export function appearanceCandidates(
   return out;
 }
 
+/**
+ * Clips tried after an action's own clip and before idle. A cast without its
+ * own clip swings like an attack, so casters never stand still while casting.
+ */
+export const ACTION_STAND_INS: Readonly<Record<EntityAction, readonly EntityAction[]>> = {
+  idle: [],
+  walk: [],
+  attack: [],
+  cast: ["attack"],
+  hit: [],
+  death: [],
+};
+
 function addChain(out: string[], appearance: string, action: EntityAction, facing: Facing): void {
+  const standIns = ACTION_STAND_INS[action];
   let prefix = appearance;
   while (prefix.length > 0) {
     pushUnique(out, `${prefix}.${action}.${facing}`);
     pushUnique(out, `${prefix}.${action}`);
+    for (const alt of standIns) {
+      pushUnique(out, `${prefix}.${alt}.${facing}`);
+      pushUnique(out, `${prefix}.${alt}`);
+    }
     pushUnique(out, `${prefix}.idle.${facing}`);
     pushUnique(out, `${prefix}.idle`);
     pushUnique(out, prefix);
@@ -69,4 +88,25 @@ export function resolveAction(
 /** True when a resolved animation key is a death animation (`x.death` or `x.death.dir`). */
 export function isDeathKey(key: string): boolean {
   return /(^|\.)death(\.|$)/.test(key);
+}
+
+const FACINGS: ReadonlySet<string> = new Set(["n", "ne", "e", "se", "s", "sw", "w", "nw"]);
+const LEFT_FACINGS: ReadonlySet<Facing> = new Set<Facing>(["sw", "w", "nw"]);
+
+/** True when the last segment of a resolved key is one of the 8 facings (`x.walk.ne`). */
+export function hasFacingSuffix(key: string): boolean {
+  const dot = key.lastIndexOf(".");
+  return dot >= 0 && FACINGS.has(key.slice(dot + 1));
+}
+
+/**
+ * Mirror decision for a body: the base art faces screen-right, so a unit or NPC
+ * looking to the screen-left (sw, w, nw) is flipped horizontally, unless the
+ * art resolved to a facing-specific clip (it is already drawn that way).
+ * Loot, props and projectiles never flip.
+ */
+export function shouldFlip(key: string, facing: Facing, kind: EntityKind): boolean {
+  if (kind !== "unit" && kind !== "npc") return false;
+  if (key === "" || hasFacingSuffix(key)) return false;
+  return LEFT_FACINGS.has(facing);
 }

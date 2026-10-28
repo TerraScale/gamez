@@ -7,6 +7,8 @@
 import { defineMode, loadMode, type FrozenRegistry } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
 import { classicContent } from "../src/content/index.ts";
+import { UNKNOWN_ART } from "../src/content/monsters.ts";
+import { NPCS } from "../src/content/npcs.ts";
 import {
   BALANCE_ID,
   KIND,
@@ -245,6 +247,19 @@ describe("statuses", () => {
       "classic.status.rally",
       "classic.status.stun",
     ]);
+  });
+});
+
+describe("placeholder art (QA r1)", () => {
+  it("gives monsters and NPCs a fallback that is never the player's art", () => {
+    expect(UNKNOWN_ART).toBe("unit.unknown");
+    for (const [id, m] of Object.entries(monsters)) {
+      expect(m.fallbackAppearance, id).toBe(UNKNOWN_ART);
+      expect(m.fallbackAppearance.startsWith("unit.hero"), id).toBe(false);
+    }
+    for (const [id, n] of Object.entries(NPCS)) {
+      expect(n.fallbackAppearance, id).toBe(UNKNOWN_ART);
+    }
   });
 });
 
@@ -535,6 +550,6 @@ describe("numbers", () => {
 describe("content hash", () => {
   it("is identical across two loads and pinned", () => {
     expect(reg.hash).toBe(loadMode(mode, [classicContent]).registry.hash);
-    expect(reg.hash).toBe("15f3259875d8a384");
+    expect(reg.hash).toBe("de2dd2f490cfb423");
   });
 });

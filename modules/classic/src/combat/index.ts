@@ -25,7 +25,7 @@ import { statusesSystem } from "./statuses.ts";
 
 export const classicCombat = defineModule({
   id: MODULE.combat,
-  version: "0.2.0",
+  version: "0.2.1",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   systems: [

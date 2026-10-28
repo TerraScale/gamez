@@ -6,13 +6,15 @@
 import { useEffect } from "react";
 import { Slot } from "@gamez/ui-host";
 import { useSelect } from "../hooks.ts";
-import { useCompact, type SlotProps } from "../common.tsx";
-import { PANEL_IDS, panelSlot } from "../layout.ts";
+import { useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
+import { HUD_EDGE, PANEL_IDS, bottomBarInset, panelSlot } from "../layout.ts";
 import type { PanelId } from "../../contract.ts";
 
 export function PanelHost({ api }: SlotProps) {
   const open = useSelect(api.ui, (u) => u.panels);
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
+  const compact = layout !== "desktop";
+  const insets = useHudInsets();
   const known = open.filter((id): id is PanelId => PANEL_IDS.includes(id));
   const shown = compact ? known.slice(-1) : known;
   const anyOpen = known.length > 0;
@@ -38,7 +40,8 @@ export function PanelHost({ api }: SlotProps) {
         alignItems: compact ? "stretch" : "flex-start",
         justifyContent: "center",
         gap: 12,
-        padding: compact ? 0 : "64px 16px 170px",
+        // Panels stop HUD_EDGE above the measured bottom bar, so they never cover the orbs.
+        padding: compact ? 0 : `64px 16px ${bottomBarInset(layout, insets.bottom) + HUD_EDGE}px`,
       }}
     >
       {shown.map((id) => (

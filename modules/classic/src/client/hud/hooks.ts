@@ -81,3 +81,26 @@ export function useVisibleUntil(until: number | null | undefined): boolean {
   }, [until]);
   return visible;
 }
+
+/**
+ * Height (CSS px) of the element a callback ref is attached to, kept current by
+ * a ResizeObserver. Returns [ref, height]. Height is 0 until the element mounts
+ * and where ResizeObserver is missing (the layout then uses its constants).
+ */
+export function useMeasuredHeight(): [(el: HTMLElement | null) => void, number] {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!el) {
+      setHeight(0);
+      return;
+    }
+    const report = () => setHeight(Math.ceil(el.getBoundingClientRect().height));
+    report();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return [setEl, height];
+}

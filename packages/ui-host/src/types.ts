@@ -61,5 +61,11 @@ export interface ClientServices {
 /** A mode's client entry: mounts its UI into `host`, returns an unmount function. */
 export interface ClientModeView {
   modeId: string;
+  /**
+   * True when the mode renders its own control that calls services.exit() (the
+   * "Modes" button). The app shell then skips its floating back button, which
+   * would otherwise overlap the mode's HUD. Default false.
+   */
+  ownsExitControl?: boolean;
   mount(host: HTMLElement, services: ClientServices): Promise<() => void> | (() => void);
 }

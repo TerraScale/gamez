@@ -8,13 +8,27 @@
  * table; ids prefixed "classic.", moduleId "classic.hud"). ClassicHud renders
  * the slot regions and the panel host on top of the game canvas.
  */
-import type { CSSProperties } from "react";
+import { useMemo, type CSSProperties, type Ref } from "react";
 import { Slot, SlotProvider, type SlotComponent, type SlotRegistry } from "@gamez/ui-host";
 import type { ClassicClientApi, PanelId } from "../contract.ts";
-import { useSelect } from "./hooks.ts";
-import type { SlotProps } from "./common.tsx";
+import { useMeasuredHeight, useSelect } from "./hooks.ts";
+import { HudInsetsContext, type SlotProps } from "./common.tsx";
 import { FONT, HUD_CSS, C } from "./styles.ts";
-import { HUD_MODULE_ID, PANEL_IDS, panelSlot, SLOT } from "./layout.ts";
+import {
+  HUD_EDGE,
+  HUD_MODULE_ID,
+  LEFT_TOP,
+  LEFT_WIDTH,
+  PANEL_IDS,
+  TARGET_TOP,
+  leftColumnBottom,
+  panelSlot,
+  SLOT,
+  topRightInset,
+  type HudInsets,
+  type HudLayout,
+} from "./layout.ts";
+import { useHudLayout } from "./common.tsx";
 import { AreaBanner } from "./widgets/AreaBanner.tsx";
 import { ControlBar } from "./widgets/ControlBar.tsx";
 import { PerfOverlay } from "./widgets/PerfOverlay.tsx";
@@ -124,14 +138,15 @@ const ROOT: CSSProperties = {
   font: `13px/1.35 ${FONT}`,
 };
 
-function regionStyle(name: string, compact: boolean): CSSProperties {
+function regionStyle(name: string, layout: HudLayout, insets: HudInsets): CSSProperties {
+  const compact = layout !== "desktop";
   switch (name) {
     case SLOT.top:
       return {
         position: "absolute",
-        top: 8,
-        left: 8,
-        right: compact ? 112 : 184,
+        top: HUD_EDGE,
+        left: HUD_EDGE,
+        right: topRightInset(layout),
         display: "flex",
         flexWrap: "wrap",
         justifyContent: "center",
@@ -140,11 +155,11 @@ function regionStyle(name: string, compact: boolean): CSSProperties {
         pointerEvents: "none",
       };
     case SLOT.topRight:
-      return { position: "absolute", top: 8, right: 8, pointerEvents: "none" };
+      return { position: "absolute", top: HUD_EDGE, right: HUD_EDGE, pointerEvents: "none" };
     case SLOT.target:
       return {
         position: "absolute",
-        top: compact ? 150 : 84,
+        top: TARGET_TOP[layout],
         left: "50%",
         transform: "translateX(-50%)",
         maxWidth: "calc(100% - 24px)",
@@ -153,14 +168,20 @@ function regionStyle(name: string, compact: boolean): CSSProperties {
     case SLOT.left:
       return {
         position: "absolute",
-        left: 8,
-        ...(compact ? { bottom: 270 } : { top: 96, maxHeight: "calc(100% - 300px)" }),
-        width: compact ? 180 : 250,
+        left: HUD_EDGE,
+        width: LEFT_WIDTH[layout],
         display: "flex",
         flexDirection: "column",
         gap: 8,
         overflow: "hidden",
         pointerEvents: "none",
+        // Phones stop above the measured bottom bar, so the Log row never meets the orbs and XP row.
+        ...(layout === "desktop"
+          ? { top: LEFT_TOP.desktop, maxHeight: "calc(100% - 300px)" }
+          : {
+              top: layout === "short" ? LEFT_TOP.short : undefined,
+              bottom: leftColumnBottom(layout, insets),
+            }),
       };
     case SLOT.bottom:
       return {
@@ -181,9 +202,21 @@ function regionStyle(name: string, compact: boolean): CSSProperties {
   }
 }
 
-function Region({ name, api, compact }: { name: string; api: ClassicClientApi; compact: boolean }) {
+function Region({
+  name,
+  api,
+  layout,
+  insets,
+  regionRef,
+}: {
+  name: string;
+  api: ClassicClientApi;
+  layout: HudLayout;
+  insets: HudInsets;
+  regionRef?: Ref<HTMLDivElement>;
+}) {
   return (
-    <div data-slot={name} style={regionStyle(name, compact)}>
+    <div ref={regionRef} data-slot={name} style={regionStyle(name, layout, insets)}>
       <Slot name={name} props={{ api } satisfies SlotProps} />
     </div>
   );
@@ -191,30 +224,48 @@ function Region({ name, api, compact }: { name: string; api: ClassicClientApi; c
 
 export function ClassicHud({ api, slots }: ClassicHudProps) {
   const compact = useSelect(api.ui, (u) => u.compact);
+  const layout = useHudLayout(api);
   const choosing = useSelect(api.hud, (s) => s.phase === "choose");
+  // The real top and bottom region heights: columns, toasts, the error flash and panels clear them.
+  const [topRef, topHeight] = useMeasuredHeight();
+  const [bottomRef, bottomHeight] = useMeasuredHeight();
+  const insets = useMemo(
+    () => ({ top: topHeight, bottom: bottomHeight }),
+    [topHeight, bottomHeight],
+  );
   if (choosing) {
     // Before the hero exists only the new-hero screen (an overlay) is shown.
     return (
       <SlotProvider registry={slots}>
-        <div className="cl-hud" data-compact={compact ? "true" : "false"} style={ROOT}>
-          <style>{HUD_CSS}</style>
-          <Region name={SLOT.overlay} api={api} compact={compact} />
-        </div>
+        <HudInsetsContext.Provider value={insets}>
+          <div className="cl-hud" data-compact={compact ? "true" : "false"} style={ROOT}>
+            <style>{HUD_CSS}</style>
+            <Region name={SLOT.overlay} api={api} layout={layout} insets={insets} />
+          </div>
+        </HudInsetsContext.Provider>
       </SlotProvider>
     );
   }
   return (
     <SlotProvider registry={slots}>
-      <div className="cl-hud" data-compact={compact ? "true" : "false"} style={ROOT}>
-        <style>{HUD_CSS}</style>
-        <Region name={SLOT.top} api={api} compact={compact} />
-        <Region name={SLOT.topRight} api={api} compact={compact} />
-        <Region name={SLOT.target} api={api} compact={compact} />
-        <Region name={SLOT.left} api={api} compact={compact} />
-        <Region name={SLOT.bottom} api={api} compact={compact} />
-        <PanelHost api={api} />
-        <Region name={SLOT.overlay} api={api} compact={compact} />
-      </div>
+      <HudInsetsContext.Provider value={insets}>
+        <div className="cl-hud" data-compact={compact ? "true" : "false"} style={ROOT}>
+          <style>{HUD_CSS}</style>
+          <Region name={SLOT.top} api={api} layout={layout} insets={insets} regionRef={topRef} />
+          <Region name={SLOT.topRight} api={api} layout={layout} insets={insets} />
+          <Region name={SLOT.target} api={api} layout={layout} insets={insets} />
+          <Region name={SLOT.left} api={api} layout={layout} insets={insets} />
+          <Region
+            name={SLOT.bottom}
+            api={api}
+            layout={layout}
+            insets={insets}
+            regionRef={bottomRef}
+          />
+          <PanelHost api={api} />
+          <Region name={SLOT.overlay} api={api} layout={layout} insets={insets} />
+        </div>
+      </HudInsetsContext.Provider>
     </SlotProvider>
   );
 }

@@ -22,7 +22,7 @@ import { itemActions } from "./actions.ts";
 
 export const classicItems = defineModule({
   id: MODULE.items,
-  version: "1.1.0",
+  version: "1.1.1",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   setup(world) {

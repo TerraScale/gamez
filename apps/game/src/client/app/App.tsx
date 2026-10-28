@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { classicGalleryView } from "@gamez/mode-classic/client";
 import type { AssetManifest } from "@gamez/assets";
 import type { ModeInfo } from "@gamez/protocol";
 import type { ClientModeView, ClientServices, Session } from "@gamez/ui-host";
@@ -21,6 +22,25 @@ interface Running {
 
 const LOADING: Boot = { status: "loading" };
 const MODE_LIST = modeInfos();
+
+/** `?qa=gallery`: the classic QA gallery (tools/qa), not reachable from the picker. */
+function qaRoute(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get("qa");
+  } catch {
+    return null;
+  }
+}
+const QA_ROUTE = qaRoute();
+
+function leaveQa(): void {
+  window.location.assign("/");
+}
+
+function QaGallery({ boot }: { boot: { session: Session; manifest: AssetManifest } }) {
+  const services = useMemo(() => createServices(boot, leaveQa), [boot]);
+  return <ModeHost view={classicGalleryView} services={services} onExit={leaveQa} />;
+}
 
 export function App() {
   const [boot, setBoot] = useState<Boot>(LOADING);
@@ -61,6 +81,8 @@ export function App() {
       </div>
     );
   }
+
+  if (QA_ROUTE === "gallery") return <QaGallery boot={boot} />;
 
   if (running) {
     return <ModeHost view={running.view} services={running.services} onExit={exit} />;

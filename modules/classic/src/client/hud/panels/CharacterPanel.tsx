@@ -5,7 +5,7 @@ import type { HeroView } from "../../contract.ts";
 import { ELEMENT_COLOR, hex } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
-import { ATTR_LABEL, fmtInt, fmtPct, fmtRegen } from "../format.ts";
+import { ATTR_LABEL, fmtInt, fmtPct, fmtRegen, pluralize } from "../format.ts";
 import { C, labelStyle } from "../styles.ts";
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -73,7 +73,7 @@ function CharacterBody({ api, hero }: SlotProps & { hero: HeroView }) {
         <Stat label="Mana" value={fmtInt(hero.manaMax)} />
         <Stat label="Life regen" value={fmtRegen(sheet.lifeRegen)} />
         <Stat label="Mana regen" value={fmtRegen(sheet.manaRegen)} />
-        <Stat label="Armour" value={fmtInt(hero.armor)} />
+        <Stat label="Armor" value={fmtInt(hero.armor)} />
         <Stat label="Damage" value={`${fmtInt(hero.dmgMin)}-${fmtInt(hero.dmgMax)}`} />
         <Stat label="To hit" value={fmtInt(hero.toHit)} />
         <Stat label="Critical chance" value={fmtPct(hero.critPct)} />
@@ -82,7 +82,7 @@ function CharacterBody({ api, hero }: SlotProps & { hero: HeroView }) {
         <Stat label="Move speed" value={fmtPct(hero.moveSpeed)} />
         <Stat label="Magic find" value={fmtPct(sheet.magicFind)} />
         <Stat label="Gold find" value={fmtPct(sheet.goldFind)} />
-        <Stat label="Light radius" value={`${fmtInt(sheet.lightRadius)} tiles`} />
+        <Stat label="Light radius" value={pluralize(sheet.lightRadius, "tile")} />
         <Stat label="Life on kill" value={fmtInt(sheet.lifeOnKill)} />
         <Stat label="Mana on kill" value={fmtInt(sheet.manaOnKill)} />
         <Stat label="All skills" value={`+${fmtInt(sheet.allSkills)}`} />

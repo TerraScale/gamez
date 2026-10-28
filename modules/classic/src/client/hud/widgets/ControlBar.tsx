@@ -2,7 +2,7 @@
 import { ACTION } from "../../../actions.ts";
 import type { ControlMode } from "../../../resources.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, useCompact, type SlotProps } from "../common.tsx";
+import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
 import { controlLabel, planLabel, SPEEDS } from "../format.ts";
 import { badgeStyle, C, labelStyle, panelStyle } from "../styles.ts";
 
@@ -15,7 +15,7 @@ const MODES: { mode: ControlMode; hint: string }[] = [
 export function ControlBar({ api }: SlotProps) {
   const phase = useSelect(api.hud, (s) => s.phase);
   const control = useSelect(api.hud, (s) => s.control);
-  const compact = useCompact(api);
+  const compact = useHudLayout(api) !== "desktop";
   if (phase !== "play") return null;
   const planText = control.mode === "manual" ? "Manual play" : planLabel(control.plan);
   return (

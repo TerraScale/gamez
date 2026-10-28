@@ -16,7 +16,7 @@ import {
   type Sim,
   type World,
 } from "@gamez/kernel";
-import type { ArpgWorldRenderer, PointerInfo } from "@gamez/ui-host";
+import type { ArpgWorldRenderer, FloatTextSpec, PointerInfo } from "@gamez/ui-host";
 import { ACTION } from "../actions.ts";
 import { Ai, AreaTag, CombatStats, Dead, Intent, Monster, Pos, SkillBar } from "../components.ts";
 import { dist, SUB } from "../fixed.ts";
@@ -34,7 +34,13 @@ import {
   type Toast,
   type UiState,
 } from "./contract.ts";
-import { planEvent, type EffectEnv, type Visual } from "./effects.ts";
+import {
+  floatPolicy,
+  planEvent,
+  type EffectEnv,
+  type FloatPolicy,
+  type Visual,
+} from "./effects.ts";
 import { buildHud, heroOfWorld, minimapData } from "./hudModel.ts";
 import { FixedLoop, PerfWindow } from "./loop.ts";
 import { PointerInput, type PointerCommand } from "./input.ts";
@@ -57,6 +63,8 @@ export interface GameDeps {
   viewportWidth(): number;
   /** Leaves the mode. */
   exit(): void;
+  /** QA probe (`?debug=1`, debug.ts): hears every event batch the client fans out. */
+  onEvents?(events: readonly GameEvent[]): void;
 }
 
 export interface ClassicGame {
@@ -65,6 +73,8 @@ export interface ClassicGame {
   save(): boolean;
   /** Stops the frame work and pointer handling. The caller destroys the renderer. */
   destroy(): void;
+  /** The current local sim (replaced by newGame). Read-only use: QA debug hooks. */
+  currentSim(): Sim;
 }
 
 /** Keeps the most recent log lines. */
@@ -107,6 +117,16 @@ export function cell<T>(initial: T): Cell<T> {
       for (const cb of subs) cb();
     },
   };
+}
+
+/** True on touch-first devices (`(pointer: coarse)`); false without a DOM (tests, workers). */
+function isCoarsePointer(): boolean {
+  try {
+    const mm = (globalThis as { matchMedia?: (q: string) => { matches: boolean } }).matchMedia;
+    return typeof mm === "function" ? mm.call(globalThis, "(pointer: coarse)").matches : false;
+  } catch {
+    return false;
+  }
 }
 
 function errorText(err: unknown): string {
@@ -155,6 +175,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     error: null,
   });
 
+  /** Touch-first device (evaluated once): interact hints say "tap" instead of "click". */
+  const coarsePointer = isCoarsePointer();
   const loop = new FixedLoop();
   const perf = new PerfWindow();
   const scene = new SceneSync(renderer);
@@ -191,14 +213,16 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     setError("client", errorText(err));
   }
 
+  // Opening or closing a panel also clears the item tooltip: the hovered item may
+  // belong to a panel that just unmounted, and its pointer-leave never fires.
   function openPanel(p: PanelId): void {
     const panels = ui.get().panels;
-    if (!panels.includes(p)) setUi({ panels: [...panels, p] });
+    if (!panels.includes(p)) setUi({ panels: [...panels, p], hover: null });
   }
 
   function closePanel(p: PanelId): void {
     const panels = ui.get().panels;
-    if (panels.includes(p)) setUi({ panels: panels.filter((x) => x !== p) });
+    if (panels.includes(p)) setUi({ panels: panels.filter((x) => x !== p), hover: null });
   }
 
   // ---- events -----------------------------------------------------------------
@@ -218,11 +242,21 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     };
   }
 
+  /** Float budget of the batch being fanned out (floatPolicy of the current speed). */
+  let floats: FloatPolicy = floatPolicy(1);
+  let floatsLeft = Number.POSITIVE_INFINITY;
+
   function applyVisual(v: Visual): void {
     switch (v.kind) {
-      case "float":
-        renderer.floatText({ x: v.x, y: v.y, text: v.text, color: v.color, size: v.size });
+      case "float": {
+        if (floats.dropMinor && v.size === "s") return;
+        if (floatsLeft <= 0) return;
+        floatsLeft--;
+        const spec: FloatTextSpec = { x: v.x, y: v.y, text: v.text, color: v.color, size: v.size };
+        if (floats.ms !== undefined) spec.ms = floats.ms;
+        renderer.floatText(spec);
         return;
+      }
       case "effect":
         renderer.playEffect(v.spec);
         return;
@@ -246,8 +280,18 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
 
   function fanOut(events: readonly GameEvent[]): void {
     if (events.length === 0) return;
+    deps.onEvents?.(events);
     const env = effectEnv(sim.world);
+    const control = sim.world.getResource<ControlState>(RES.control);
+    floats = floatPolicy(control && control.mode === "idle" ? control.speed : 1);
+    floatsLeft = floats.perBatch;
+    // Events carry no tick: they all belong to the batch that just ran, whose
+    // last processed tick is sim.tick - 1 (the scene's render time base).
+    const hitTick = sim.tick - 1;
     for (const ev of events) {
+      if (ev.type === "classic.hit" && ev.dot !== true && typeof ev.target === "number") {
+        scene.noteHit(ev.target, hitTick);
+      }
       let visuals: Visual[];
       try {
         visuals = planEvent(ev, env);
@@ -437,6 +481,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       targeted: engagedTarget(world),
       showLootLabels: settings.showLootLabels,
       lighting: settings.lighting,
+      tick: sim.tick,
+      touch: coarsePointer,
     });
   }
 
@@ -504,7 +550,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     vendorNpc = 0;
     pointer.cancel();
     appliedZoom = Number.NaN;
-    setUi({ panels: [], toasts: [], error: null });
+    setUi({ panels: [], toasts: [], error: null, hover: null });
     log.set([]);
     lastHudAt = Number.NEGATIVE_INFINITY;
     refreshHud();
@@ -533,7 +579,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     closePanel,
     closeAll() {
       vendorNpc = 0;
-      setUi({ panels: [] });
+      setUi({ panels: [], hover: null });
     },
     setHover(h) {
       setUi({ hover: h });
@@ -562,6 +608,11 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       const skill = registry.get<SkillProto>(KIND.skill, id);
       if (!skill) return;
       const t = castTargetFor(skill);
+      // An enemy skill with nothing to hit is reported, not sent (no mana spent, no silent no-op).
+      if (skill.target === "enemy" && t.target === 0) {
+        setError("no_target", "No target in range");
+        return;
+      }
       act(ACTION.useSkill, {
         skill: id,
         target: t.target,
@@ -589,5 +640,6 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       destroyed = true;
       pointer.cancel();
     },
+    currentSim: () => sim,
   };
 }

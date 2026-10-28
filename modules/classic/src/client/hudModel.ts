@@ -73,6 +73,7 @@ import {
   type AreaView,
   type BeltSlotView,
   type ControlView,
+  type ItemCompare,
   type HeroView,
   type HudSnapshot,
   type ItemView,
@@ -84,7 +85,7 @@ import {
   type TargetView,
   type VendorView,
 } from "./contract.ts";
-import { itemLines, skillTooltip } from "./describe.ts";
+import { itemLines, skillDetailLines, statDiffs, statTotals } from "./describe.ts";
 
 /** Per-build inputs that are not in the world (client UI state). */
 export interface HudContext {
@@ -195,26 +196,49 @@ export function meetsRequirements(base: ItemBaseProto, level: number, attrs: Att
   return base.reqLevel <= level && base.reqStr <= attrs.str && base.reqDex <= attrs.dex;
 }
 
-/** Score gain of `item` over the best slot it fits (rounded; > 0 = upgrade). */
-function upgradeOf(item: ItemInstance, base: ItemBaseProto, c: ItemContext): number {
-  if (base.slots.length === 0) return 0;
+/**
+ * Comparison with the equipped item in the slot the item would gain most from
+ * (the upgrade score is that slot's difference, rounded; > 0 = upgrade).
+ */
+function compareOf(
+  item: ItemInstance,
+  base: ItemBaseProto,
+  c: ItemContext,
+): { upgrade: number; compare: ItemCompare | null } {
+  if (base.slots.length === 0) return { upgrade: 0, compare: null };
   const own = itemScore(c.registry, item, c.primary);
-  let best = Number.NEGATIVE_INFINITY;
+  let best: { slot: EquipSlot; cur: ItemInstance | null; delta: number } | null = null;
   for (const slot of base.slots) {
     const cur = c.equipped?.[slot] ?? null;
     const curScore = cur ? itemScore(c.registry, cur, c.primary) : 0;
-    best = Math.max(best, own - curScore);
+    const delta = own - curScore;
+    if (best === null || delta > best.delta) best = { slot, cur, delta };
   }
-  return Number.isFinite(best) ? Math.round(best) : 0;
+  if (best === null) return { upgrade: 0, compare: null };
+  const curBase = best.cur
+    ? c.registry.get<ItemBaseProto>(KIND.itemBase, best.cur.base)
+    : undefined;
+  const stats = statDiffs(statTotals(item, base), best.cur ? statTotals(best.cur, curBase) : {});
+  const upgrade = Number.isFinite(best.delta) ? Math.round(best.delta) : 0;
+  return {
+    upgrade,
+    compare: {
+      slot: best.slot,
+      equipped: best.cur ? { uid: best.cur.uid, name: best.cur.name } : null,
+      stats,
+    },
+  };
 }
 
-/** Item view for the HUD: text lines, prices, usability and the upgrade hint. */
+/** Item view for the HUD: text lines, prices, usability and the comparison with the equipped item. */
 export function itemView(item: ItemInstance, c: ItemContext): ItemView {
   const base = c.registry.get<ItemBaseProto>(KIND.itemBase, item.base);
   const category = base?.category ?? "armor";
+  const cmp = base ? compareOf(item, base, c) : { upgrade: 0, compare: null };
   return {
     uid: item.uid,
     base: item.base,
+    baseName: base?.name,
     name: item.name,
     rarity: item.rarity,
     category,
@@ -228,7 +252,8 @@ export function itemView(item: ItemInstance, c: ItemContext): ItemView {
     w: base?.size.w ?? 1,
     h: base?.size.h ?? 1,
     usable: base ? meetsRequirements(base, c.heroLevel, c.attrs) : false,
-    upgrade: base ? upgradeOf(item, base, c) : 0,
+    upgrade: cmp.upgrade,
+    compare: cmp.compare,
   };
 }
 
@@ -543,7 +568,7 @@ function skillViews(
     out.push({
       id,
       name: s.name,
-      description: skillTooltip(s, Math.max(1, rank)).join(" "),
+      description: [s.description, ...skillDetailLines(s, Math.max(1, rank))].join(" · "),
       icon: s.icon,
       rank,
       maxRank: s.maxRank,
@@ -720,8 +745,9 @@ export function minimapData(world: World, registry: FrozenRegistry): MinimapData
     dots.push({ x: tx, y: ty, kind });
   }
   for (const e of world.query(Npc, Pos, AreaTag)) {
+    if (world.read(e, AreaTag).depth !== depth) continue;
     const p = world.read(e, Pos);
-    dots.push({ x: p.x >> 8, y: p.y >> 8, kind: "npc" });
+    if (isSeen(p.x >> 8, p.y >> 8)) dots.push({ x: p.x >> 8, y: p.y >> 8, kind: "npc" });
   }
   for (const e of world.query(Loot, Pos, AreaTag)) {
     if (world.read(e, AreaTag).depth !== depth) continue;
@@ -733,6 +759,7 @@ export function minimapData(world: World, registry: FrozenRegistry): MinimapData
     const it = world.read(e, Interactable);
     const pos = world.read(e, Pos);
     if (it.kind === "stash") continue;
+    if (!isSeen(pos.x >> 8, pos.y >> 8)) continue;
     const kind = it.kind === "waypoint" ? "waypoint" : it.kind === "portal" ? "portal" : "stairs";
     dots.push({ x: pos.x >> 8, y: pos.y >> 8, kind });
   }

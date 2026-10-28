@@ -1,7 +1,7 @@
 /** Six skill slots with key labels, mana cost and a cooldown sweep (classic.hud.bottom). */
 import { useSelect } from "../hooks.ts";
-import { Btn, useCompact, type SlotProps } from "../common.tsx";
-import { bottomOrder } from "../layout.ts";
+import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
+import { bottomOrderFor } from "../layout.ts";
 import { cooldownSweepDeg, fmtInt } from "../format.ts";
 import { SkillIcon } from "../icons.tsx";
 import { C, labelStyle } from "../styles.ts";
@@ -16,15 +16,17 @@ export function SkillBar({ api }: SlotProps) {
     }),
   );
   const bar = useSelect(api.hud, (s) => s.skillBar);
-  const compact = useCompact(api);
+  const layout = useHudLayout(api);
+  const compact = layout !== "desktop";
   const size = compact ? 44 : 52;
   return (
     <div
       role="toolbar"
       aria-label="Skill bar"
       style={{
-        order: bottomOrder(compact, "skill"),
-        flexBasis: compact ? "100%" : undefined,
+        order: bottomOrderFor(layout, "skill"),
+        // Portrait phones put each row on its own line; the landscape band keeps them inline between the orbs.
+        flexBasis: layout === "compact" ? "100%" : undefined,
         display: "flex",
         justifyContent: "center",
         gap: compact ? 4 : 6,
@@ -68,6 +70,7 @@ export function SkillBar({ api }: SlotProps) {
               {empty ? null : (
                 <SkillIcon
                   tags={tags}
+                  skillId={slot.skill}
                   color={slot.usable ? C.goldBright : C.muted}
                   size={size - 18}
                 />

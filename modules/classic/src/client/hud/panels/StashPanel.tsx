@@ -3,7 +3,7 @@ import { ACTION } from "../../../actions.ts";
 import type { ItemView } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Section, type SlotProps } from "../common.tsx";
-import { fmtInt, rarityHex } from "../format.ts";
+import { fmtInt, pluralize, rarityHex } from "../format.ts";
 import { ItemIcon } from "../icons.tsx";
 import { C, labelStyle } from "../styles.ts";
 
@@ -52,7 +52,7 @@ export function StashPanel({ api }: SlotProps) {
       id="stash"
       title="Stash"
       width={440}
-      subtitle={`${fmtInt(stash.length)} / ${fmtInt(size)} slots${inTown ? "" : " · the stash is in town"}`}
+      subtitle={`${fmtInt(stash.length)} of ${pluralize(size, "slot")}${inTown ? "" : " · the stash is in town"}`}
     >
       <Section title="In the stash">
         {stash.length === 0 ? <p style={labelStyle}>The stash is empty.</p> : null}

@@ -22,8 +22,10 @@ import { classicAuto } from "../src/auto/index.ts";
 import { allocCycle, skillPlan, statPlan } from "../src/auto/allocate.ts";
 import { computeOffline } from "../src/auto/offline.ts";
 import { itemScore } from "../src/auto/score.ts";
+import { AutoLeave, ensureAutoState } from "../src/auto/util.ts";
 import { busOf } from "../src/bus.ts";
 import {
+  Ai,
   AutoState,
   Belt,
   Dead,
@@ -53,6 +55,7 @@ import {
   type DungeonState,
   type ExploreArea,
   type ExploreState,
+  type QuestState,
   type RunStats,
 } from "../src/resources.ts";
 import { KIND, type ItemInstance, type ItemRarity, type MonsterProto } from "../src/types.ts";
@@ -480,6 +483,29 @@ describe("survival", () => {
     expect(ops(sim)).not.toContain("drink");
   });
 
+  it("drinks only strictly below the threshold (50 % default, boundary included)", () => {
+    const { sim, hero } = dungeon({ life: 100 });
+    setLife(sim, hero, 50);
+    sim.step(2);
+    expect(ops(sim)).not.toContain("drink");
+    setLife(sim, hero, 49);
+    sim.step(1);
+    expect(ops(sim)).toContain("drink");
+  });
+
+  it("follows a configured life threshold", () => {
+    const { sim, hero } = dungeon({ life: 100 });
+    expect(sim.dispatch("classic.setAutoConfig", { config: { lifePotionPct: 80 } }, null).ok).toBe(
+      true,
+    );
+    setLife(sim, hero, 80);
+    sim.step(2);
+    expect(ops(sim)).not.toContain("drink");
+    setLife(sim, hero, 79);
+    sim.step(1);
+    expect(ops(sim)).toContain("drink");
+  });
+
   it("drinks a mana potion when low on mana in a fight", () => {
     const { sim, hero } = dungeon({ mana: 100 });
     sim.world.update(hero, Mana, { mp: 10 });
@@ -861,6 +887,133 @@ describe("explore and descend", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Leaving the level: fights and loot stay close (QA r2)
+// ---------------------------------------------------------------------------
+
+describe("leaving the level (descend / toTown)", () => {
+  /** Finished level 1, stairs at (20,20): the hero commits to descend on the first tick. */
+  function descending() {
+    const d = dungeon();
+    setExplored(d.sim, d.map, () => true);
+    const stairs = spawnInteractable(d.sim, "stairsDown", 20, 20, 1, 2);
+    d.sim.step(1);
+    expect(stateOf(d.sim, d.hero).plan).toBe("descend");
+    expect(d.sim.world.get(d.hero, AutoLeave)).toEqual({ plan: "descend", depth: 1 });
+    return { ...d, stairs };
+  }
+
+  it("a foe outside the near radius does not preempt the walk to the stairs", () => {
+    const { sim, hero, stairs } = descending();
+    // Awake, in line of sight, 7 tiles away: inside FIGHT_RANGE, outside LEAVE_FIGHT_RANGE.
+    spawnTestMonster(sim.world, { x: 12, y: 5 });
+    sim.step(30);
+    expect(stateOf(sim, hero).plan).toBe("descend");
+    expect(intentOf(sim, hero)).toMatchObject({ kind: "interact", target: stairs });
+  });
+
+  it("the same foe is fought when the hero is not leaving (control)", () => {
+    const { sim, map, hero } = dungeon();
+    setExplored(sim, map, (x) => x <= 10);
+    spawnTestMonster(sim.world, { x: 12, y: 5 });
+    sim.step(1);
+    expect(stateOf(sim, hero).plan).toBe("fight");
+  });
+
+  it("fights a foe within the near radius, and one attacking it from farther away", () => {
+    const near = descending();
+    const m = spawnTestMonster(near.sim.world, { x: 8, y: 5 });
+    near.sim.step(1);
+    expect(stateOf(near.sim, near.hero)).toMatchObject({ plan: "fight", focus: m });
+
+    const far = descending();
+    const archer = spawnTestMonster(far.sim.world, { x: 12, y: 5 });
+    far.sim.world.update(archer, Ai, { state: "attack", target: far.hero });
+    far.sim.step(1);
+    expect(stateOf(far.sim, far.hero)).toMatchObject({ plan: "fight", focus: archer });
+  });
+
+  it("stays committed through a close fight: afterwards a far foe is still ignored", () => {
+    const { sim, hero, stairs } = descending();
+    const close = spawnTestMonster(sim.world, { x: 7, y: 5 });
+    spawnTestMonster(sim.world, { x: 5, y: 12 });
+    sim.step(1);
+    expect(stateOf(sim, hero)).toMatchObject({ plan: "fight", focus: close });
+    // The commitment survives the fight plan.
+    expect(sim.world.get(hero, AutoLeave)).toEqual({ plan: "descend", depth: 1 });
+    sim.world.destroy(close);
+    sim.step(30);
+    expect(stateOf(sim, hero).plan).toBe("descend");
+    expect(intentOf(sim, hero)).toMatchObject({ kind: "interact", target: stairs });
+  });
+
+  it("does not walk to loot farther than LEAVE_LOOT_RANGE while descending", () => {
+    const { sim, hero, stairs } = descending();
+    spawnLoot(sim, 10, 5, { kind: "gold", gold: 20 });
+    sim.step(30);
+    expect(stateOf(sim, hero).plan).toBe("descend");
+    expect(intentOf(sim, hero)).toMatchObject({ kind: "interact", target: stairs });
+    // Loot right next to the hero is still picked up.
+    expect(ops(sim)).not.toContain("pickup");
+    const g = spawnLoot(sim, 6, 5, { kind: "gold", gold: 20 });
+    sim.step(11);
+    expect(cmds(sim).some((c) => c.op === "pickup" && c.target === g)).toBe(true);
+  });
+
+  it("drops the commitment when the plan turns to something else", () => {
+    const { sim, map, hero } = descending();
+    // Unexplore the level: the next re-plan explores instead.
+    setExplored(sim, map, (x) => x <= 6);
+    sim.step(11);
+    expect(stateOf(sim, hero).plan).toBe("explore");
+    expect(sim.world.has(hero, AutoLeave)).toBe(false);
+  });
+});
+
+describe("quest trips (QA r2)", () => {
+  function questSim(qs: QuestState) {
+    const d = dungeon();
+    setExplored(d.sim, d.map, (x) => x <= 10);
+    d.sim.world.setResource(RES.quests, qs);
+    return d;
+  }
+
+  it("goes to town to accept a quest it now qualifies for", () => {
+    const { sim, hero } = questSim({ active: [], completed: [] });
+    const ev = sim.step(1);
+    expect(ops(sim)).toContain("townPortal");
+    expect(stateOf(sim, hero).plan).toBe("toTown");
+    expect(ev).toContainEqual({ type: "classic.auto.plan", plan: "toTown", note: "quest" });
+  });
+
+  it("no trip once the quest is active, completed, or during the trip cooldown", () => {
+    const active = questSim({
+      active: [{ id: "test.quest.hunt", progress: 0, done: false }],
+      completed: [],
+    });
+    active.sim.step(1);
+    expect(ops(active.sim)).not.toContain("townPortal");
+
+    const done = questSim({ active: [], completed: ["test.quest.hunt"] });
+    done.sim.step(1);
+    expect(ops(done.sim)).not.toContain("townPortal");
+
+    const cooling = questSim({ active: [], completed: [] });
+    // As if it just left town: voluntary trips wait for the cooldown.
+    ensureAutoState(cooling.sim.world, cooling.hero, cooling.sim.tick).tripAt = 1000;
+    cooling.sim.step(1);
+    expect(ops(cooling.sim)).not.toContain("townPortal");
+  });
+
+  it("does not leave a fight for it", () => {
+    const { sim, hero } = questSim({ active: [], completed: [] });
+    spawnTestMonster(sim.world, { x: 8, y: 5 });
+    sim.step(1);
+    expect(stateOf(sim, hero).plan).toBe("fight");
+    expect(ops(sim)).not.toContain("townPortal");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Town routine
 // ---------------------------------------------------------------------------
 
@@ -1154,6 +1307,6 @@ describe("determinism", () => {
   });
 
   it("pins the hash after a fixed script", () => {
-    expect(scripted(1).hash()).toBe("39b2e3cb72bce1e9");
+    expect(scripted(1).hash()).toBe("256d9c93f081c722");
   });
 });
