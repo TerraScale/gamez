@@ -136,9 +136,10 @@ describe("TownPresence: party companions in the local report", () => {
     expect(appearanceOf(sim, "classic.rogue")).toBe("unit.hero.rogue");
     const pose = conns[0]!.poses[0]!;
     expect(pose.pos).toEqual({ x: 5, y: 5 });
+    // R11 (ADR 0007): other players see the class name (game data), never the typed hero name.
     expect(pose.companions).toEqual([
-      { appearance: "unit.hero.rogue", name: "Lyra", dx: 1, dy: 0 },
-      { appearance: "unit.hero.sorcerer", name: "Mira", dx: -2, dy: 0 },
+      { appearance: "unit.hero.rogue", name: "Rogue", dx: 1, dy: 0 },
+      { appearance: "unit.hero.sorcerer", name: "Sorcerer", dx: -2, dy: 0 },
     ]);
   });
 

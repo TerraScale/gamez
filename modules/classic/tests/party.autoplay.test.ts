@@ -34,7 +34,7 @@ const SAMPLE = 10;
 const CLASSES = ["classic.warrior", "classic.rogue", "classic.sorcerer", "classic.rogue"];
 const NAMES = ["Brannoc", "Ysolde", "Corvin", "Tamsin"];
 /** sim.hash() after the setup script plus 3000 Idle ticks (re-pin on any behaviour change). */
-const PINNED_3000 = "9bef8e9976a8559c";
+const PINNED_3000 = "f5c8c89fbeaa1db3";
 
 /** Founder + three recruits through the real actions (slots bought with test gold). */
 function startParty(seed: number): Sim {

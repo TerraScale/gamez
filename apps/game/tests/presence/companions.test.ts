@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { PRESENCE_TAG_WORDS } from "@gamez/mode-classic";
 import { MAX_COMPANIONS, type CompanionPose, type EntityState } from "@gamez/protocol";
 import {
   MAX_COMPANION_NAME,
@@ -9,41 +10,55 @@ import {
   type CleanPose,
 } from "../../src/server/presence/pose.ts";
 
-const BOUNDS = { width: 72, height: 72 };
+/** R11 (ADR 0007): companion names are game-data words (the classic class names and "Hero"). */
+const WORDS = PRESENCE_TAG_WORDS;
+const BOUNDS = { width: 72, height: 72, tagWords: WORDS };
 const NOW = 1_000_000;
 
-const lyra: CompanionPose = { appearance: "unit.hero.rogue", name: "Lyra", dx: 1, dy: 0 };
-const mira: CompanionPose = { appearance: "unit.hero.sorcerer", name: "Mira", dx: -2, dy: 2 };
-const brask: CompanionPose = { appearance: "unit.hero.warrior", name: "Brask", dx: 0, dy: -1 };
+const lyra: CompanionPose = { appearance: "unit.hero.rogue", name: "Rogue", dx: 1, dy: 0 };
+const mira: CompanionPose = { appearance: "unit.hero.sorcerer", name: "Sorcerer", dx: -2, dy: 2 };
+const brask: CompanionPose = { appearance: "unit.hero.warrior", name: "Warrior", dx: 0, dy: -1 };
 
 function raw(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { appearance: "unit.hero.rogue", name: "Lyra", dx: 1, dy: 0, ...over };
+  return { appearance: "unit.hero.rogue", name: "Rogue", dx: 1, dy: 0, ...over };
 }
+
+/** sanitiseCompanions with the classic town's vocabulary. */
+const clean = (v: unknown) => sanitiseCompanions(v, WORDS);
 
 describe("sanitiseCompanions: accepted entries", () => {
   it("keeps good entries as they are, in report order", () => {
-    expect(sanitiseCompanions([lyra, mira])).toEqual([lyra, mira]);
+    expect(clean([lyra, mira])).toEqual([lyra, mira]);
   });
 
   it("returns [] for an empty list and for a non-array", () => {
-    expect(sanitiseCompanions([])).toEqual([]);
-    expect(sanitiseCompanions("not a list")).toEqual([]);
-    expect(sanitiseCompanions(undefined)).toEqual([]);
+    expect(clean([])).toEqual([]);
+    expect(clean("not a list")).toEqual([]);
+    expect(clean(undefined)).toEqual([]);
   });
 
-  it("trims names, removes control characters and cuts to 24 code points", () => {
-    const [a] = sanitiseCompanions([raw({ name: "  Lyra\u0007  " })]);
-    expect(a?.name).toBe("Lyra");
-    const [b] = sanitiseCompanions([raw({ name: "x".repeat(30) })]);
-    expect(b?.name).toHaveLength(MAX_COMPANION_NAME);
-    const [c] = sanitiseCompanions([raw({ name: "🎲".repeat(30) })]);
-    expect(Array.from(c!.name)).toHaveLength(MAX_COMPANION_NAME);
+  it("relays only game-data words as names (R11): typed hero names, look-alikes and links are dropped", () => {
+    for (const word of WORDS) expect(clean([raw({ name: word })])[0]?.name).toBe(word);
+    for (const name of [
+      "Lyra",
+      "  Rogue  ",
+      "Rogue\u0007",
+      "rogue",
+      "Ｒogue",
+      "Rоgue",
+      "visit evil.example",
+      "x".repeat(MAX_COMPANION_NAME + 1),
+    ]) {
+      expect(clean([raw({ name })]), name).toEqual([]);
+    }
+    // Without a vocabulary (a world with no tagWords) no companion is relayed.
+    expect(sanitiseCompanions([lyra])).toEqual([]);
   });
 
   it("clamps offsets to -4..4 and rounds them to whole tiles", () => {
-    const [a] = sanitiseCompanions([raw({ dx: 9, dy: -9 })]);
+    const [a] = clean([raw({ dx: 9, dy: -9 })]);
     expect(a).toMatchObject({ dx: 4, dy: -4 });
-    const [b] = sanitiseCompanions([raw({ dx: 1.4, dy: -2.6 })]);
+    const [b] = clean([raw({ dx: 1.4, dy: -2.6 })]);
     expect(b).toMatchObject({ dx: 1, dy: -3 });
   });
 });
@@ -64,21 +79,18 @@ describe("sanitiseCompanions: dropped entries", () => {
     ["entry not a record", "Lyra"],
     ["entry null", null],
   ])("%s", (_, bad) => {
-    expect(sanitiseCompanions([bad])).toEqual([]);
+    expect(clean([bad])).toEqual([]);
   });
 
   it("keeps the good entries around the bad ones", () => {
-    expect(sanitiseCompanions([raw({ name: "" }), lyra, raw({ appearance: "x" }), mira])).toEqual([
-      lyra,
-      mira,
-    ]);
+    expect(clean([raw({ name: "" }), lyra, raw({ appearance: "x" }), mira])).toEqual([lyra, mira]);
   });
 });
 
 describe("sanitiseCompanions: the cap", () => {
   it("keeps at most MAX_COMPANIONS valid entries", () => {
-    const list = [lyra, mira, brask, { ...lyra, name: "Extra" }, { ...mira, name: "More" }];
-    const out = sanitiseCompanions(list);
+    const list = [lyra, mira, brask, { ...lyra, name: "Hero" }, { ...mira, name: "Warrior" }];
+    const out = clean(list);
     expect(MAX_COMPANIONS).toBe(3);
     expect(out).toEqual([lyra, mira, brask]);
   });
@@ -90,9 +102,9 @@ describe("sanitiseCompanions: the cap", () => {
       lyra,
       mira,
       brask,
-      { ...lyra, name: "Z" },
+      { ...lyra, name: "Hero" },
     ];
-    expect(sanitiseCompanions(list)).toEqual([lyra, mira, brask]);
+    expect(clean(list)).toEqual([lyra, mira, brask]);
   });
 });
 

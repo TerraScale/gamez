@@ -23,7 +23,8 @@ import { busOf, type DeathRecord } from "../bus.ts";
 import { Level } from "../components.ts";
 import { SYSTEM } from "../ids.ts";
 import { heroOf, RES, type AutoRate, type ControlState, type GameState } from "../resources.ts";
-import { xpForKill } from "../rules.ts";
+import { partySize } from "../party/shared.ts";
+import { partyKillXp, partyProtoOf, xpForKill } from "../rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../types.ts";
 
 /** The decaying window: halve everything once the window is exceeded (30 min at x1). */
@@ -83,15 +84,24 @@ export const rateSystem: SystemDef = {
   },
 };
 
-/** Adds this tick's credited kills and their XP to the rate. */
+/**
+ * Adds this tick's credited kills and their XP to the rate. In a party
+ * (docs/design/party.md §6.8) kills are the whole party's, and the XP is the
+ * controlled hero's own share of each kill (partyKillXp for the party size,
+ * as progression/kills.ts pays it); partyOfflineGrant scales it per member.
+ */
 function accumulateKills(world: World, ctx: SimContext, hero: number, rate: AutoRate): void {
+  const size = partySize(world);
   for (const d of busOf(world).deaths) {
     if (!isCreditedKill(d)) continue;
     rate.kills += 1;
     if (d.xp > 0) {
       const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
       const heroLevel = world.get(hero, Level)?.level ?? 1;
-      rate.xp += xpForKill(bal, heroLevel, d.level, d.xp);
+      rate.xp +=
+        size > 1
+          ? partyKillXp(bal, partyProtoOf(ctx.registry), size, heroLevel, d.level, d.xp)
+          : xpForKill(bal, heroLevel, d.level, d.xp);
     }
   }
 }

@@ -120,7 +120,7 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 
 Load order comes from `deps` and `optionalDeps`, with ties broken by id. Patching, wrapping and overriding apply in that order, so a later module wraps an earlier one.
 
-`get()`/`read()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only loops (every monster, every tick) use `world.peek(e, C)`: same value, no copy. Never mutate what `peek()` returns; `update()` after a `peek()` is fine (ADR 0007 §6).
+`get()`/`read()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only loops (every monster, every tick) use `world.peek(e, C)`: same value, no copy. Never mutate what `peek()` returns; `update()` after a `peek()` is fine (ADR 0010 §6).
 
 ---
 

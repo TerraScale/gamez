@@ -309,7 +309,7 @@ Reading them back needs the SQL API, which is not a binding:
 Without the credentials (every local `vp dev`, and production until they are set) the points also
 go to the MetricsDO "local" stub (14 days, 200 000 rows) and the dashboard reads that. The SQL
 dialect the dashboard sends (`FORMAT JSON`, `quantileExactWeighted`, `intDiv(toUInt32(timestamp))`)
-is **unverified against the live API** until it runs with real credentials (ADR 0007).
+is **unverified against the live API** until it runs with real credentials (ADR 0008).
 
 `VITE_BUILD_ID` is a build-time variable (Workers Builds → build variables, e.g. the commit SHA):
 it labels client telemetry so Tech health shows version adoption.

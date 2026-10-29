@@ -1,30 +1,38 @@
 /**
- * Party offline progress (T-auto, docs/design/party.md §6.8), real content
- * with every classic module: classic.offlineProgress for a party of three
- * splits the XP per standing member (partyKillXp for each member's own
- * level), puts the gold in the purse (the founder's Wallet; followers have
- * none) and keeps the classic.offline.summary shape with party totals.
- * The solo game keeps its own model (computeOffline) unchanged. Measured
- * (seed 4, level 1, one hour): party kills 2280 vs solo 1620, 20 520 XP
- * per member vs 14 580 solo, gold 13 484 vs 5 451.
+ * Party offline progress (docs/design/party.md §6.8 with the offline/idle
+ * grant of docs/design/offline-idle.md §4.2), real content with every classic
+ * module. classic.offlineProgress for a party of three:
+ * - computes kills, gold and items for the party (the measured rate, else the
+ *   party model scaled by the party's loot %), gold into the purse (the
+ *   founder's Wallet; followers have none);
+ * - splits the XP per standing member, each with its own share, and the
+ *   offline XP factor (BalanceProto.offlineXpPct, or the admin tunable passed
+ *   as xpPct) applies to every member;
+ * - keeps the solo classic.offline.summary shape (party totals);
+ * - a downed follower gets no share; a dead controlled hero (a wipe) is
+ *   respawned with the whole party first (§4.4), like a solo hero.
  */
 import { createSim, loadMode, type GameEvent, type Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
-import { computeOffline, computePartyOffline } from "../src/auto/offline.ts";
+import { offlineGrant, partyOfflineGrant } from "../src/auto/offline.ts";
+import { AUTO_RATE_MIN_TICKS } from "../src/auto/rate.ts";
 import { Dead, Level, Life, Wallet } from "../src/components.ts";
 import { mode, modules } from "../src/index.ts";
 import { partyGold, partyMembers, purseOf } from "../src/party/shared.ts";
-import { heroOf } from "../src/resources.ts";
+import { heroOf, RES, type AutoRate } from "../src/resources.ts";
+import { BALANCE_ID, KIND, type BalanceProto } from "../src/types.ts";
 
 const loaded = loadMode(mode, modules);
+const bal = loaded.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
 const NAMES = ["Brannoc", "Ysolde", "Corvin"];
 const HOUR = 3_600_000;
+const CLASSES = ["classic.warrior", "classic.rogue", "classic.sorcerer"];
 
 function setPurse(sim: Sim, gold: number): void {
   sim.world.update(purseOf(sim.world), Wallet, { gold });
 }
 
-function recruitParty(seed: number, classes: readonly string[]): Sim {
+function recruitParty(seed: number, classes: readonly string[] = CLASSES): Sim {
   const sim = createSim(loaded, { seed });
   expect(sim.dispatch("classic.newHero", { classId: classes[0], name: NAMES[0] }, null).ok).toBe(
     true,
@@ -43,16 +51,12 @@ function recruitParty(seed: number, classes: readonly string[]): Sim {
   return sim;
 }
 
-interface Summary {
-  type: string;
-  ms: number;
-  depth: number;
-  kills: number;
-  xp: number;
-  gold: number;
-  items: number;
-  levels: number;
+function kill(sim: Sim, e: number): void {
+  sim.world.update(e, Life, { hp: 0 });
+  sim.world.add(e, Dead, { at: sim.tick, killer: 0 });
 }
+
+type Summary = Record<string, unknown> & { kills: number; xp: number; gold: number };
 
 function summary(events: readonly GameEvent[]): Summary {
   const e = events.find((x) => x.type === "classic.offline.summary");
@@ -63,26 +67,34 @@ function summary(events: readonly GameEvent[]): Summary {
 const xpOf = (sim: Sim, e: number): number => sim.world.read(e, Level).xp;
 
 describe("party offline progress", () => {
-  it("splits XP per member, puts gold in the purse, summary of party totals", () => {
-    const sim = recruitParty(4, ["classic.warrior", "classic.rogue", "classic.sorcerer"]);
+  it("splits XP per member with the offline factor, gold in the purse, the solo summary shape", () => {
+    const sim = recruitParty(4);
     const members = partyMembers(sim.world);
     expect(members).toHaveLength(3);
     const xp0 = members.map((e) => xpOf(sim, e));
     const gold0 = partyGold(sim.world);
-    const plan = computePartyOffline(sim.world, sim.loaded.registry, HOUR);
+    const plan = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR);
+    expect(plan.grant.source).toBe("model");
+    expect(plan.grant.xpPct).toBe(bal.offlineXpPct);
     expect(plan.shares.map((s) => s.hero)).toEqual(members);
-    // The solo model for the same (controlled) hero, before anything is granted.
-    const solo = computeOffline(sim.world, sim.loaded.registry, heroOf(sim.world), HOUR);
+    // The solo grant for the same (controlled) hero, before anything is granted.
+    const solo = offlineGrant(sim.world, sim.loaded.registry, heroOf(sim.world), HOUR);
 
     const r = sim.dispatch("classic.offlineProgress", { elapsedMs: HOUR }, null);
     expect(r.ok).toBe(true);
     const events = [...r.events, ...sim.step(2)];
     const sum = summary(events);
-    expect(Object.keys(sum).sort()).toEqual(
-      ["depth", "gold", "items", "kills", "levels", "ms", "type", "xp"].sort(),
+    // Same keys as a solo grant's summary (the away card reads one shape).
+    const soloSim = createSim(loaded, { seed: 4 });
+    soloSim.dispatch("classic.newHero", { classId: CLASSES[0], name: "Solo" }, null);
+    soloSim.step(2);
+    const soloSum = summary(
+      soloSim.dispatch("classic.offlineProgress", { elapsedMs: HOUR }, null).events,
     );
-    expect(sum.kills).toBe(plan.result.kills);
+    expect(Object.keys(sum).sort()).toEqual(Object.keys(soloSum).sort());
+    expect(sum.kills).toBe(plan.grant.kills);
     expect(sum.xp).toBe(plan.shares.reduce((a, s) => a + s.xp, 0));
+    expect(sum.xpPct).toBe(bal.offlineXpPct);
 
     // Every member got its own share (no XP pooled on the founder).
     members.forEach((e, i) => {
@@ -95,39 +107,97 @@ describe("party offline progress", () => {
     expect(partyGold(sim.world)).toBe(gold0 + sum.gold);
     for (const e of members.slice(1)) expect(sim.world.has(e, Wallet)).toBe(false);
 
-    // The party kills more than its leader would alone, but each member earns less per kill.
     console.log(
-      `PARTYOFFLINE kills=${plan.result.kills} (solo ${solo.kills}) xp=${plan.shares
+      `PARTYOFFLINE kills=${plan.grant.kills} (solo ${solo.kills}) xp=${plan.shares
         .map((s) => s.xp)
-        .join("/")} (solo ${solo.xp}) gold=${plan.result.gold} (solo ${solo.gold}) items=${
-        plan.result.items
+        .join("/")} (solo ${solo.xp}) gold=${plan.grant.gold} (solo ${solo.gold}) items=${
+        plan.grant.items
       } (solo ${solo.items})`,
     );
-    expect(plan.result.kills).toBeGreaterThan(solo.kills);
-    // §8: a member's share of a kill is xpPct x xpSharePct (1.75 x 0.62 for three), and the
-    // party kills faster, so each member earns 1x..2x the solo rate, never 3x (no XP pooling).
+    // The party kills at least as fast as its leader alone; each member's share
+    // of a kill is xpPct x xpSharePct (about 0.95 for three), so a member earns
+    // about the solo rate, never the party's pooled XP.
+    expect(plan.grant.kills).toBeGreaterThanOrEqual(solo.kills);
     const ratio = plan.shares[0]!.xp / solo.xp;
-    expect(ratio).toBeGreaterThanOrEqual(1);
+    expect(ratio).toBeGreaterThan(0.75);
     expect(ratio).toBeLessThan(2);
-    // Gold scales with lootPct and the kill rate: more in total, less per member than solo.
-    expect(plan.result.gold).toBeGreaterThan(solo.gold);
-    expect(plan.result.gold).toBeLessThan(3 * solo.gold);
+    // Gold scales with lootPct: more in total than solo, less than 3x.
+    expect(plan.grant.gold).toBeGreaterThan(solo.gold);
+    expect(plan.grant.gold).toBeLessThan(3 * solo.gold);
   }, 120_000);
 
-  it("a downed member gets no share; a wiped party is refused", () => {
-    const sim = recruitParty(6, ["classic.warrior", "classic.rogue", "classic.sorcerer"]);
-    const [a, b, c] = partyMembers(sim.world) as [number, number, number];
-    sim.world.update(c, Life, { hp: 0 });
-    sim.world.add(c, Dead, { at: sim.tick, killer: 0 });
-    const plan = computePartyOffline(sim.world, sim.loaded.registry, HOUR);
-    expect(plan.shares.map((s) => s.hero)).toEqual([a, b]);
-    for (const e of [a, b]) {
-      sim.world.update(e, Life, { hp: 0 });
-      sim.world.add(e, Dead, { at: sim.tick, killer: 0 });
+  it("the offline XP factor (admin tunable xpPct) applies to every member", () => {
+    const sim = recruitParty(5);
+    const full = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 100);
+    const twenty = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 20);
+    const none = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 0);
+    expect(full.shares).toHaveLength(3);
+    full.shares.forEach((s, i) => {
+      expect(s.xp).toBeGreaterThan(0);
+      expect(twenty.shares[i]!.xp).toBe(Math.floor((s.xp * 20) / 100));
+      expect(none.shares[i]!.xp).toBe(0);
+    });
+    // Gold, items and kills are not scaled by the XP factor.
+    expect(none.grant.gold).toBe(full.grant.gold);
+    expect(none.grant.kills).toBe(full.grant.kills);
+    expect(none.grant.items).toBe(full.grant.items);
+
+    const members = partyMembers(sim.world);
+    const xp0 = members.map((e) => xpOf(sim, e));
+    const r = sim.dispatch("classic.offlineProgress", { elapsedMs: HOUR, xpPct: 0 }, "server");
+    expect(r.ok).toBe(true);
+    sim.step(2);
+    members.forEach((e, i) => expect(xpOf(sim, e)).toBe(xp0[i]));
+  }, 120_000);
+
+  it("with a measured rate, the controlled hero gets its own rate and each member scales it by its XP per kill", () => {
+    const sim = recruitParty(7);
+    const model = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 100);
+    // A measured online rate: the party's kills and the controlled hero's own XP share.
+    const rate: AutoRate = {
+      ticks: AUTO_RATE_MIN_TICKS * 2,
+      kills: 200,
+      xp: 2_000,
+      gold: 3_000,
+      loot: 0,
+      upkeep: 600,
+      spent: 0,
+    };
+    sim.world.setResource(RES.autoRate, rate);
+    const plan = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 100);
+    expect(plan.grant.source).toBe("rate");
+    const T = 60 * 1200;
+    expect(plan.grant.kills).toBe(
+      Math.min(Math.floor((rate.kills * T) / rate.ticks), model.grant.kills * 3),
+    );
+    const hero = heroOf(sim.world);
+    const mine = plan.shares.find((s) => s.hero === hero)!;
+    // The controlled hero's base is its measured XP rate (below the 3x model cap here).
+    expect(mine.xp).toBe(Math.floor((rate.xp * T) / rate.ticks));
+    // Same-level members get the same share (recruits start at the founder's level - 3 or 1).
+    const level = (e: number) => sim.world.read(e, Level).level;
+    for (const s of plan.shares) {
+      if (level(s.hero) === level(hero)) expect(s.xp).toBe(mine.xp);
+      expect(s.xp).toBeGreaterThan(0);
     }
-    const before = sim.hash();
+    expect(plan.grant.upkeep).toBe(Math.floor((600 * T) / rate.ticks));
+  }, 120_000);
+
+  it("a downed follower gets no share; a wiped party respawns and every member gets one", () => {
+    const sim = recruitParty(6);
+    const [a, b, c] = partyMembers(sim.world) as [number, number, number];
+    kill(sim, c);
+    const plan = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR);
+    expect(plan.shares.map((s) => s.hero)).toEqual([a, b]);
+    kill(sim, a);
+    kill(sim, b);
+    sim.step(1);
+    const xp0 = [a, b, c].map((e) => xpOf(sim, e));
     const r = sim.dispatch("classic.offlineProgress", { elapsedMs: HOUR }, null);
-    expect(r.ok).toBe(false);
-    expect(sim.hash()).toBe(before);
+    expect(r.ok, JSON.stringify(r.error)).toBe(true);
+    expect(r.events.some((e) => e.type === "classic.hero.respawned")).toBe(true);
+    sim.step(2);
+    for (const e of [a, b, c]) expect(sim.world.has(e, Dead)).toBe(false);
+    [a, b, c].forEach((e, i) => expect(xpOf(sim, e)).toBeGreaterThan(xp0[i]!));
   }, 120_000);
 });

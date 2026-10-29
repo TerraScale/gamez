@@ -15,11 +15,17 @@
  * - `quest.completed` does not add gold or xp: the reward already comes as
  *   classic.gold (reason "quest") and classic.xp (reason "quest").
  * - Commands tagged "debug" are not play and are skipped for xp and gold.
+ * - Party (docs/design/party.md §5): per-hero events carry `hero`; xp is banded
+ *   by that member's level, level-ups and deaths count for that member (its
+ *   class, its killer) and every member's casts count. A missing `hero` is the
+ *   controlled hero (solo). `dims` stays the controlled hero's (its control
+ *   mode drives the party).
  *
  * The integrator adds `analytics: classicAnalytics` to the policy in platform/policy.ts (§11).
  */
 import type { Entity, GameEvent, ModeAnalytics, World } from "@gamez/kernel";
 import { Dead, Hero, Level, Monster } from "../components.ts";
+import { isPartyHero } from "../party/shared.ts";
 import { currentDepth, heroOf, RES, type ControlState } from "../resources.ts";
 import type { ClassicEvent } from "../events.ts";
 
@@ -87,14 +93,23 @@ export const classicAnalytics: ModeAnalytics = {
   fold(events, world, tally) {
     const tally1 = (metric: string, k1: string, k2: string): void => tally(metric, k1, k2, 1);
     const hero = heroOf(world);
-    const band = levelBand(levelOf(world, hero));
+    /** The hero an event is about (party), else the controlled hero. */
+    const about = (e: ClassicEvent): Entity => e.hero ?? hero;
+    const bandOf = (e: ClassicEvent): string => levelBand(levelOf(world, about(e)));
 
-    // The killer of the hero, from this batch (classic.death with isHero) when present.
-    let heroKiller: Entity = 0;
+    // The killer of each hero that died in this batch (classic.death with isHero) when present.
+    const heroKillers: Array<[Entity, Entity]> = [];
     for (const raw of events) {
       const e = raw as ClassicEvent;
-      if (e.type === "classic.death" && e.isHero) heroKiller = e.killer;
+      if (e.type === "classic.death" && e.isHero) heroKillers.push([e.entity, e.killer]);
     }
+    /** The killer of `h` in this batch; an untagged (solo) death takes the last hero death's. */
+    const killerOfHero = (h: Entity, tagged: boolean): Entity => {
+      for (let i = heroKillers.length - 1; i >= 0; i--) {
+        if (heroKillers[i]![0] === h) return heroKillers[i]![1];
+      }
+      return tagged ? 0 : (heroKillers[heroKillers.length - 1]?.[1] ?? 0);
+    };
 
     let areaDepth: number | null = null;
     for (const raw of events) {
@@ -108,10 +123,12 @@ export const classicAnalytics: ModeAnalytics = {
           break;
         case "classic.hero.died": {
           const depth = areaDepth ?? currentDepth(world);
+          const h = about(e);
+          const batchKiller = killerOfHero(h, e.hero !== undefined);
           const killer =
-            heroKiller !== 0
-              ? killerProto(world, heroKiller)
-              : killerProto(world, world.get(hero, Dead)?.killer ?? 0);
+            batchKiller !== 0
+              ? killerProto(world, batchKiller)
+              : killerProto(world, world.get(h, Dead)?.killer ?? 0);
           tally1("death", depthBand(depth), killer);
           break;
         }
@@ -133,19 +150,19 @@ export const classicAnalytics: ModeAnalytics = {
         case "classic.xp": {
           const reason = e.reason.split(":")[0]?.trim() ?? "";
           if (e.amount > 0 && reason !== "debug") {
-            tally("xp", band, reasonKey(e.reason), e.amount);
+            tally("xp", bandOf(e), reasonKey(e.reason), e.amount);
           }
           break;
         }
         case "classic.gold": {
           const reason = e.reason.split(":")[0]?.trim() ?? "";
           if (e.amount > 0 && reason !== "debug") {
-            tally("gold", band, reasonKey(e.reason), e.amount);
+            tally("gold", bandOf(e), reasonKey(e.reason), e.amount);
           }
           break;
         }
         case "classic.levelUp":
-          tally1("level", levelBand(e.level), classIdOf(world, hero));
+          tally1("level", levelBand(e.level), classIdOf(world, about(e)));
           break;
         case "classic.loot.dropped":
           tally1("drop", e.rarity, e.kind);
@@ -154,7 +171,7 @@ export const classicAnalytics: ModeAnalytics = {
           tally1("achievement", e.id, "");
           break;
         case "classic.cast":
-          if (hero !== 0 && e.caster === hero) tally1("cast", e.skill, "");
+          if (e.caster !== 0 && isPartyHero(world, e.caster)) tally1("cast", e.skill, "");
           break;
         case "classic.talent.learned":
           tally1("talent", e.node, "");

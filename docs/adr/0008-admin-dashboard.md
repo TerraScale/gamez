@@ -1,4 +1,4 @@
-# ADR 0007: Admin dashboard: Analytics Engine + D1 read model + a local stub
+# ADR 0008: Admin dashboard: Analytics Engine + D1 read model + a local stub
 
 - Status: accepted (admin dashboard)
 - Date: 2026-10-28

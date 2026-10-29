@@ -1,6 +1,6 @@
 # Classic party system — design
 
-Status: **implemented** (integrated on branch `party-system`, base 420da97). Decisions and measured numbers: [ADR 0007](../adr/0007-classic-party.md).
+Status: **implemented** (integrated on branch `party-system`, base 420da97). Decisions and measured numbers: [ADR 0010](../adr/0010-classic-party.md).
 Package: `@gamez/mode-classic` (`modules/classic`). Read first: `AGENTS.md`, `docs/design/classic.md`,
 `wave-A.md`, `wave-B.md`, `wave-C.md`, `packages/kernel/README.md`.
 
@@ -330,12 +330,24 @@ member**:
   keep, sell or stash rules.
 - **Points.** Stat, skill and talent points are auto-allocated for every follower, and for the
   controlled hero only in auto/idle (the existing rule).
-- **Offline progress** (`auto/offline.ts`):
-  - Kills and items are computed for the acting leader's strength, then scaled by
-    `partyScale(size)`: kills × (party kill rate), XP split per living member with
-    `partyKillXp`.
+- **Offline progress** (`auto/offline.ts` `partyOfflineGrant`; amended by the integration with
+  offline/idle, ADR 0011):
+  - The grant follows offline-idle.md §4.2 for the party. Kills, gold, upkeep and items are party
+    totals: the measured online rate (`AutoRate` counts every kill credited to the heroes' side and
+    the purse's pickups and upkeep), else the party model (the acting leader's strength and level,
+    monsters scaled by `lifePct`, the damage of every standing member, travel per kill shortened by
+    `densityPct`, gold and items scaled by `lootPct`). The same 3× model caps apply.
+  - XP is per standing member. `classic.auto.rate` measures the controlled hero's own share
+    (`partyKillXp` for the party size). Each member gets that rate scaled by its own model XP per
+    kill (its level), capped at 3× its model. The model path pays each member its model XP ×
+    `offlineModelXpPct`. **The offline XP factor (`offlineXpPct`, admin tunable
+    `classic.offlineXpPct`) applies to every member.**
+  - A dead controlled hero (a wipe, or downed while others stand) is respawned with every downed
+    member first (§4.4 of offline-idle.md), so every member gets a share. A downed follower of a
+    standing controlled hero gets none.
   - Gold goes to the purse, and items go to the stash first, then to the founder's bag.
-  - `classic.offline.summary` keeps its shape (party totals).
+  - `classic.offline.summary` keeps the solo shape (party totals: `xp` and `levels` are the
+    members' sums).
 
 ---
 
@@ -594,11 +606,13 @@ D1 schema does not change.
 ### 11.3 Presence (classic town)
 
 - `PoseUpdate.companions?: CompanionPose[]` (`@gamez/protocol`, at most 3) holds appearance,
-  name and the integer tile offset −4..4 from the avatar. `EntityState.companions` mirrors the
+  name and the integer tile offset −4..4 from the avatar. **The name is the companion's class
+  name, never the typed hero name** (ADR 0007 R11, ADR 0011): the ChunkDO relays only names from
+  the world's `tagWords` vocabulary and drops any other companion. `EntityState.companions` mirrors the
   last sanitised list. The JSON and binary codecs carry it (binary: pose flag bit 2 and entity
   flag bit 1, a count byte, then entries).
 - The ChunkDO sanitises it (`apps/game/src/server/presence/pose.ts`) and stores it on the
-  avatar. Offsets are clamped, bad appearances dropped, names cut to 24 characters, and the
+  avatar. Offsets are clamped, bad appearances and names outside `tagWords` dropped, and the
   list capped at 3.
 - The client reports the followers' tile offsets relative to the controlled hero. It draws
   remote companions as `p:<id>:c<i>` with `highlight: "ally"` at the remote avatar's
@@ -612,7 +626,7 @@ Budget: **4 heroes + 300 monsters ≤ 2 ms mean per tick** on the dev box. Asser
 for load, because the shared box runs other workflows. Measure with
 `tools/bench` / `tests/party.perf.test.ts`.
 
-**Amended (2026-10-28, ADR 0007 §7), after QA measured 2.75–3.7 ms on a loaded box:**
+**Amended (2026-10-28, ADR 0010 §7), after QA measured 2.75–3.7 ms on a loaded box:**
 
 - The 2 ms budget holds for the **core sim** (core, combat, monsters, world): 1.78 ms with
   4 heroes and 300 awake monsters (1.24 ms solo).
@@ -629,11 +643,11 @@ for load, because the shared box runs other workflows. Measure with
   second) it is about 40 % of one core during such a fight, so the next cuts belong to the solo
   sim (the aggro resource and `AutoState` rollback copies, per-tick queries in the monster
   systems); they are outside the party scope.
-- Cuts already made: `World.peek()` in hot read loops (ADR 0007 §6), casters that only wait
+- Cuts already made: `World.peek()` in hot read loops (ADR 0010 §6), casters that only wait
   are peeked (no rollback copy), and `World.query()` runs without closures and skips the sort
   when ids already come in order.
 
-- Kernel `world.peek()` (ADR 0007 §6): hot read-only loops take no rollback copy. This halved
+- Kernel `world.peek()` (ADR 0010 §6): hot read-only loops take no rollback copy. This halved
   the tick for solo and party alike.
 - Monster think: picking a target scans at most 4 members (no allocation). Flow fields are
   computed only for targeted heroes and memoised per (hero tile).

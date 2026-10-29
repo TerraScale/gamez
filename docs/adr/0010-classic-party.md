@@ -1,4 +1,4 @@
-# ADR 0007: Classic party system
+# ADR 0010: Classic party system
 
 - Status: accepted (party system)
 - Date: 2026-10-28

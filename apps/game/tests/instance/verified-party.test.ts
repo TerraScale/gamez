@@ -50,7 +50,7 @@ class Sock implements InstanceSocket {
 }
 
 /** One account's server: a shared store and outbox, restartable on any content. */
-function setup() {
+function setup(tunables: Readonly<Record<string, number>> = {}) {
   const db = fakeSqlStore();
   const store = new SqlVerifiedStore(db);
   const outbox = new Outbox(db.sql, "instance:classic:acc");
@@ -72,6 +72,7 @@ function setup() {
       log: (_level, message) => {
         logs.push(message);
       },
+      offlineTunables: async () => tunables,
     });
   const env = { host: make(loaded), clock, store, outbox, sockets };
   return {
@@ -299,5 +300,91 @@ describe("VerifiedHost with a party", () => {
     expect(classic.heroOf(env.host.sim!.world)).toBe(classic.heroOf(c.sim.world));
     expect(env.host.sim!.tick).toBe(c.sim.tick);
     expect(classic.partyStateOf(c.sim.world)).toBeNull();
+  }, 120_000);
+
+  it("members recruited by an imported (quarantined) founder stay quarantined (ADR 0007 R1)", async () => {
+    const env = setup();
+    const sock = env.connect();
+    const c = new Client();
+    await c.adopt((await env.send(sock, { t: "join", token: "t", mode: "classic" }))[0] as VState);
+    // A client-authored local save: the server cannot verify the founder or its 5000 gold.
+    const imp = await env.send(sock, {
+      t: "import",
+      snapshot: { enc: "json", data: partyBase().snapshot() },
+      savedAt: 1,
+    });
+    expect((imp[0] as VState).imported).toBe(true);
+    await c.adopt(imp[0] as VState);
+    c.act(classic.ACTION.partyRecruit, { classId: "classic.rogue", name: "Shade" });
+    c.act(classic.ACTION.setControl, { mode: "auto" });
+    await play(env, sock, c, 200, 100);
+    sock.open = false;
+    await env.host.handleClose(sock);
+
+    // The quarantine is the instance's: the recruit (and anything it earns) is in it too.
+    expect(env.store.load()?.imported).toBe(true);
+    const rows = env.outbox.pending().filter((r) => r.table === "classic_hero");
+    expect([...new Set(rows.map((r) => r.pk))].sort()).toEqual([
+      "classic:acc/hero",
+      "classic:acc/hero:1",
+    ]);
+    for (const r of rows) expect((r.payload as { imported: boolean }).imported, r.pk).toBe(true);
+    // No arena build from the party either.
+    expect(await env.host.exportBuild("Tester")).toBeNull();
+
+    // Recruiting more members later, after a restart, keeps the flag.
+    env.restart();
+    const again = env.connect();
+    const v = (await env.send(again, { t: "join", token: "t", mode: "classic" }))[0] as VState;
+    expect(v.imported).toBe(true);
+  }, 120_000);
+
+  it("an offline grant splits XP per member with the admin's offlineXpPct (offline-idle.md §5.4)", async () => {
+    const run = async (xpPct: number) => {
+      const env = setup({ "classic.offlineXpPct": xpPct });
+      const sock = env.connect();
+      const c = new Client();
+      await c.adopt(
+        (await env.send(sock, { t: "join", token: "t", mode: "classic" }))[0] as VState,
+      );
+      const imp = await env.send(sock, {
+        t: "import",
+        snapshot: { enc: "json", data: partyBase().snapshot() },
+        savedAt: 1,
+      });
+      await c.adopt(imp[0] as VState);
+      c.act(classic.ACTION.partyRecruit, { classId: "classic.rogue", name: "Shade" });
+      c.act(classic.ACTION.setControl, { mode: "idle" });
+      await play(env, sock, c, 200, 100);
+      sock.open = false;
+      await env.host.handleClose(sock);
+      env.clock.now += 3_600_000;
+      const v = (await env.send(env.connect(), { t: "join", token: "t", mode: "classic" }))[0];
+      expect(v!.t).toBe("vstate");
+      const offline = (v as VState).offline;
+      expect(offline).not.toBeNull();
+      const members = classic.partyStateOf(env.host.sim!.world)!.members;
+      const summary = offline!.events.find((e) => e.type === "classic.offline.summary") as
+        | { xpPct: number; xp: number }
+        | undefined;
+      // The grant queued one grantXp per member: apply it on a copy of the granted state.
+      const after = createSim(loaded, { seed: 0, from: env.host.sim!.snapshot() });
+      after.step(1);
+      const xpOf = (sim: Sim, e: number) => sim.world.read(e, classic.Level).xp;
+      return {
+        summary: summary!,
+        members,
+        xp: members.map((e) => xpOf(after, e) - xpOf(c.sim, e)),
+      };
+    };
+    const half = await run(50);
+    const none = await run(0);
+    expect(half.summary.xpPct).toBe(50);
+    expect(none.summary.xpPct).toBe(0);
+    // Both members got their own XP at 50 %, none at 0 %.
+    expect(half.members).toHaveLength(2);
+    for (const xp of half.xp) expect(xp).toBeGreaterThan(0);
+    expect(half.xp.reduce((a, b) => a + b, 0)).toBe(half.summary.xp);
+    expect(none.summary.xp).toBe(0);
   }, 120_000);
 });

@@ -1,4 +1,4 @@
-# ADR 0008: Offline/idle progress pays a share of the measured online rate
+# ADR 0009: Offline/idle progress pays a share of the measured online rate
 
 - Status: accepted (offline/idle workflow, integration pass)
 - Date: 2026-10-28
@@ -53,7 +53,7 @@ grant.
 ## 5. Analytics
 
 Every grant goes through one host helper, which also reports `sim.offline` to the admin dashboard
-(ADR 0007). Verified segments feed `sim.tally` through the classic `ModeAnalytics` hooks.
+(ADR 0008). Verified segments feed `sim.tally` through the classic `ModeAnalytics` hooks.
 
 ## Unverified
 

@@ -1,6 +1,6 @@
 # Admin dashboard: every number about the game
 
-- Status: built and integrated (ADR 0007). §14 lists what changed while building and what is still open
+- Status: built and integrated (ADR 0008). §14 lists what changed while building and what is still open
 - Extends wave C live ops (ADR 0006 §9, `docs/design/wave-C.md` §9). Nothing there is replaced:
   `GET /api/admin/{me,economy,flags,moderation}`, `POST /api/admin/{flags,mute,hide}`,
   `POST /api/dev/admin/self`, `GET /api/config` keep their shapes and behaviour.
@@ -692,7 +692,7 @@ Everything above is implemented. These points differ from, or add to, the contra
 4. Migration follow-up: add indexes `classic_hero(account_id)`,
    `arena_rating(account_id, season_id)` and `economy_ledger(account_id, at)` for the lookup detail
    on large tables.
-5. AE SQL against the live API (ADR 0007 §2).
+5. AE SQL against the live API (ADR 0008 §2).
 
 **Fixes after the QA round** (definitions that changed, with tests)
 
