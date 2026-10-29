@@ -660,6 +660,6 @@ describe("determinism", () => {
   });
 
   it("pins the hash after a fixed script", () => {
-    expect(script(9).hash()).toBe("06e0cf325772af36");
+    expect(script(9).hash()).toBe("5b2ce3cc07e57542");
   });
 });

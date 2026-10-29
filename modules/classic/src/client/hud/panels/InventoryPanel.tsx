@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { ACTION } from "../../../actions.ts";
 import type { EquipSlot } from "../../../types.ts";
 import type { ItemView } from "../../contract.ts";
-import { useSelect } from "../hooks.ts";
+import { useSelect, useScrollEdges } from "../hooks.ts";
 import { Btn, PanelFrame, useCompact, type SlotProps } from "../common.tsx";
 import {
   BAG_CELL_PX,
@@ -231,6 +231,29 @@ function BagItem({
   );
 }
 
+/** Edge shade over the bag scroller: marks cells hidden past the card edge (pointer events pass through). */
+function BagFade({ side }: { side: "start" | "end" }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-bag-fade={side}
+      style={{
+        position: "absolute",
+        top: 0,
+        bottom: 4,
+        left: side === "start" ? 0 : undefined,
+        right: side === "end" ? 0 : undefined,
+        width: 28,
+        pointerEvents: "none",
+        background:
+          side === "end"
+            ? "linear-gradient(to right, rgba(14, 12, 10, 0), rgba(14, 12, 10, 0.95))"
+            : "linear-gradient(to left, rgba(14, 12, 10, 0), rgba(14, 12, 10, 0.95))",
+      }}
+    />
+  );
+}
+
 export function InventoryPanel({ api }: SlotProps) {
   const inv = useSelect(api.hud, (s) => s.inventory);
   const equipment = useSelect(api.hud, (s) => s.equipment);
@@ -244,6 +267,8 @@ export function InventoryPanel({ api }: SlotProps) {
   const [moving, setMoving] = useState<number | null>(null);
   const [menu, setMenu] = useState<number | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  // Phones: the bag scrolls sideways; the fades show where more cells lie outside the card.
+  const [bagRef, bagEdges] = useScrollEdges();
 
   // The sheet sits under the bag: on a phone it can open below the fold.
   useEffect(() => {
@@ -398,48 +423,52 @@ export function InventoryPanel({ api }: SlotProps) {
               </Btn>
             </div>
           ) : null}
-          <div style={{ overflowX: "auto", paddingBottom: 4 }}>
-            <div
-              aria-label="Bag grid"
-              style={{
-                position: "relative",
-                width: inv.cols * cell,
-                height: inv.rows * cell,
-                flex: "none",
-              }}
-            >
-              {cells}
-              {inv.items.map((p) => (
-                <BagItem
-                  key={p.item.uid}
-                  item={p.item}
-                  x={p.x}
-                  y={p.y}
-                  cell={cell}
-                  inset={inset}
-                  selected={p.item.uid === moving}
-                  onPick={(item, pointerType) => {
-                    const what = bagTapAction({
-                      moving: moving !== null,
-                      pointerType,
-                      sheetOpen: menu === item.uid,
-                    });
-                    if (what === "move") {
-                      if (item.uid === moving) setMoving(null);
-                      else place(p.x, p.y);
-                    } else if (what === "details") {
-                      openMenu(item.uid);
-                    } else {
-                      api.act(ACTION.equip, { uid: item.uid, slot: null });
-                      if (menu === item.uid) setMenu(null);
-                    }
-                  }}
-                  onMenu={openMenu}
-                  onHover={hover}
-                  onLeave={leave}
-                />
-              ))}
+          <div style={{ position: "relative" }}>
+            <div ref={bagRef} style={{ overflowX: "auto", paddingBottom: 4 }}>
+              <div
+                aria-label="Bag grid"
+                style={{
+                  position: "relative",
+                  width: inv.cols * cell,
+                  height: inv.rows * cell,
+                  flex: "none",
+                }}
+              >
+                {cells}
+                {inv.items.map((p) => (
+                  <BagItem
+                    key={p.item.uid}
+                    item={p.item}
+                    x={p.x}
+                    y={p.y}
+                    cell={cell}
+                    inset={inset}
+                    selected={p.item.uid === moving}
+                    onPick={(item, pointerType) => {
+                      const what = bagTapAction({
+                        moving: moving !== null,
+                        pointerType,
+                        sheetOpen: menu === item.uid,
+                      });
+                      if (what === "move") {
+                        if (item.uid === moving) setMoving(null);
+                        else place(p.x, p.y);
+                      } else if (what === "details") {
+                        openMenu(item.uid);
+                      } else {
+                        api.act(ACTION.equip, { uid: item.uid, slot: null });
+                        if (menu === item.uid) setMenu(null);
+                      }
+                    }}
+                    onMenu={openMenu}
+                    onHover={hover}
+                    onLeave={leave}
+                  />
+                ))}
+              </div>
             </div>
+            {bagEdges.start ? <BagFade side="start" /> : null}
+            {bagEdges.end ? <BagFade side="end" /> : null}
           </div>
           <div style={{ ...labelStyle, marginTop: 6 }}>
             {compact

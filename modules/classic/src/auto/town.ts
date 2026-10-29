@@ -37,7 +37,7 @@ import {
   type QuestProto,
 } from "../types.ts";
 import { craftStep, gambleStep, repairStep } from "./craft.ts";
-import { bossReady, clearObjective, travel } from "./dungeon.ts";
+import { bossReady, clearObjective, liveBoss, travel } from "./dungeon.ts";
 import { isKeeper, upgradeFor } from "./gear.ts";
 import { riftTownStep } from "./riftLoop.ts";
 import { approach, at, type StepResult } from "./visit.ts";
@@ -54,6 +54,7 @@ import {
   npcsByRole,
   potionAmount,
   potionOf,
+  bossRetreatProgress,
   retreatLoop,
   setPlan,
   type AutoCtx,
@@ -504,6 +505,17 @@ function portalToBoss(c: AutoCtx, dungeon: DungeonState): boolean {
 }
 
 /**
+ * True when the portal leads back to a boss the hero is ready for
+ * (portalToBoss) and that boss is at or below half its life.
+ */
+function bossHalfDown(c: AutoCtx, dungeon: DungeonState): boolean {
+  if (!portalToBoss(c, dungeon)) return false;
+  const boss = liveBoss(c, dungeon.portal!.depth);
+  const l = boss === 0 ? undefined : c.world.get(boss, Life);
+  return l !== undefined && l.hp * 2 <= l.max;
+}
+
+/**
  * Back to the dungeon: toward a clearLevel quest objective first
  * (objectiveReturn; unless the portal leads back to a boss the hero is
  * ready for), then a Rift run once the main dungeon is done
@@ -512,8 +524,18 @@ function portalToBoss(c: AutoCtx, dungeon: DungeonState): boolean {
  */
 function returnStep(c: AutoCtx): StepResult {
   const dungeon = c.world.getResource<DungeonState>(RES.dungeon);
-  // Two quick retreats: the portal leads back into a fight the hero keeps losing.
-  const loop = retreatLoop(c);
+  // Quick retreats: the portal leads back into a fight the hero keeps losing. Not when it
+  // leads to a boss the hero is ready for, has already brought below half life, and hurt
+  // between the last two retreats from its depth: the wound is kept and pressing on wins
+  // (warrior vs Vessa: the second retreat came with her at 14 % and the waypoint way back
+  // lost the fight). Without that progress a half-dead boss that keeps winning is a loop.
+  const loop =
+    retreatLoop(c) &&
+    !(
+      dungeon !== undefined &&
+      bossHalfDown(c, dungeon) &&
+      bossRetreatProgress(c, dungeon.portal!.depth)
+    );
   const goal = dungeon ? clearObjective(c) : 0;
   if (goal > 0 && dungeon && !portalToBoss(c, dungeon)) {
     const r = objectiveReturn(c, goal, dungeon, loop);

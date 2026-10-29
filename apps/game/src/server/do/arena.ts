@@ -8,6 +8,8 @@ import { fight } from "@gamez/mode-arena";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import type { ArenaBuild, ArenaMatch, ArenaStatus, ArenaTicket } from "@gamez/protocol";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { accountGateway } from "../economy/gateway.ts";
 import { ArenaLadder } from "../arena/ladder.ts";
 import { cryptoSeed } from "../arena/seeds.ts";
@@ -23,6 +25,12 @@ export class ArenaDO extends DurableObject<Env> implements ArenaApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ArenaDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const name = ctx.id.name ?? "classic:";
     const [mode = "classic", ...rest] = name.split(":");
     const seasonId = rest.join(":");
@@ -63,6 +71,12 @@ export class ArenaDO extends DurableObject<Env> implements ArenaApi {
   }
 
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ArenaDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     await this.#ladder.work();
     const sink = {
       send: async (batch: ReplicationBatch) => {

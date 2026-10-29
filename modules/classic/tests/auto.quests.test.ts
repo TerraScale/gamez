@@ -17,6 +17,7 @@
  */
 import { createSim, loadMode, type GameEvent, type Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
+import { depthMonsterIds } from "../src/auto/offline.ts";
 import { pushCommand } from "../src/bus.ts";
 import { Level } from "../src/components.ts";
 import { BALANCE } from "../src/content/balance.ts";
@@ -210,7 +211,7 @@ describe("Auto quests: chained quests in one visit", () => {
 });
 
 describe("Auto quests: offline progress", () => {
-  it("credits offline kills to Cull the Flames (min(200, kills)); other quests unchanged", () => {
+  it("credits offline kills: Cull the Flames gains every kill, Ash and Ember the depth share (pinned numbers, seed 31)", () => {
     const sim = newSim("classic.warrior", 31, "manual");
     grantHero(sim, 10);
     sim.step(1);
@@ -222,31 +223,47 @@ describe("Auto quests: offline progress", () => {
       ],
       completed: [RATS],
     } satisfies QuestState);
-    const r = sim.dispatch("classic.offlineProgress", { elapsedMs: 3_600_000 }, null);
+    // One minute away, no rate yet: the model gives 15 kills at depth 1 (4 monsters).
+    const r = sim.dispatch("classic.offlineProgress", { elapsedMs: 60_000 }, null);
     expect(r.ok, JSON.stringify(r.error)).toBe(true);
     const events = r.events as ClassicEvent[];
     const summary = events.find((e) => e.type === "classic.offline.summary");
-    expect(summary?.type).toBe("classic.offline.summary");
-    const kills = summary?.type === "classic.offline.summary" ? summary.kills : 0;
-    expect(kills).toBeGreaterThan(0);
+    expect(summary).toMatchObject({ depth: 1, kills: 15 });
+    // Rule (d): depthMonsterIds of depth 1 (sorted), Ash and Ember's target is one of them.
+    const ids = depthMonsterIds(sim.loaded.registry, 1);
+    expect(ids).toEqual([
+      "classic.monster.ash_seer",
+      "classic.monster.bonefletcher",
+      "classic.monster.gnawling",
+      "classic.monster.husk",
+    ]);
     const qs = quests(sim);
-    const cull = qs.active.find((a) => a.id === CULL)!;
-    expect(cull.progress).toBe(Math.min(200, 7 + kills));
-    expect(cull.done).toBe(7 + kills >= 200);
-    expect(qs.active.find((a) => a.id === ASH)).toEqual({ id: ASH, progress: 3, done: false });
+    // "*" gains every kill: 7 + 15.
+    expect(qs.active.find((a) => a.id === CULL)).toEqual({ id: CULL, progress: 22, done: false });
+    // A named target in the list gains floor(15 / 4) = 3: 3 + 3.
+    expect(qs.active.find((a) => a.id === ASH)).toEqual({ id: ASH, progress: 6, done: false });
+    // Not a kill quest for this depth's kills: untouched.
     expect(qs.active.find((a) => a.id === DEEPER)).toEqual({
       id: DEEPER,
       progress: 2,
       done: false,
     });
-    expect(
-      events.some(
-        (e) =>
-          e.type === "classic.quest.progress" && e.quest === CULL && e.progress === cull.progress,
-      ),
-    ).toBe(true);
-    expect(events.some((e) => e.type === "classic.quest.done" && e.quest === CULL)).toBe(cull.done);
-    expect(events.some((e) => e.type === "classic.quest.progress" && e.quest !== CULL)).toBe(false);
+    expect(events).toContainEqual({
+      type: "classic.quest.progress",
+      quest: CULL,
+      progress: 22,
+      count: 200,
+    });
+    expect(events).toContainEqual({
+      type: "classic.quest.progress",
+      quest: ASH,
+      progress: 6,
+      count: 15,
+    });
+    expect(events.some((e) => e.type === "classic.quest.progress" && e.quest === DEEPER)).toBe(
+      false,
+    );
+    expect(events.some((e) => e.type === "classic.quest.done")).toBe(false);
   });
 
   it("leaves a finished Cull the Flames alone (no event, no change)", () => {
@@ -288,6 +305,6 @@ describe("Auto quests: determinism", () => {
   }, 120_000);
 
   it("pins the hash of the fixed script", () => {
-    expect(script(77).hash()).toBe("52421e26b4e7708a");
+    expect(script(77).hash()).toBe("f63cd1b088f8f05e");
   }, 120_000);
 });

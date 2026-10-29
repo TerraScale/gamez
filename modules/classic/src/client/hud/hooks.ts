@@ -104,3 +104,64 @@ export function useMeasuredHeight(): [(el: HTMLElement | null) => void, number] 
   }, [el]);
   return [setEl, height];
 }
+
+/** Where a horizontal scroller can still scroll (px): the overflow affordance follows these. */
+export interface ScrollEdges {
+  /** Content is hidden to the left (scrolled past the start). */
+  start: boolean;
+  /** Content is hidden to the right (not yet scrolled to the end). */
+  end: boolean;
+}
+
+export const NO_SCROLL_EDGES: ScrollEdges = { start: false, end: false };
+
+/** Pure: the overflow edges of a scroller from its scroll geometry (1 px tolerance for rounding). */
+export function scrollEdges(m: {
+  scrollLeft: number;
+  scrollWidth: number;
+  clientWidth: number;
+}): ScrollEdges {
+  const overflow = m.scrollWidth - m.clientWidth;
+  if (overflow <= 1) return NO_SCROLL_EDGES;
+  return { start: m.scrollLeft > 1, end: m.scrollLeft < overflow - 1 };
+}
+
+function sameEdges(a: ScrollEdges, b: ScrollEdges): boolean {
+  return a.start === b.start && a.end === b.end;
+}
+
+/**
+ * Overflow edges of a horizontal scroller, kept current on scroll and on resize of the scroller or
+ * its content. Returns [callback ref, edges]; edges stay NO_SCROLL_EDGES until the element mounts.
+ */
+export function useScrollEdges(): [(el: HTMLElement | null) => void, ScrollEdges] {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [edges, setEdges] = useState<ScrollEdges>(NO_SCROLL_EDGES);
+  useEffect(() => {
+    if (!el) {
+      setEdges(NO_SCROLL_EDGES);
+      return;
+    }
+    const report = () => {
+      const next = scrollEdges({
+        scrollLeft: el.scrollLeft,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      });
+      setEdges((prev) => (sameEdges(prev, next) ? prev : next));
+    };
+    report();
+    el.addEventListener("scroll", report, { passive: true });
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(report);
+      observer.observe(el);
+      if (el.firstElementChild) observer.observe(el.firstElementChild);
+    }
+    return () => {
+      el.removeEventListener("scroll", report);
+      observer?.disconnect();
+    };
+  }, [el]);
+  return [setEl, edges];
+}

@@ -7,6 +7,9 @@
 import { useEffect, useState } from "react";
 import type { EconomyFlowDay, ItemCategory, PriceIndexPoint } from "@gamez/protocol";
 import { ITEM_CATEGORIES } from "@gamez/protocol";
+import { niceCeil } from "./kit/format.ts";
+
+export { niceCeil };
 
 /** Width before the first measurement (and in static renders). */
 const DEFAULT_W = 640;
@@ -20,7 +23,7 @@ export const fmt = (n: number): string => Math.round(n).toLocaleString("en-US");
  * The chart's rendered width in CSS pixels. Charts draw in pixel units (no
  * viewBox scaling), so 11 px labels stay 11 px on a phone and on a desktop.
  */
-function useChartWidth(): [(el: HTMLElement | null) => void, number] {
+export function useChartWidth(): [(el: HTMLElement | null) => void, number] {
   // A callback ref, so a chart that first renders as text (no data) still gets
   // measured when its <figure> appears later.
   const [el, setEl] = useState<HTMLElement | null>(null);
@@ -35,14 +38,6 @@ function useChartWidth(): [(el: HTMLElement | null) => void, number] {
     return () => observer.disconnect();
   }, [el]);
   return [setEl, width];
-}
-
-/** 1, 2 or 5 times a power of ten, at least `v` (axis tops read as round numbers). */
-export function niceCeil(v: number): number {
-  if (!(v > 0)) return 1;
-  const pow = 10 ** Math.floor(Math.log10(v));
-  for (const m of [1, 2, 5, 10]) if (m * pow >= v) return m * pow;
-  return 10 * pow;
 }
 
 function totalOf(record: Record<string, number>): number {

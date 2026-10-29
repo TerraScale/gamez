@@ -11,6 +11,8 @@
  */
 import { MODES } from "../../shared/catalog.ts";
 import { parseChannel } from "../chat/channels.ts";
+import { analyticsFor } from "../analytics/index.ts";
+import type { Analytics } from "../analytics/types.ts";
 import { authenticateRequest } from "../auth/session.ts";
 import { CHAT_HEADERS, type Env } from "../contracts.ts";
 import { apiError, json, readJson, rejectSocket } from "../http.ts";
@@ -128,6 +130,7 @@ export async function adminRoute(
   env: Pick<Env, "AUTH_SECRET" | "ACCOUNT" | "ADMIN_ACCOUNT_IDS" | "CHAT" | "DB">,
   url: URL,
   modes: readonly { id: string }[] = MODES,
+  analytics?: Analytics,
 ): Promise<Response> {
   const caller = await adminCaller(request, env, url);
   if (!caller.ok) return caller.response;
@@ -167,6 +170,7 @@ export async function adminRoute(
       }
       const until = Date.now() + minutes * 60_000;
       await stub.mute(accountId, until, by);
+      analytics?.write("mod.action", { action: "mute", by: "admin" });
       return json({ ok: true, until });
     }
 
@@ -180,14 +184,18 @@ export async function adminRoute(
       return apiError(400, "bad_request", "ids: 1..50 message ids");
     }
     await stub.hide(ids as string[], by);
+    analytics?.write("mod.action", { action: "hide", by: "admin" });
     return json({ ok: true, hidden: ids.length });
   }
 
   return apiError(404, "not_found", "no such admin endpoint");
 }
 
-export const chatRoutes: RouteHandler = async ({ request, env, url }) => {
+export const chatRoutes: RouteHandler = async ({ request, env, url, ctx }) => {
   if (url.pathname === CHAT_PATH) return connectChat(request, env, url);
-  if (url.pathname.startsWith("/api/admin/")) return adminRoute(request, env, url);
+  if (url.pathname.startsWith("/api/admin/")) {
+    const analytics = analyticsFor(env, (p) => ctx.waitUntil(p));
+    return adminRoute(request, env, url, MODES, analytics);
+  }
   return null;
 };

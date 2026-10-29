@@ -103,6 +103,8 @@ export interface SceneInput {
   targeted: Entity;
   showLootLabels: boolean;
   lighting: boolean;
+  /** Identity outline ("self") around the played hero; default true. */
+  outlineHero?: boolean;
   /**
    * sim.tick at render time (ticks processed so far). The render time used for
    * hit flashes, swing progress and corpse fades is `tick - 1 + alpha`.
@@ -605,7 +607,7 @@ export class SceneSync {
         action: a.action,
         tint: tintOf(proto?.tint),
         scale: 100,
-        highlight: false,
+        highlight: input.outlineHero === false ? null : "self",
         statusTint: statusTintOf(world, registry, hero),
       };
       decorateUnit(ent, a, world, registry, hero, m?.speed ?? 0);

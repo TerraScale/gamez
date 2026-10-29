@@ -50,6 +50,7 @@ import { XpBar } from "./widgets/XpBar.tsx";
 import { PanelButtons } from "./widgets/PanelButtons.tsx";
 import { NewHeroScreen } from "./widgets/NewHeroScreen.tsx";
 import { DeathScreen } from "./widgets/DeathScreen.tsx";
+import { AwaySummary } from "./widgets/AwaySummary.tsx";
 import { Toasts } from "./widgets/Toasts.tsx";
 import { Tips } from "./widgets/Tips.tsx";
 import { Tooltip } from "./widgets/Tooltip.tsx";
@@ -295,6 +296,7 @@ export function ClassicHud({ api, slots }: ClassicHudProps) {
           />
           <PanelHost api={api} />
           <PresenceBubble api={api} insets={insets} layout={layout} />
+          <AwaySummary />
           <Region name={SLOT.overlay} api={api} layout={layout} insets={insets} />
         </div>
       </HudInsetsContext.Provider>

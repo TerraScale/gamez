@@ -20,9 +20,18 @@
  *   pass.ts    /api/pass*                                   T-pass
  *   store.ts   /api/store*, /api/pay/*                      T-pay
  *   admin.ts   /api/config, /api/admin/{economy,flags,moderation*}  T-admin (before chat.ts)
+ *
+ * Admin dashboard (docs/design/admin-dashboard.md §7):
+ *   admin-metrics.ts  /api/admin/{overview,players*,gameplay,economy/details,monetization,
+ *                     social,tech,tunables}                      (before admin.ts)
+ *   telemetry.ts      /api/telemetry                              T-telemetry
+ *   dev-metrics.ts    /api/dev/admin/seed-metrics (dev hosts)     T-analytics-core
  */
 import { accountRoutes } from "./account.ts";
 import { adminRoutes } from "./admin.ts";
+import { adminMetricsRoutes } from "./admin-metrics.ts";
+import { telemetryRoutes } from "./telemetry.ts";
+import { devMetricsRoutes } from "./dev-metrics.ts";
 import { arenaRoutes } from "./arena.ts";
 import { marketRoutes } from "./market.ts";
 import { passRoutes } from "./pass.ts";
@@ -45,6 +54,9 @@ export const ROUTES: readonly RouteHandler[] = [
   accountRoutes,
   leaderboardRoutes,
   guildRoutes,
+  telemetryRoutes,
+  devMetricsRoutes,
+  adminMetricsRoutes,
   adminRoutes,
   chatRoutes,
   presenceRoutes,

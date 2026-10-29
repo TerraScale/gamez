@@ -3,6 +3,8 @@ import { DEFAULT_ISO, tileToScreen } from "@gamez/world";
 import type { EffectSpec, FloatTextSpec, GraphicsQualityLevel } from "@gamez/ui-host";
 import { FLOAT_STAGGER_NEAR_PX, floatStagger, frameFromProgress } from "./anim-math.ts";
 import { burstScale, effectDuration, floatFontSize, floatPose } from "./fx-math.ts";
+import { estimateLabelWidth } from "./label-layout.ts";
+import { FLOAT_STACK_CAP, floatRestY, floatsToDrop, type FloatBand } from "./float-layout.ts";
 import { LINE_MIN_PX, planEffect, UNDER_COLOUR, underStroke, type FxOp } from "./fx-plan.ts";
 import { ParticleLayer } from "./particles.ts";
 import { Pool } from "./pool.ts";
@@ -22,6 +24,8 @@ interface FloatItem {
   life: number;
   baseX: number;
   baseY: number;
+  /** Half the estimated text width (px), for the nameplate guard. */
+  halfW: number;
   /** Spawn point before staggering. */
   originX: number;
   originY: number;
@@ -91,7 +95,16 @@ export class FxLayer {
         text.anchor.set(0.5, 1);
         text.visible = false;
         this.floatLayer.addChild(text);
-        return { text, elapsed: 0, life: 1, baseX: 0, baseY: 0, originX: 0, originY: 0 };
+        return {
+          text,
+          elapsed: 0,
+          life: 1,
+          baseX: 0,
+          baseY: 0,
+          halfW: 0,
+          originX: 0,
+          originY: 0,
+        };
       },
       (item) => {
         item.text.visible = false;
@@ -128,16 +141,22 @@ export class FxLayer {
    */
   float(spec: FloatTextSpec, origin: { sx: number; sy: number }): void {
     let near = 0;
+    let nearAlive = 0;
     const live = this.floats.active;
     for (let i = 0; i < live.length; i++) {
       const f = live[i]!;
-      if (
-        f.elapsed < STAGGER_WINDOW_MS &&
-        Math.abs(f.originX - origin.sx) <= FLOAT_STAGGER_NEAR_PX &&
-        Math.abs(f.originY - origin.sy) <= FLOAT_STAGGER_NEAR_PX
-      ) {
-        near++;
-      }
+      if (!this.onSpot(f, origin)) continue;
+      nearAlive++;
+      if (f.elapsed < STAGGER_WINDOW_MS) near++;
+    }
+    // Cap the stack on one spot: retire the oldest floats there first.
+    let drop = floatsToDrop(nearAlive, FLOAT_STACK_CAP);
+    for (let i = 0; drop > 0 && i < this.floats.active.length; i++) {
+      const f = this.floats.active[i]!;
+      if (!this.onSpot(f, origin)) continue;
+      this.floats.retire(f);
+      drop--;
+      i--;
     }
     const off = near > 0 ? floatStagger(near) : null;
     const x = origin.sx + (off ? off.dx : 0);
@@ -151,11 +170,21 @@ export class FxLayer {
     item.originY = origin.sy;
     const t = item.text;
     t.text = spec.text;
-    t.style.fontSize = isMiss(spec.text) ? MISS_FONT_PX : floatFontSize(spec.size);
+    const size = isMiss(spec.text) ? MISS_FONT_PX : floatFontSize(spec.size);
+    t.style.fontSize = size;
+    item.halfW = estimateLabelWidth(spec.text, size) / 2;
     t.style.fill = spec.color;
     t.position.set(x, y);
     t.alpha = 1;
     t.visible = true;
+  }
+
+  /** True when a live float started within FLOAT_STAGGER_NEAR_PX of `origin`. */
+  private onSpot(f: FloatItem, origin: { sx: number; sy: number }): boolean {
+    return (
+      Math.abs(f.originX - origin.sx) <= FLOAT_STAGGER_NEAR_PX &&
+      Math.abs(f.originY - origin.sy) <= FLOAT_STAGGER_NEAR_PX
+    );
   }
 
   /**
@@ -220,7 +249,12 @@ export class FxLayer {
     return this.quality;
   }
 
-  update(dtMs: number): void {
+  /**
+   * Advances every float. `band` is the hero's nameplate this frame (or null):
+   * floats that would cover it are held above its top edge, so the nameplate
+   * stays readable while the hero walks under a damage number.
+   */
+  update(dtMs: number, band: FloatBand | null = null): void {
     const fl = this.floats.active;
     for (let i = fl.length - 1; i >= 0; i--) {
       const item = fl[i]!;
@@ -230,7 +264,8 @@ export class FxLayer {
         continue;
       }
       const pose = floatPose(item.elapsed, item.life);
-      item.text.position.set(item.baseX, item.baseY + pose.dy);
+      const y = floatRestY(item.baseY + pose.dy, item.baseX, item.halfW, band);
+      item.text.position.set(item.baseX, y);
       item.text.alpha = pose.alpha;
     }
     const ef = this.effects.active;

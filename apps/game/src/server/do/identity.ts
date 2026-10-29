@@ -5,6 +5,8 @@
  * auth/identity-store.ts; this class only adapts storage and RPC.
  */
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { IdentityStore } from "../auth/identity-store.ts";
 import {
   sqlStoreOf,
@@ -19,6 +21,12 @@ export class IdentityDO extends DurableObject<Env> implements IdentityApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "IdentityDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     this.#store = new IdentityStore(sqlStoreOf(ctx.storage));
   }
 

@@ -135,7 +135,14 @@ export type ResyncCode =
    * already moved past (it did not pause, or segments were in flight); restore
    * this snapshot (it includes the bank change).
    */
-  | "bank";
+  | "bank"
+  /**
+   * A deferred offline grant (docs/design/offline-idle.md §5): the client
+   * rejoined with unverified play after an absence; once that play verified,
+   * the server dispatched the offline action there. Restore this snapshot
+   * and show resync.offline.
+   */
+  | "offline";
 
 export type VerifiedClientMessage =
   /**
@@ -157,7 +164,14 @@ export type VerifiedClientMessage =
       token: string;
       mode: string;
       fresh?: boolean;
-      resume?: { tick: number; hash: string; pending: boolean };
+      /**
+       * `pendingToTick`: toTick of the client's last pending segment (absent
+       * or <= tick when nothing is pending). The server grants offline
+       * progress at once unless the client holds unverified play past the
+       * server's verified tick; then the grant is deferred until that play
+       * verified (resync "offline"), docs/design/offline-idle.md §5.
+       */
+      resume?: { tick: number; hash: string; pending: boolean; pendingToTick?: number };
     }
   | {
       t: "segment";
@@ -235,6 +249,8 @@ export type VerifiedServerMessage =
       tick: number;
       hash: string;
       snapshot: PackedSnapshot;
+      /** Set with code "offline": the grant now part of `snapshot`. */
+      offline?: OfflineGrant | null;
     }
   | { t: "pong"; clientTime: number; serverTime: number }
   | { t: "error"; code: string; message: string }

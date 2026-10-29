@@ -9,6 +9,8 @@
 import type { GuildInfo } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { GuildRoster } from "../guild/roster.ts";
 import { sqlStoreOf, type GuildApi, type Env } from "../contracts.ts";
 
@@ -20,6 +22,12 @@ export class GuildDO extends DurableObject<Env> implements GuildApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "GuildDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const id = ctx.id.name ?? ctx.id.toString();
     this.#outbox = new Outbox(ctx.storage.sql, `guild:${id}`);
     this.#roster = new GuildRoster({
@@ -38,6 +46,12 @@ export class GuildDO extends DurableObject<Env> implements GuildApi {
   }
 
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "GuildDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const sink = {
       send: async (batch: ReplicationBatch) => {
         await this.env.SYNC_QUEUE.send(batch);

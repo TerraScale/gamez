@@ -31,3 +31,10 @@ AUTH_SECRET=dev-only-secret-change-me
 # ASAAS_ENV=sandbox
 # MERCADOPAGO_ACCESS_TOKEN=TEST-<placeholder>
 # MERCADOPAGO_WEBHOOK_SECRET=<mercadopago-webhook-secret>
+
+# ---- Admin dashboard analytics (docs/secrets.md "Admin dashboard analytics").
+# Leave commented: local dev reads the MetricsDO "local" stub. With both set, the dashboard
+# queries the Analytics Engine SQL API instead (undeclared keys do not reach env locally).
+# ANALYTICS_ACCOUNT_ID=<cloudflare-account-id>
+# ANALYTICS_API_TOKEN=<token-with-account-analytics-read>
+# ANALYTICS_LOCAL=

@@ -50,7 +50,17 @@ export const BALANCE: BalanceProto = {
   goldPerLevel: [4, 10],
   vendorItems: 8,
   offlineCapMs: 8 * 3600 * 1000,
-  offlineEfficiencyPct: 35,
+  // Fallback model (offline-idle.md §4.3, second pass): the hero's best-skill
+  // damage lands in full while fighting (100); auto/offline.ts adds the travel
+  // time between kills. Measured against 10 min of online Idle x1 (warrior,
+  // rogue, sorcerer; L1-L16), the model's XP x offlineModelXpPct is 0.6-1.5x
+  // online, and its gold x offlineModelGoldPct is about the online net gold.
+  offlineEfficiencyPct: 100,
+  offlineXpPct: 20,
+  offlineGoldPct: 100,
+  offlineItemPct: 100,
+  offlineModelXpPct: 200,
+  offlineModelGoldPct: 100,
   // ---- wave A (docs/design/wave-A.md)
   talentPointsPerLevel: 1,
   stashTabs: 4,

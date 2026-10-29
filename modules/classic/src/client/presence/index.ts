@@ -393,6 +393,8 @@ export class TownPresence {
             moving: false,
             isSelf: false,
             showLabel: true,
+            // Other players get the soft green identity outline; shop ghosts none.
+            highlight: o.kind === "player" ? "ally" : null,
             ...(ghost ? { alpha: GHOST_ALPHA, tint: GHOST_TINT } : {}),
           },
         };

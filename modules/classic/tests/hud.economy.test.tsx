@@ -75,6 +75,7 @@ function ui(compact = false): UiState {
       muted: false,
       quality: "auto",
       tips: false,
+      outlineHero: true,
     },
     hover: null,
     compact,

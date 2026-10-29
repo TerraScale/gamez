@@ -41,9 +41,13 @@ export function Tiles({ telemetry }: { telemetry: EconomyTelemetry }) {
   const { moneySupply, market, shops, purchases } = telemetry;
   return (
     <div className="adm-tiles" aria-label="Key numbers">
-      <Tile label="Coin in accounts" value={fmt(moneySupply.coin)} hint="Custody not included" />
+      <Tile
+        label="Coin in accounts"
+        value={fmt(moneySupply.coin)}
+        hint="Custody (open market bids, escrow) not included"
+      />
       <Tile label="Gems in accounts" value={fmt(moneySupply.gem)} />
-      <Tile label="Accounts" value={fmt(telemetry.accounts)} />
+      <Tile label="Wallets" value={fmt(telemetry.accounts)} hint="accounts with a wallet row" />
       <Tile label="Active listings" value={fmt(market.active)} />
       <Tile label="Sold, 24 h" value={fmt(market.sold24h)} />
       <Tile label="Volume, 24 h" value={fmt(market.volume24h)} hint="coin" />

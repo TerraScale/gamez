@@ -14,6 +14,7 @@ import type { LocalD1 } from "./local-d1.ts";
 import { accountFeature } from "./account.ts";
 import { authFeature } from "./auth.ts";
 import { chatFeature } from "./chat.ts";
+import { classicOfflineFeature } from "./classic-offline.ts";
 import { classicPresenceFeature } from "./classic-presence.ts";
 import { classicQuestsFeature } from "./classic-quests.ts";
 import { classicVerifyFeature } from "./classic-verify.ts";
@@ -52,6 +53,7 @@ export interface E2eFeature {
 export const FEATURES: readonly E2eFeature[] = [
   authFeature,
   classicVerifyFeature,
+  classicOfflineFeature,
   classicQuestsFeature,
   leaderboardsFeature,
   chatFeature,

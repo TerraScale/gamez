@@ -237,6 +237,7 @@ function uiFixture(): UiState {
       muted: false,
       quality: "auto",
       tips: true,
+      outlineHero: true,
     },
     hover: null,
     compact: false,

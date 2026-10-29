@@ -117,6 +117,12 @@ export const SYSTEM = {
   progressionHeroDeath: sys("classic.progression.heroDeath", "post", 600),
   /** achievements (wave A): check metrics (every 20 ticks), unlock, grant rewards. */
   achievementsCheck: sys("classic.achievements.check", "post", 900),
+  /**
+   * auto: measures the online Auto/Idle rate (credited kills from Bus.deaths,
+   * their XP, picked-up gold) into the classic.autoRate resource; the offline
+   * grant extrapolates it (docs/design/offline-idle.md §4). Before core cleanup.
+   */
+  autoRate: sys("classic.auto.rate", "post", 950),
   /** core: clear Bus.hits/deaths, drop leftover commands, tick RunStats.ticksPlayed. */
   coreCleanup: sys("classic.core.cleanup", "post", 1000),
 } as const;

@@ -497,8 +497,11 @@ function exploder(env: Env, u: Unit): AiStateName {
  * cast their best ready skill (priority, then order): self skills when
  * enemies are close, targeted skills when in range and line of sight.
  * Telegraphed skills wait while one of the boss's own telegraphs is pending,
- * and a pending line telegraph (rush) holds the boss still. Otherwise rush
- * and strike. Every boss attack skill has a cooldown, so the rotation rotates.
+ * and a pending line telegraph (rush) holds the boss still. A phased boss
+ * also casts the summon skills of its rotation (cooldown, below their max),
+ * and no boss fires a multi-missile fan at a target within FAN_MIN_GAP.
+ * Otherwise rush and strike. Every boss attack skill has a cooldown, so the
+ * rotation rotates.
  */
 function boss(env: Env, u: Unit): AiStateName {
   const phased = hasPhases(u.proto);
@@ -535,7 +538,16 @@ function boss(env: Env, u: Unit): AiStateName {
       }
     }
     for (const o of options) {
-      if (o.sk.shape === "summon" || !skillReady(env.world, u.e, o.id, env.tick)) continue;
+      if (!skillReady(env.world, u.e, o.id, env.tick)) continue;
+      if (o.sk.shape === "summon") {
+        // A phased boss casts the summon skills of its rotation (Skarn's Call the Brood) on
+        // their cooldown while it has foes and room; the others summon at thresholds (above).
+        if (!phased || o.sk.summon === undefined || u.target === 0) continue;
+        if (liveMinionsOf(env.world, u.e) >= o.sk.summon.max) continue;
+        stopMover(env.world, u.e);
+        issue(env, u, o.id);
+        return "attack";
+      }
       if (o.sk.telegraph !== undefined && pending.any) continue;
       if (o.sk.target === "self") {
         if (countEnemies(env, u.pos, o.sk.radius ?? tiles(2), u.enemy) > 0) {
@@ -547,6 +559,9 @@ function boss(env: Env, u: Unit): AiStateName {
       }
       const range = o.sk.range > 0 ? o.sk.range : u.cs.attackRange;
       const reach = range + bodyRadius(env.world, u.target);
+      // A fan is aimed from range: point-blank every missile of it hits the same foe (the
+      // Hollow King's seven-missile Volley took a level-28 rogue from 70 % to dead in one tick).
+      if ((o.sk.projectile?.count ?? 1) > 1 && u.d2 <= fanMinDist2(env.world, u)) continue;
       if (
         within(u.pos.x, u.pos.y, u.tpos.x, u.tpos.y, reach) &&
         lineOfSight(env.map, u.pos.x, u.pos.y, u.tpos.x, u.tpos.y)
@@ -558,6 +573,15 @@ function boss(env: Env, u: Unit): AiStateName {
     }
   }
   return rusher(env, u);
+}
+
+/** A boss never fires a multi-missile fan at a target this close (sub, between body edges). */
+export const FAN_MIN_GAP = tiles(2);
+
+/** Squared centre distance (sub²) under which `u` holds its fans (FAN_MIN_GAP between bodies). */
+function fanMinDist2(world: World, u: Unit): number {
+  const d = FAN_MIN_GAP + bodyRadius(world, u.e) + bodyRadius(world, u.target);
+  return d * d;
 }
 
 /** Never moves; shoots its first skill at the nearest enemy in range. */

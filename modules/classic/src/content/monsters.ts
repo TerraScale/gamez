@@ -397,14 +397,24 @@ const METEOR = "classic.mskill.boss_meteor";
 const FROST_NOVA = "classic.mskill.boss_frost_nova";
 const PYRE_RING = "classic.mskill.boss_pyre_ring";
 const VOLLEY = "classic.mskill.boss_volley";
+const TREMOR = "classic.mskill.boss_slam";
+const PYRE_NOVA = "classic.mskill.boss_nova";
+const BROOD = "classic.mskill.boss_summon";
 
+/**
+ * Boss life and damage (quest fix round 2, design §15.5): a boss spawns at
+ * monsterLevel(depth) + 3 and life scales +25 %/level, so these level-1
+ * numbers fall with depth. Tuned so a boss-ready Auto hero of every class
+ * kills Morrow, Skarn and Vessa within about 3 minutes of fighting (before:
+ * 1 650 / 4 675 / 8 625 / 17 400 scaled life, Vessa never killed).
+ */
 const BOSSES: Record<string, MonsterProto> = {
   "classic.monster.boss_warden": boss("boss_warden", {
     name: "Morrow, the Grave Warden",
     family: "undead",
     description: "The keeper of the first crypt, still guarding the dead it was paid to bury.",
     tint: 0xb9c3a0,
-    life: 600,
+    life: 300,
     armor: 20,
     toHit: 40,
     dmgMin: 8,
@@ -438,19 +448,20 @@ const BOSSES: Record<string, MonsterProto> = {
     family: "vermin",
     description: "A bloated matriarch that spills her brood out of the dark tunnels.",
     tint: 0x8a5a3a,
-    life: 1100,
+    life: 330,
     armor: 22,
     toHit: 45,
-    dmgMin: 10,
-    dmgMax: 18,
+    dmgMin: 8,
+    dmgMax: 14,
     element: "phys",
     resist: { fire: 0, cold: 0, lightning: 0, poison: 80 },
     xp: 900,
     moveSpeed: 40,
     skills: ["classic.mskill.gore", RUSH, QUAKE],
     phases: [
+      // Call the Brood joins her rotation (3 gnawlings per cast, every 10 s, 9 alive at most).
       phase(65, "Skarn shrieks and the walls answer: her brood pours out of the tunnels.", {
-        summon: true,
+        skills: [BROOD],
       }),
       phase(30, "Skarn tears through her own nest in a blind frenzy.", {
         skills: [CLEAVE],
@@ -468,11 +479,11 @@ const BOSSES: Record<string, MonsterProto> = {
     family: "demon",
     description: "A sorceress who burns with the last of a dead sun, and never sleeps.",
     tint: 0xff7a1a,
-    life: 1500,
+    life: 430,
     armor: 16,
     toHit: 50,
-    dmgMin: 12,
-    dmgMax: 20,
+    dmgMin: 5,
+    dmgMax: 8,
     element: "fire",
     resist: { fire: 80, cold: 0, lightning: 0, poison: 0 },
     xp: 1600,
@@ -484,7 +495,7 @@ const BOSSES: Record<string, MonsterProto> = {
         skills: [QUAKE],
         enragePct: 20,
       }),
-      phase(15, "Vessa becomes a pillar of white fire.", { summon: true, enragePct: 50 }),
+      phase(15, "Vessa becomes a pillar of white fire.", { summon: true, enragePct: 30 }),
     ],
     depth: 12,
     title: "of the Ninth Flame",
@@ -496,11 +507,11 @@ const BOSSES: Record<string, MonsterProto> = {
     family: "undead",
     description: "A crowned husk ruling the deepest halls, its empty eyes full of rime.",
     tint: 0xc8e6ff,
-    life: 2400,
+    life: 420,
     armor: 30,
     toHit: 55,
-    dmgMin: 15,
-    dmgMax: 26,
+    dmgMin: 7,
+    dmgMax: 12,
     element: "cold",
     resist: { fire: 0, cold: 75, lightning: 0, poison: 50 },
     xp: 3000,
@@ -517,7 +528,7 @@ const BOSSES: Record<string, MonsterProto> = {
       phase(25, "The crown blazes cold: the Hollow King will not fall quietly.", {
         skills: [RUSH],
         summon: true,
-        enragePct: 40,
+        enragePct: 25,
       }),
     ],
     depth: 16,
@@ -582,7 +593,10 @@ const GUARDIANS: Record<string, MonsterProto> = {
         skills: [RUSH],
         enragePct: 20,
       }),
-      phase(25, "The Gnashing Maw howls and snaps at everything around it.", { enragePct: 45 }),
+      phase(25, "The Gnashing Maw howls and snaps at everything around it.", {
+        skills: [TREMOR],
+        enragePct: 45,
+      }),
     ],
   }),
   "classic.monster.guardian_choir": guardian("guardian_choir", {
@@ -606,7 +620,10 @@ const GUARDIANS: Record<string, MonsterProto> = {
         skills: [METEOR],
         enragePct: 20,
       }),
-      phase(25, "Every voice of the Choir screams at once.", { enragePct: 45 }),
+      phase(25, "Every voice of the Choir screams at once.", {
+        skills: [PYRE_NOVA],
+        enragePct: 45,
+      }),
     ],
   }),
 };

@@ -1,5 +1,7 @@
 import type { Projection, ProjectionMap, SqlValue } from "@gamez/sync";
 import type {
+  AccountActivityPayload,
+  PassProgressPayload,
   AccountSummaryPayload,
   AccountWalletPayload,
   ArenaRatingPayload,
@@ -89,7 +91,39 @@ export const leaderboardRift: Projection<ReportEnvelope> = {
 export const accountSummary: Projection<AccountSummaryPayload> = {
   table: "account_summary",
   pkColumn: "account_id",
-  toRow: (p) => ({ display_name: p.displayName, kind: p.kind, created_at: p.createdAt }),
+  toRow: (p) => ({
+    display_name: p.displayName,
+    kind: p.kind,
+    created_at: p.createdAt,
+    registered_at: p.registeredAt ?? null,
+  }),
+};
+
+/** One row per account per UTC day active (migration 0010; admin dashboard §6). */
+export const accountActivity: Projection<AccountActivityPayload> = {
+  table: "account_activity",
+  pkColumn: "id",
+  toRow: (p) => ({
+    account_id: p.accountId,
+    day: num(p.day),
+    kind: p.kind,
+    first_at: num(p.firstAt),
+  }),
+};
+
+/** Battle pass progress per account and season (migration 0010; admin dashboard §6). */
+export const passProgress: Projection<PassProgressPayload> = {
+  table: "pass_progress",
+  pkColumn: "id",
+  toRow: (p) => ({
+    account_id: p.accountId,
+    season_id: p.seasonId,
+    level: num(p.level),
+    xp: num(p.xp),
+    premium: flag(p.premium),
+    premium_at: typeof p.premiumAt === "number" ? num(p.premiumAt) : null,
+    updated_at: num(p.updatedAt),
+  }),
 };
 
 export const guildIndex: Projection<GuildIndexPayload> = {
@@ -256,6 +290,8 @@ export const projections: ProjectionMap = {
   [classicHero.table]: classicHero,
   [leaderboardRift.table]: leaderboardRift,
   [accountSummary.table]: accountSummary,
+  [accountActivity.table]: accountActivity,
+  [passProgress.table]: passProgress,
   [guildIndex.table]: guildIndex,
   [chatReport.table]: chatReport,
   // wave C

@@ -31,6 +31,36 @@ const DUE: Record<TipId, (f: TipFacts) => boolean> = {
   idleSpeed: (f) => f.mode === "idle" && f.speed === 1,
 };
 
+/**
+ * Visible time after which a shown tip dismisses itself (and is remembered as dismissed). The card
+ * also goes after the first action that answers it (tipsSatisfied), so this is only the fallback.
+ */
+export const TIP_TIMEOUT_MS = 30_000;
+
+/**
+ * Tips answered by the player's actions, from the previous and the current facts and the open
+ * panels (pure). A dismissal is remembered, so a tip is dismissed only when its own condition held:
+ * - welcome: the player's first own action: a walk under manual control, or any command that takes
+ *   over from Auto/Idle (control.overridden turns on). Auto walking by itself does not count.
+ * - skillPoint: a skill point was spent, or the Skills panel is open while one is unspent.
+ * - talentPoint: a talent point was spent, or the Talents panel is open while one is unspent.
+ */
+export function tipsSatisfied(
+  prev: TipFacts | null,
+  next: TipFacts,
+  panels: readonly PanelId[],
+): TipId[] {
+  const out: TipId[] = [];
+  const moved = prev !== null && (prev.heroX !== next.heroX || prev.heroY !== next.heroY);
+  const tookOver = next.overridden && prev !== null && !prev.overridden;
+  if ((moved && next.mode === "manual") || tookOver) out.push("welcome");
+  if (prev !== null && next.skillPoints < prev.skillPoints) out.push("skillPoint");
+  if (next.skillPoints > 0 && panels.includes("skills")) out.push("skillPoint");
+  if (prev !== null && next.talentPoints < prev.talentPoints) out.push("talentPoint");
+  if (next.talentPoints > 0 && panels.includes("talents")) out.push("talentPoint");
+  return out;
+}
+
 /** The first due tip that was not dismissed, or null (nothing due, tips off, dead, or a panel open). */
 export function pickTip(facts: TipFacts, ctx: TipContext): TipId | null {
   if (!ctx.enabled || !facts.playing || ctx.panels.length > 0) return null;

@@ -7,7 +7,7 @@ import { Level, Equipment } from "../src/components.ts";
 import { buildHud } from "../src/client/hudModel.ts";
 import { TIP_IDS, TIPS } from "../src/client/tips/catalog.ts";
 import { tipFacts, type TipFacts } from "../src/client/tips/facts.ts";
-import { pickTip } from "../src/client/tips/rules.ts";
+import { TIP_TIMEOUT_MS, pickTip, tipsSatisfied } from "../src/client/tips/rules.ts";
 import {
   TIPS_STORAGE_KEY,
   createTipsStore,
@@ -20,6 +20,9 @@ import { spawnTestHero, testSim, useOpenMap } from "./support/harness.ts";
 
 const PLAIN: TipFacts = {
   playing: true,
+  heroX: 10,
+  heroY: 10,
+  overridden: false,
   level: 9,
   skillPoints: 0,
   talentPoints: 0,
@@ -238,6 +241,83 @@ describe("tip facts from a built snapshot", () => {
       prev: null,
     });
     expect(tipFacts(hud).setOrUnique).toBe(false);
+  });
+});
+
+describe("tips answered by an action", () => {
+  const moved: TipFacts = { ...PLAIN, level: 1, heroX: 12.5, heroY: 10 };
+
+  it("dismisses the welcome card after the first walk under manual control", () => {
+    expect(tipsSatisfied({ ...PLAIN, level: 1 }, moved, [])).toEqual(["welcome"]);
+  });
+
+  it("dismisses the welcome card when the player takes over from Auto or Idle", () => {
+    for (const mode of ["auto", "idle"] as const) {
+      const before = { ...PLAIN, level: 1, mode };
+      expect(tipsSatisfied(before, { ...before, overridden: true }, [])).toEqual(["welcome"]);
+      // Only the switch counts: an override that was already on when the card appeared does not.
+      const held = { ...before, overridden: true };
+      expect(tipsSatisfied(held, held, [])).toEqual([]);
+      expect(tipsSatisfied(null, held, [])).toEqual([]);
+    }
+  });
+
+  it("reads whole tiles, so a mid-step snapshot is not a walk", () => {
+    const sim = testSim([]);
+    useOpenMap(sim, 1);
+    spawnTestHero(sim.world, { x: 5, y: 5 });
+    const hud = buildHud(sim.world, sim.loaded.registry, {
+      tick: 1,
+      hovered: 0,
+      vendor: 0,
+      prev: null,
+    });
+    const hero = hud.hero;
+    expect(hero).not.toBeNull();
+    if (hero === null) return;
+    const at = (x: number, y: number) => tipFacts({ ...hud, hero: { ...hero, x, y } });
+    expect(at(5.25, 5.75)).toMatchObject({ heroX: 5, heroY: 5 });
+    expect(tipsSatisfied(at(5, 5), at(5.75, 5.5), [])).toEqual([]);
+    expect(at(5, 5).overridden).toBe(hud.control.overridden);
+  });
+
+  it("keeps the welcome card while the hero is still, or moves under automation or idle", () => {
+    expect(tipsSatisfied(PLAIN, { ...PLAIN, level: 1 }, [])).toEqual([]);
+    expect(tipsSatisfied(null, moved, [])).toEqual([]);
+    expect(tipsSatisfied({ ...PLAIN, mode: "auto" }, { ...moved, mode: "auto" }, [])).toEqual([]);
+    expect(tipsSatisfied({ ...PLAIN, mode: "idle" }, { ...moved, mode: "idle" }, [])).toEqual([]);
+  });
+
+  it("dismisses the skill point tip once a point is spent", () => {
+    const before = { ...PLAIN, skillPoints: 2 };
+    expect(tipsSatisfied(before, { ...PLAIN, skillPoints: 1 }, [])).toEqual(["skillPoint"]);
+    expect(tipsSatisfied(before, before, [])).toEqual([]);
+  });
+
+  it("dismisses the skill point tip when the Skills panel opens while a point is unspent", () => {
+    expect(tipsSatisfied(PLAIN, { ...PLAIN, skillPoints: 1 }, ["skills"])).toEqual(["skillPoint"]);
+    // No point to spend: opening Skills does not answer a tip that is not due.
+    expect(tipsSatisfied(PLAIN, PLAIN, ["skills"])).toEqual([]);
+  });
+
+  it("answers the talent point the same way (spent, or the Talents panel open)", () => {
+    const before = { ...PLAIN, talentPoints: 1 };
+    expect(tipsSatisfied(before, { ...PLAIN, talentPoints: 0 }, [])).toEqual(["talentPoint"]);
+    expect(tipsSatisfied(PLAIN, { ...PLAIN, talentPoints: 1 }, ["talents"])).toEqual([
+      "talentPoint",
+    ]);
+    expect(tipsSatisfied(PLAIN, PLAIN, ["talents"])).toEqual([]);
+  });
+
+  it("gives the picker a bounded timeout for a tip nobody answers", () => {
+    expect(TIP_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it("a skill point tip answered by the Skills panel is no longer picked", () => {
+    const f: TipFacts = { ...PLAIN, skillPoints: 1 };
+    expect(
+      pickTip(f, { enabled: true, panels: [], dismissed: new Set(["skillPoint"]) }),
+    ).toBeNull();
   });
 });
 

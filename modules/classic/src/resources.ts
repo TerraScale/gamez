@@ -34,7 +34,65 @@ export const RES = {
   rift: "classic.riftState",
   /** Owner classic.achievements. */
   achievements: "classic.achievements",
+  // ---- offline/idle (docs/design/offline-idle.md §4)
+  /**
+   * Owner classic.auto (created lazily by classic.auto.rate on the first
+   * Auto/Idle tick; absent in manual-only games). classic.items adds picked-up
+   * gold to `loot` through noteLootGold when it exists.
+   */
+  autoRate: "classic.autoRate",
 } as const;
+
+/**
+ * The hero's measured online Auto/Idle rate (offline-idle.md §4). Integers
+ * only. `ticks`, `kills`, `xp`, `gold` cover sim ticks with control.mode !==
+ * "manual" and phase "play" (town trips, deaths and fights included). When
+ * `ticks` exceeds AUTO_RATE_WINDOW_TICKS those four and `upkeep` are halved (floor), so the
+ * rate follows the hero's current power (a ~30 minute decaying window).
+ */
+export interface AutoRate {
+  ticks: number;
+  /** Hero-credited kills (Bus.deaths: creditTeam hero, not the hero, not summons). */
+  kills: number;
+  /** XP those kills granted (xpForKill at the hero's level), never quest/offline/debug XP. */
+  xp: number;
+  /** Gold picked up from the ground (no grants, sales, bank or quest gold). */
+  gold: number;
+  /** Gold picked up since the last classic.auto.rate run (folded into `gold` on an active tick, else dropped). */
+  loot: number;
+  /**
+   * Upkeep gold paid on eligible ticks (offline-idle.md §3): potions and town
+   * portal scrolls bought from the alchemist, and smith repairs. Halved with
+   * the window like `gold`. Gambling, smith item purchases, crafting
+   * upgrades/rerolls/sockets, talent resets and rift fees are discretionary
+   * and never count. Optional: rates from before this field read 0.
+   */
+  upkeep?: number;
+  /** Upkeep paid since the last classic.auto.rate run (folded into `upkeep` on an eligible tick, else dropped). */
+  spent?: number;
+}
+
+/**
+ * Called by the upkeep spenders (classic.items alchemist potions/scrolls,
+ * classic.crafting repair) with the gold paid: counts it toward the rate's
+ * upkeep, if a rate exists. Same pattern as noteLootGold.
+ */
+export function noteUpkeepGold(world: World, amount: number): void {
+  if (amount <= 0) return;
+  const r = world.getResource<AutoRate>(RES.autoRate);
+  if (!r) return;
+  r.spent = (r.spent ?? 0) + amount;
+  world.setResource(RES.autoRate, r);
+}
+
+/** Called by the ground-gold pickup (classic.items): counts it toward the rate, if one exists. */
+export function noteLootGold(world: World, amount: number): void {
+  if (amount <= 0) return;
+  const r = world.getResource<AutoRate>(RES.autoRate);
+  if (!r) return;
+  r.loot += amount;
+  world.setResource(RES.autoRate, r);
+}
 
 export interface GameState {
   /** "choose" until classic.newHero creates the hero. */
@@ -184,6 +242,14 @@ export interface RunStats {
   potionsUsed: number;
   ticksPlayed: number;
   offlineMs: number;
+  /**
+   * Sim tick of the last classic.offlineProgress grant (offline-idle.md §5.5).
+   * A second grant on the same tick is rejected (ERR.offlineTwice), so a
+   * double local dispatch can never pay twice. The verified server (actor
+   * "server") is exempt: it only pays measured absences, and two may follow
+   * each other with no tick in between. Optional (old saves).
+   */
+  offlineAt?: number;
   // ---- wave A counters (optional; writers increment `(rs.x ?? 0) + n`) ----
   /** Gold paid to any sink (vendors, repair, crafting, gambling, resets, rift fees). Every spender adds. */
   goldSpent?: number;

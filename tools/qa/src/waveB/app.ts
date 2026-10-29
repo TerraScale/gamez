@@ -307,6 +307,12 @@ async function openChat(page: Page): Promise<void> {
     `(() => { const b = document.querySelector('.chat-toggle'); if (!b) return false; b.click(); return true; })()`,
   );
   await page.waitFor("!!document.querySelector('.chat-dock-open')", 10_000);
+  // ChatWindow only sends while its status (the first role=status in the dock header) reads
+  // "Live"; the socket takes about 1 s to get there, so a message typed earlier is dropped.
+  await page.waitFor(
+    "document.querySelector('.chat-dock-open [role=status]')?.textContent?.trim() === 'Live'",
+    15_000,
+  );
 }
 
 async function socialFlow(run: Run): Promise<void> {

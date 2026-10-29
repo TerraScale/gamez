@@ -16,7 +16,7 @@
  */
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { createSim, loadMode, type Sim, type SimSnapshot } from "@gamez/kernel";
+import { createSim, loadMode, type Sim, type SimSnapshot, type World } from "@gamez/kernel";
 import {
   createSlotRegistry,
   isArpgRenderer,
@@ -28,10 +28,11 @@ import {
 } from "@gamez/ui-host";
 import { debugModules, mode, modules } from "../index.ts";
 import { ACTION } from "../actions.ts";
-import { RES, type ControlState } from "../resources.ts";
+import { classicOfflineEligible } from "../platform/policy.ts";
 import { ClassicHud, registerDefaultHud } from "./hud/index.tsx";
 import { hudLayoutFor } from "./hud/layout.ts";
 import { labelInsetsFor } from "./scene.ts";
+import { awayStore } from "./hudModel.ts";
 import type { ClassicClientApi, Settings } from "./contract.ts";
 import { createClassicGame, type ClassicGame } from "./game.ts";
 import { bindKeyboard, nextMode, stepSpeed, type KeyCommand } from "./input.ts";
@@ -76,6 +77,42 @@ export const CARRY_TOAST = {
 export const OFFLINE_MIN_MS = 60_000;
 /** Longest offline credit the action accepts (7 days; the sim caps it again). */
 const OFFLINE_MAX_MS = 7 * 24 * 3600 * 1000;
+/**
+ * Local play (no server, offline-idle.md §7): an absence of `awayMs` is worth
+ * a grant when it is long enough and the hero is eligible (Dead counts).
+ */
+export function localAwayDue(world: World, awayMs: number): boolean {
+  return awayMs >= OFFLINE_MIN_MS && classicOfflineEligible(world);
+}
+
+/**
+ * Dispatches the offline grant for `awayMs` of absence, then saves, so a reload
+ * right after measures from this save and cannot grant twice. Returns true when
+ * it granted.
+ */
+export function grantLocalAway(
+  game: Pick<ClassicGame, "api" | "save" | "currentSim">,
+  awayMs: number,
+): boolean {
+  if (!localAwayDue(game.currentSim().world, awayMs)) return false;
+  game.api.act(ACTION.offlineProgress, { elapsedMs: Math.min(awayMs, OFFLINE_MAX_MS) });
+  game.save();
+  return true;
+}
+
+/**
+ * The boot-time grant (offline-idle.md §7): a reload measures the absence from
+ * the last save, so it is granted here once and saved at once. Server mode
+ * (the server grants from its own clock) and fresh heroes get nothing.
+ */
+export function bootAwayGrant(
+  game: Pick<ClassicGame, "api" | "save" | "currentSim">,
+  boot: { server: boolean; fresh: boolean; savedAt: number | null; wall: number },
+): boolean {
+  if (boot.server || boot.fresh || boot.savedAt === null) return false;
+  return grantLocalAway(game, boot.wall - boot.savedAt);
+}
+
 /** Autosave period (ms). */
 const SAVE_EVERY_MS = 10_000;
 
@@ -234,6 +271,8 @@ export const classicView: ClientModeView = {
         const away = Date.now() - hiddenAt;
         hiddenAt = null;
         sync?.visible(away);
+        // Local play credits the absence here; server play is granted by the server (sync).
+        if (!sync && game) grantLocalAway(game, away);
       }
     };
     const onPageHide = (): void => {
@@ -245,6 +284,7 @@ export const classicView: ClientModeView = {
       saveTimer = null;
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);
+      awayStore.set(null);
       unbindKeys?.();
       unbindKeys = null;
       uninstallDebug?.();
@@ -268,6 +308,8 @@ export const classicView: ClientModeView = {
     };
 
     const start = async (): Promise<void> => {
+      // A remount never shows the card of an earlier session.
+      awayStore.set(null);
       const created = services.createWorldRenderer();
       if (!isArpgRenderer(created)) {
         created.destroy();
@@ -401,13 +443,12 @@ export const classicView: ClientModeView = {
 
       // Offline progress for a long absence, when the hero is in play and the controller drives it.
       // (Server mode: the server grants it from its own clock; the client never dispatches it.)
-      if (!activeSync && !fresh && base && wall - base.savedAt > OFFLINE_MIN_MS) {
-        const control = sim.world.getResource<ControlState>(RES.control);
-        if (control && control.mode !== "manual" && game.api.hud.getSnapshot().phase === "play") {
-          const elapsedMs = Math.min(wall - base.savedAt, OFFLINE_MAX_MS);
-          game.api.act(ACTION.offlineProgress, { elapsedMs });
-        }
-      }
+      bootAwayGrant(game, {
+        server: activeSync !== null,
+        fresh,
+        savedAt: base?.savedAt ?? null,
+        wall,
+      });
 
       const slots = createSlotRegistry();
       registerDefaultHud(slots);

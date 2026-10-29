@@ -23,6 +23,7 @@ interface ProfileRow {
   kind: string;
   display_name: string;
   created_at: number;
+  registered_at: number | null;
 }
 
 interface SessionRow {
@@ -48,9 +49,37 @@ export class AccountProfileStore {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         kind TEXT NOT NULL,
         display_name TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        registered_at INTEGER
       )`,
     );
+    // Admin dashboard (docs/design/admin-dashboard.md §6): profiles created before
+    // this column get it once (sqlite_master, because PRAGMA is restricted in DOs).
+    const profileSql =
+      sql
+        .exec<{ sql: string }>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'account_profile'",
+        )
+        .toArray()[0]?.sql ?? "";
+    if (!/\bregistered_at\b/.test(profileSql)) {
+      sql.exec("ALTER TABLE account_profile ADD COLUMN registered_at INTEGER");
+    }
+    // Registered accounts that predate registered_at: the creation time is the
+    // best known registration time. Re-sends the summary once when it fills in.
+    const unfilled = sql
+      .exec<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM account_profile WHERE kind = 'registered' AND registered_at IS NULL`,
+      )
+      .toArray()[0]?.n;
+    if (unfilled && unfilled > 0) {
+      this.store.transactionSync(() => {
+        sql.exec(
+          `UPDATE account_profile SET registered_at = created_at
+           WHERE kind = 'registered' AND registered_at IS NULL`,
+        );
+        this.#summary();
+      });
+    }
     sql.exec(
       `CREATE TABLE IF NOT EXISTS account_identity (
         provider TEXT NOT NULL,
@@ -72,9 +101,17 @@ export class AccountProfileStore {
 
   #profileRow(): ProfileRow | null {
     const rows = this.store.sql
-      .exec("SELECT kind, display_name, created_at FROM account_profile WHERE id = 1")
+      .exec(
+        "SELECT kind, display_name, created_at, registered_at FROM account_profile WHERE id = 1",
+      )
       .toArray();
     return (rows[0] as unknown as ProfileRow | undefined) ?? null;
+  }
+
+  /** The account kind, or null before ensure(). Cheap: one row, no identities. */
+  kind(): AccountKind | null {
+    const p = this.#profileRow();
+    return p ? (p.kind as AccountKind) : null;
   }
 
   #summary(): void {
@@ -85,6 +122,8 @@ export class AccountProfileStore {
       displayName: p.display_name,
       kind: p.kind as AccountKind,
       createdAt: p.created_at,
+      // Absent for guests (the summary payload keeps its wave B shape until registration).
+      ...(p.registered_at !== null ? { registeredAt: p.registered_at } : {}),
     };
     this.outbox.append("account_summary", this.accountId, "upsert", payload);
   }
@@ -106,12 +145,14 @@ export class AccountProfileStore {
         ? (validDisplayName(input.displayName, "registered") ?? "Guest-0000")
         : suggestDisplayName(input.displayName));
     this.store.transactionSync(() => {
+      const at = this.now();
       this.store.sql.exec(
-        `INSERT OR IGNORE INTO account_profile (id, kind, display_name, created_at)
-         VALUES (1, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO account_profile (id, kind, display_name, created_at, registered_at)
+         VALUES (1, ?, ?, ?, ?)`,
         kind,
         name,
-        this.now(),
+        at,
+        kind === "registered" ? at : null,
       );
       this.#summary();
     });
@@ -176,9 +217,13 @@ export class AccountProfileStore {
       const name = validDisplayName(current.displayName, "registered")
         ? current.displayName
         : suggestDisplayName(identity.email?.split("@")[0] ?? null);
+      // registered_at is set once and kept (COALESCE), even if the account is re-linked.
       this.store.sql.exec(
-        "UPDATE account_profile SET kind = 'registered', display_name = ? WHERE id = 1",
+        `UPDATE account_profile
+         SET kind = 'registered', display_name = ?, registered_at = COALESCE(registered_at, ?)
+         WHERE id = 1`,
         normaliseDisplayName(name),
+        this.now(),
       );
       this.#summary();
     });

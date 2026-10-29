@@ -372,8 +372,11 @@ All monster skills use `weaponPct` (they scale with the monster's level-scaled d
 `charge` (dash 120, max 7, 150 + stun 20), `raise` (summon `classic.monster.husk` ×2, max 6, cd 160),
 `burst` (aoeTarget at self r 2, 250, poison; exploders), `ember_burst` (nova r 2 fire 120, mod
 death skill), `sentry_bolt` (projectile lightning 100, speed 90, range 8), boss skills `boss_slam`
-(nova r 3, 160, stun 16, cooldown 120), `boss_nova` (nova r 4, 120, fire, cooldown 80), `boss_volley` (projectile ×7 spread 4,
-90, cooldown 60), `boss_summon` (summon the boss's minion type ×3, max 9, cd 200).
+(Tremor: nova r 3, 160, stun 16, cooldown 120, 26-tick telegraph; the Gnashing Maw's last phase),
+`boss_nova` (Pyre Nova: nova r 4, 120, cooldown 80, 30-tick telegraph; the Choir of Cinders' last
+phase), `boss_volley` (projectile ×7 spread 4, 90, cooldown 60), `boss_summon` (Call the Brood:
+summon `gnawling` ×3, max 9, cd 200; Skarn's first phase). Every `classic.mskill.*` is used by a
+monster, a boss or guardian phase, or a mod (`tests/bosses.test.ts`).
 
 ### 7.3 Runtime semantics (combat, data-driven, heroes and monsters alike)
 
@@ -431,12 +434,18 @@ death skill), `sentry_bolt` (projectile lightning 100, speed 90, range 8), boss 
 
 Bosses (`boss` set, `themes: []`, one per 4th depth, cycling with level scaling after 16):
 
-| Id                   | Name                     | Depth | Life | Dmg   |   XP | Skills                              | Minions        |
-| -------------------- | ------------------------ | ----: | ---: | ----- | ---: | ----------------------------------- | -------------- |
-| `boss_warden`        | Morrow, the Grave Warden |     4 |  600 | 8–14  |  400 | claw, boss_slam, raise              | husk ×4        |
-| `boss_tunnel_mother` | Skarn, the Tunnel Mother |     8 | 1100 | 10–18 |  900 | gore, charge, boss_summon           | gnawling ×8    |
-| `boss_ninth_flame`   | Vessa of the Ninth Flame |    12 | 1500 | 12–20 | 1600 | firebolt, boss_volley, boss_nova    | ash_seer ×3    |
-| `boss_hollow_king`   | The Hollow King          |    16 | 2400 | 15–26 | 3000 | claw, boss_slam, boss_volley, raise | rime_wraith ×3 |
+| Id                   | Name                     | Depth | Life | Dmg  |   XP | Skills (`boss_*`; phase skills at their life %)           | Minions        |
+| -------------------- | ------------------------ | ----: | ---: | ---- | ---: | --------------------------------------------------------- | -------------- |
+| `boss_warden`        | Morrow, the Grave Warden |     4 |  300 | 8–14 |  400 | claw, cleave, quake; 35 %: rush                           | husk ×4        |
+| `boss_tunnel_mother` | Skarn, the Tunnel Mother |     8 |  330 | 8–14 |  900 | gore, rush, quake; 65 %: boss_summon; 30 %: cleave        | gnawling ×8    |
+| `boss_ninth_flame`   | Vessa of the Ninth Flame |    12 |  430 | 5–8  | 1600 | firebolt, volley, meteor, pyre_ring; 40 %: quake          | ash_seer ×3    |
+| `boss_hollow_king`   | The Hollow King          |    16 |  420 | 7–12 | 3000 | claw, cleave, quake, volley; 50 %: frost_nova; 25 %: rush | rime_wraith ×3 |
+
+Boss life and damage were cut in quest fix round 2 (§15.5; before: 600 / 1100 / 1500 / 2400 life,
+8–14 / 10–18 / 12–20 / 15–26 damage; the last phase enraged Vessa +50 % and the Hollow King
++40 %, now +30 % and +25 %). A boss spawns at `monsterLevel(depth) + 3`, so the scaled life is
+825 / 1 402 / 2 472 / 3 045 (was 1 650 / 4 675 / 8 625 / 17 400): the level scaling of life
+(+25 %/level) outgrows hero damage, so the level-1 numbers fall with depth.
 
 ### 8.2 Behaviours (`classic.monsters.think`)
 
@@ -448,18 +457,18 @@ without per-monster A*; when the field does not cover them, direct steering + A*
 40 ticks per monster and at most 4 A* searches per tick overall. Think throttle: every 4 ticks per
 monster (staggered by id), every tick when in attack range.
 
-| Behaviour | Rule                                                                                                                                                                                                                                       |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| rusher    | chase; basic attack in reach                                                                                                                                                                                                               |
-| swarm     | like rusher, offsets its approach angle by `(id % 8) × 8` steps so the pack surrounds                                                                                                                                                      |
-| archer    | keep `keepDistance`: if closer than 60 % of it, step away (kite); in range + LOS → arrow                                                                                                                                                   |
-| caster    | like archer; flees to its home when the target is adjacent                                                                                                                                                                                 |
-| tank      | slow chase; `slam` when ≥ 2 hero-team units are within 1.6 tiles or every 4th attack (`Ai.count`)                                                                                                                                          |
-| charger   | between 3 and 7 tiles with LOS and `specialAt` ready → `charge` (cooldown 100), else rusher                                                                                                                                                |
-| summoner  | keep distance 6; `raise` when < max minions alive, `specialAt` ready and its target within 9 tiles in LOS; else shadebolt                                                                                                                  |
-| exploder  | rush; within 1.2 tiles → `burst` (16-tick telegraph); detonating kills itself (no double burst)                                                                                                                                            |
-| boss      | summons once per threshold crossed (66 % and 33 % life, `Ai.count` = phases done) before anything else; otherwise rotates its skills by priority and cooldown (every boss attack skill has one: Tremor 120, Pyre Nova 80, Volley 60 ticks) |
-| totem     | never moves; fires its first skill at the nearest enemy in range                                                                                                                                                                           |
+| Behaviour | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| rusher    | chase; basic attack in reach                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| swarm     | like rusher, offsets its approach angle by `(id % 8) × 8` steps so the pack surrounds                                                                                                                                                                                                                                                                                                                                                                                             |
+| archer    | keep `keepDistance`: if closer than 60 % of it, step away (kite); in range + LOS → arrow                                                                                                                                                                                                                                                                                                                                                                                          |
+| caster    | like archer; flees to its home when the target is adjacent                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| tank      | slow chase; `slam` when ≥ 2 hero-team units are within 1.6 tiles or every 4th attack (`Ai.count`)                                                                                                                                                                                                                                                                                                                                                                                 |
+| charger   | between 3 and 7 tiles with LOS and `specialAt` ready → `charge` (cooldown 100), else rusher                                                                                                                                                                                                                                                                                                                                                                                       |
+| summoner  | keep distance 6; `raise` when < max minions alive, `specialAt` ready and its target within 9 tiles in LOS; else shadebolt                                                                                                                                                                                                                                                                                                                                                         |
+| exploder  | rush; within 1.2 tiles → `burst` (16-tick telegraph); detonating kills itself (no double burst)                                                                                                                                                                                                                                                                                                                                                                                   |
+| boss      | summons once per threshold crossed (66 % and 33 % life, `Ai.count` = phases done) before anything else; otherwise rotates its skills by priority and cooldown (every boss attack skill has one: Tremor 120, Pyre Nova 80, Volley 60 ticks). A phased boss casts the summon skills of its rotation on cooldown while below their max (Skarn's Call the Brood), and never fires a multi-missile fan (Volley) at a target within 2 tiles of its body (point-blank every missile hit) |
+| totem     | never moves; fires its first skill at the nearest enemy in range                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Champion/unique **mods** (`classic.mod.*`): `mighty` (+100 % dmg), `swift` (+50 % speed and attack
 speed), `stoneskin` (+100 % armor, +50 % life), `emberbound` (+50 % as fire, death `ember_burst`,
@@ -776,17 +785,23 @@ Runs when `autoActive(world, tick)`. Reacts every tick to danger; full re-plan e
 (`AutoState.thinkAt`). Priority list (first that applies wins):
 
 1. **Dead** → after `respawnDelay` push `{op:"respawn"}`.
-2. **Busy** (Casting/Dash) → nothing (potions still allowed).
+2. **Busy** (Casting/Dash/stun) → nothing (potions and the retreat of step 4 still allowed).
 3. **Potions**: life < `lifePotionPct` (strictly below; default 50) → drink the lowest-tier life/rejuv
    potion that is not wasted (belt cooldown ready); mana < `manaPotionPct` → mana potion. A drink
    that restores nothing (life or mana already full) is refused by the op (`potion_useless`, nothing
    consumed), and Auto never queues one. A life potion adds exactly its amount, capped at max
    (`classic.potion` carries `lifeBefore`/`lifeAfter`).
 4. **Retreat**: life < `retreatPct`, no life potion, in the dungeon, scroll available → `townPortal`.
+   With an awake boss in the scan and no life potion the threshold is `max(retreatPct, 50)`
+   (`BOSS_RETREAT_PCT`). Checked before the busy check and before dodging: the portal is instant
+   and the area change cancels the cast (QA quest fix round 1, §15.5).
 5. **Fight**: awake hostile units within 12 tiles with LOS, plus the living owner (≤ 18 tiles, no
    LOS needed) of any summon among them. Target score = distance (tiles) + 4 for a summon farther
-   than 2 tiles − 6 exploder within 4 tiles − 3 caster/summoner − 2 boss/unique − 2 current focus;
-   lowest wins. The fight plan holds 10 ticks after the last foe left the scan (hysteresis).
+   than 2 tiles − 6 exploder within 4 tiles − 3 caster/summoner − 4 boss − 2 unique − 2 current
+   focus; lowest wins. A boss's phase minion (a summon whose owner is a boss) instead scores + 6
+   (not + 4) farther than 2 tiles when it fights in melee (within 2 tiles it body-blocks the way
+   and is fought like any foe), and − 8 at any distance for a ranged hero (projectile weapon or a
+   caster class) when it shoots (§15.5). The fight plan holds 10 ticks after the last foe left the scan (hysteresis).
    **While leaving the level** (see 10) only foes within 4 tiles (`LEAVE_FIGHT_RANGE`) or attacking
    the hero (its `Ai.target`, state `attack`/`charge`) are engaged; the rest of the scan still
    counts for AoE, buffs and kiting.
@@ -826,10 +841,18 @@ Runs when `autoActive(world, tick)`. Reacts every tick to danger; full re-plan e
    within the gold left after a reserve of 10 tier life potions + 2 scrolls; accept available quests
    and complete done ones; return: open portal → `usePortal`, else waypoint to the deepest unlocked
    waypoint (≤ `maxDepth`, monster level ≤ effective level + 2, and below the depth of a death the
-   hero has not been back to), else the town exit stairs.
-10. **Boss / descend**: once explored ≥ `explorePct` (or no reachable frontier): on a boss depth with
-    the boss alive and the hero ready (effective level ≥ `monsterLevel(depth) + 2`) → walk straight
-    to the boss. Descend when `autoDescend`, `maxDepth` respected, effective level ≥
+   hero has not been back to), else the town exit stairs. **Retreat loop** (`AutoRetreats` on the
+   hero: the last three retreat ticks and depths, and the live boss's life at the last two): the
+   portal is avoided while the last retreat is under W = 2 min old and either the last two came
+   from one depth within W or the last three came within 2 W from any depths (alternating
+   waypoint-level / boss-level retreats). Exception: the portal leads to a boss the hero is ready
+   for, that boss is at or below half life, and it lost life between the last two retreats from
+   its depth (`bossHp` < `prevBossHp`); a half-dead boss that keeps winning is still a loop.
+10. **Boss / descend**: on a boss depth with the boss alive and the hero ready (effective level ≥
+    `monsterLevel(depth) + 2`) → walk straight to the boss, before exploring (quest fix round 2:
+    it used to explore `explorePct` first and spent 82 % of its depth-12 time on packs 40–110
+    tiles from the boss). The hunt targets the boss through fog on purpose (the waypoint unlocks on
+    entering the level, and fights and loot on the way still come first). Otherwise, once explored ≥ `explorePct` (or no reachable frontier): Descend when `autoDescend`, `maxDepth` respected, effective level ≥
     `monsterLevel(depth + 1) − 2` and no living boss (or the hero is ready for the next depth's
     level + 2) → interact stairsDown. Otherwise (under-levelled, at maxDepth, not ready for the
     boss) → stairs up then down again (fresh population) to farm.
@@ -847,7 +870,12 @@ setting), so Auto only picks up magic and better unless the player lowers it.
 **Progress watchdog** (`AutoState.hops/killAt/stallUntil`): 6 area changes without a kill (a travel
 loop) or 2 minutes in a dungeon without a kill (a drought) start a 3-minute **stall**: no voluntary
 town trips, no looting, the ignore list is cleared and the dungeon routine heads for the stairs (a
-fresh level). Emits `classic.auto.notice` ("travel_loop" / "no_kills").
+fresh level). Emits `classic.auto.notice` ("travel_loop" / "no_kills"). A boss fight (plan
+fight, focus on a living boss) is progress while the boss loses life: a tick that switches the
+focus to a boss, or brings its life below the lowest seen (`AutoState.bossE` / `bossHp`,
+optional), resets both counters (a 2-minute fight with Skarn used to start a drought stall, and
+its retreat trips a travel loop). A boss the hero cannot hurt (out of reach, kiting) leaves both
+counters running, so the stall still frees the hero.
 
 **Death caution** (`AutoState.caution`, 0–3): +1 per death, −1 per level up. The controller plans
 with `effectiveLevel = level − 2 × caution` (descend, boss readiness, waypoint choice), and the
@@ -864,21 +892,182 @@ dex → mag → vit cycle by weight), skill points over the learnable `autoSkill
 at rank 0 first; else the lowest `2 × rank + order index`, so points spread over the top skills),
 and put newly learned skills in empty bar slots.
 
-### 15.4 Offline progress (`classic.offlineProgress {elapsedMs}`)
+### 15.4 Offline progress (`classic.offlineProgress {elapsedMs, xpPct?}`)
 
-Deterministic rate model; `ms = min(elapsedMs, offlineCapMs)`, `minutes = floor(ms / 60000)`:
+**Superseded in part by `docs/design/offline-idle.md`**. That doc defines the grant: the measured
+online Idle rate (`classic.auto.rate`), offline XP at `offlineXpPct` (20 %, admin tunable
+`classic.offlineXpPct`), items at 100 %, gold at 100 % of the measured **net** gold (ground +
+junk − upkeep: potions, scrolls and repairs paid on Auto/Idle ticks, floored at 0), a dead hero
+respawned first, server flow, and the away summary. The model below is kept as the **fallback**
+for heroes with less than 5 min of measured Auto/Idle play (XP × `offlineModelXpPct` 200 %, gold ×
+`offlineModelGoldPct` 100 %, no upkeep), and as a `× 3` sanity cap of the measured rate (the
+measured rate's XP has no model floor: offline XP is exactly `xpPct` of the online Idle rate). A
+second local grant on the same sim tick is rejected with `offline_twice` (`RunStats.offlineAt`);
+the verified server's grants are exempt (offline-idle.md §4.4).
+
+Fallback rate model; `ms = min(elapsedMs, offlineCapMs)`, `minutes = floor(ms / 60000)`:
 
 - depth = deepest unlocked waypoint depth with `monsterLevel(depth) ≤ heroLevel + 1` (≥ 1).
-- `dps` = average damage of the best affordable bar skill (`rollSkillDamage(..., null)`) ×
-  `20 / castTicks(scaled)`; `avgLife` = mean scaled life of the theme's monsters at that depth.
-- `killsPerMin = clamp(floor(dps × 60 × offlineEfficiencyPct% / avgLife), 1, 120)`; kills =
-  `killsPerMin × minutes`.
-- XP = kills × average `xpForKill`; gold = kills × 45 % × average gold drop; items = `floor(kills ×
-  0.02)` capped at 20, rolled magic+ → `{op:"grantItems", toStash: true}`; the rest auto-sold.
-- Queues `grantXp`, `grantGold`, `grantItems`; emits `classic.offline.summary`; adds `RunStats.offlineMs`.
-- Quest credit (quest fix round 1): the kill count also advances each active `killMonsters` quest
-  with target `*`, capped at its requirement. `reachDepth` and the other quest kinds are unchanged
-  (see §16).
+- `dmg`, `ticks` = average damage and attack time of the best affordable bar skill
+  (`rollSkillDamage(..., null)`); `avgLife` = mean scaled life of the theme's monsters at that
+  depth.
+- Time per kill = fight ticks + `OFFLINE_TRAVEL_TICKS` (60), fight ticks = `avgLife × ticks × 100
+  / (dmg × offlineEfficiencyPct)` (100); `killsPerMin = clamp(floor(1200 / time per kill), 1,
+  120)`, so at most 20 kills a minute (second pass, offline-idle.md §4.3); kills = `killsPerMin ×
+  minutes`.
+- XP = kills × average `xpForKill`; gold = kills × 45 % × average gold drop + junk sales; items =
+  `floor(kills × 0.02)` capped at 20, rolled magic+ → `{op:"grantItems", toStash: true}`; the rest
+  auto-sold.
+- Queues `grantXp`, `grantGold`, `grantItems`; emits `classic.offline.summary` (with `upkeep`);
+  adds `RunStats.offlineMs` and sets `RunStats.offlineAt`.
+- Quest credit (quest fix round 2, `auto/offline.ts`): offline kills credit active `killMonsters`
+  quests: target `*` gains every offline kill; a named target gains `floor(kills / n)` when it is
+  one of the `n` monsters of the offline depth's theme tier (`offline.ts` `depthMonsterIds`), else 0;
+  all capped at the quest count. `reachDepth`, `killBoss` and `clearLevel` never progress offline
+  (see §16 (d)).
+
+### 15.5 Boss fights (quest fix round 2)
+
+The last two chain quests (The Ninth Flame, Crown of Hollows) could never be finished by Auto, and
+warriors stalled at depth 4. Measured cause (probes in real Auto runs and in isolated fights):
+
+- **Boss life outgrew hero damage.** Bosses spawn at `monsterLevel(depth) + 3` and life scales
+  +25 %/level, so Vessa had 8 625 life against ~1–2 damage per engaged tick from a level-19/20
+  Auto hero (a warrior with real Auto gear: 0.3–0.5 per tick at depths 4–8, ~1 at 12). Morrow
+  (1 650) took a warrior 3 900–5 600 engaged ticks with 36–102 potions.
+- **Vessa was a turret.** Her basic attack is an unmissable 9-tile Firebolt: 2–3 damage per tick,
+  about 1 % of a level-19 hero's life per tick (Morrow and Skarn: about 0.3–0.5 %). Every isolated
+  fight ended in a death.
+- **Auto engaged late.** It explored `explorePct` before hunting the boss: 82 % of its depth-12 time
+  went to packs 40–110 tiles from Vessa until a death or retreat.
+- **Auto walked away from long fights.** A 2-minute boss fight without a kill tripped the
+  no-kill watchdog (a stall heads for the stairs), and two quick retreats sent the hero back by
+  waypoint instead of the portal next to the wounded boss.
+- **Targets.** A melee hero swung at whichever minion stood closest (the boss's wide body puts
+  its centre farther away), and a ranged hero ignored the ash seers that dealt a third of its
+  damage taken.
+
+Changes (`content/monsters.ts`, `auto/`): boss life and damage cut (§8.1 table; scaled life 825 /
+1 402 / 2 472 / 3 045); Auto hunts a live boss as soon as it is boss-ready (§15.2 step 10) and goes
+on down once that boss is dead (no `explorePct` afterwards); boss score −4 tiles, melee phase
+minions +6 beyond 2 tiles, ranged phase minions −8 for ranged heroes (§15.2 step 5); damaging a
+boss resets the watchdog (§15.2); quick retreats avoid the portal (two from one depth, or three
+from any depths, §15.2 step 9), except when the portal leads back to a boss the hero is ready for
+that is at or below half life and lost life between the last two retreats (`town.ts`
+`bossHalfDown`, `util.ts` `bossRetreatProgress`).
+
+**Review fixes** (docs/design/offline-idle.md §10, findings 1, 2, 4, 5 and 9): the watchdog
+counts boss progress (lower boss life), not boss focus; the half-dead-boss exemption needs boss
+progress between the retreats; a body-blocking melee phase minion is fought; three quick retreats
+from alternating depths are a loop. Re-measured with the same harnesses (before = the boss rework
+above, after = with the fixes):
+
+- Isolated fights, seeds 1–3, all four bosses: every kill time unchanged except rogue/Skarn
+  seed 3 (2 102 → 2 109 ticks); still 25 of 27 kills at depths 4–12 and 5 of 9 at depth 16. Of
+  the lost fights, warrior/Vessa seed 3 now takes the waypoint way back (6 deaths instead of 4)
+  and warrior/Hollow King seed 2 ends in a `travel_loop` stall.
+- Fresh warriors, 36 000 ticks, seeds 1–8: Morrow killed on the same 7 of 8 seeds (seed 5:
+  32 606 → 32 766 ticks, seed 8: 25 246 → 25 266; the others identical).
+- Fresh heroes under Auto until Vessa dies (300 000 ticks, seeds 1–8 per class; minutes):
+
+  | Class    | Vessa killed (before → after) | Within 150 000 ticks | Median    | Deaths    | Retreats  |
+  | -------- | ----------------------------- | -------------------- | --------- | --------- | --------- |
+  | Warrior  | 6/8 → 8/8                     | 1 → 2                | 174 → 146 | 158 → 115 | 486 → 322 |
+  | Rogue    | 8/8 → 8/8                     | 5 → 5                | 110 → 120 | 117 → 104 | 298 → 148 |
+  | Sorcerer | 8/8 → 8/8                     | 8 → 8                | 87 → 88   | 51 → 62   | 228 → 189 |
+
+  The three-retreat loop rule moves single runs both ways (rogue seed 2: 100 → 136 min,
+  because three retreats from depth 11 in 3 857 ticks sent it back by waypoint; warrior seed 1:
+  133 → 97 min). Without that rule rogue and sorcerer seeds 1–4 match the old runs exactly and
+  the warriors are slower (seeds 1, 3, 4: 213, 190, 147 min).
+
+Isolated fights (`tests/auto.bosses.test.ts` harness: boss-ready level, a rare of that level in
+every slot, a full belt of the level's potion tier, 5 000 gold, the level's other monsters
+removed, Auto from 6 steps away; ticks to the kill, seed 1, budget 12 000):
+
+| Boss (depth)     | Warrior before → after                    | Rogue before → after   | Sorcerer before → after                |
+| ---------------- | ----------------------------------------- | ---------------------- | -------------------------------------- |
+| Morrow (4)       | 5 161 → 2 782 (1 retreat)                 | 2 750 → 1 375          | 2 979 → 1 633                          |
+| Skarn (8)        | never (3 deaths) → 3 054                  | 4 299 → 1 086          | 3 922 → 1 098                          |
+| Vessa (12)       | never (deaths) → 2 673                    | never (deaths) → 1 368 | never (deaths) → 1 288                 |
+| Hollow King (16) | never → never (seeds 1–2), 5 610 (seed 3) | never → 2 454          | never → never (seed 1), 1 159 (seed 2) |
+
+Seeds 1–3 after: 25 of 27 fights at depths 4–12 end in a kill within 5 100 ticks (the two others:
+a level-19 sorcerer whose seed-3 gear gave it 114 life, and a seed-3 warrior that spent its gold
+at the smith and ran a heal-only portal loop); the Hollow King falls in 5 of 9.
+
+Real Auto runs (fresh hero, `classic.setControl {mode: "auto"}`, 20 ticks = 1 s):
+
+- Warriors, 36 000 ticks (30 min), seeds 1–8: Morrow killed on 7 of 8 (at 21–27 min; seed 3
+  reaches depth 4 at 28 min after the Clear the Crypt detour), 6 of 8 reach depth 6. Before: 3 of
+  8 stalled at depth 4 with no boss kill.
+- 300 000 ticks (4 h 10 min), seeds 1–4 per class: **The Ninth Flame completed in 11 of 12 runs**,
+  8 of 12 within 150 000 ticks (2 h 05 min): sorcerer 66–104 min (4 of 4 within 2 h), rogue
+  100–140 min (3 of 4), warrior 118–202 min (1 of 4; one warrior run reached depth 12 only at
+  144 min and never killed Vessa). Before: 0 of 8 two-hour runs (bosses killed: depths 4 and 8
+  only). Tunnel Mother was accepted at 35–55 min in every run.
+- Engaged boss time in those runs (the boss awake within 12 tiles, summed over visits): rogues
+  and sorcerers 560–1 700 ticks at most bosses (one rogue: 2 950 at Morrow and 2 300 at the Hollow King), warriors 680–2 500
+  at depths 4–8 and 2 300–4 100 at Vessa. The warriors' depth-12 deaths (0–5 per run) come from
+  the level's own packs: Vessa dealt only 8–16 % of the damage they took on that depth (rime
+  wraith frostbolts, ash seers and bonefletchers did the rest), which is general depth-12
+  balance, not the boss.
+
+The Hollow King stays a **long-session goal**: depth 16 needs level 25 for the hunt (it is
+reached after 95–165 min by sorcerers and 165–235 min by rogues and two of the warriors; the
+other two warriors never got there in 4 h 10 min), and Crown of
+Hollows was completed in 4 of the 12 four-hour runs (sorcerers at 105, 107 and 248 min, a rogue
+at 210 min; no warrior). It is not expected in a normal ~2-hour session.
+
+### 15.6 Boss quests (QA quest fix round 1)
+
+Browser QA confirmed the early quests end to end; the open defect was the boss quests. Harness
+(`tests/support/boss-quests.ts`): a hero at the quest's `reqLevel` (and + 2) of each class, a rare
+of its level in every slot, the quest log of that level (every quest with a lower `reqLevel`
+turned in, the boss quest accepted), a full belt, 5 scrolls, the boss level emptied of its other
+monsters, Auto from 6 tiles away, 14 000 ticks, seeds 1–3. Measured cause, in the fights that did
+not finish (traces of each):
+
+- **Deaths at the last phase with an empty belt.** Vessa's enraged Firebolt hits a level-20
+  sorcerer (150 life) for 25–54; once the belt was empty Auto only left below `retreatPct` (25 %),
+  one hit too late, and the retreat was skipped while the hero was casting (step 2 returned
+  first) or dodging (the dodge came before the retreat). Seen at 23 % life through a 6-tick cast,
+  then 9 % in a dodge, then dead.
+- **Point-blank Volley.** The Hollow King's seven-missile fan fired at a hero within a tile of his
+  body landed six missiles at once (212 damage in one tick on a 265-life rogue at 70 %).
+- **The death spiral after it.** A death rebuilds the boss level, adds death caution (the boss
+  is no longer "ready") and sends the hero to the waypoint below; at depths 11–15 the rebuilt
+  packs (rime wraith champions, blightbloats) then killed it again, 3–7 deaths per run.
+
+Changes: Auto retreats before the busy check and before dodging, and at `max(retreatPct, 50)`
+with an awake boss and no life potion (§15.2 step 4; the portal opens next to the boss, whose
+wound is kept); a boss never fires a multi-missile fan at a target within 2 tiles of its body
+(§8.2). Content: the three unused monster skills are wired (Call the Brood in Skarn's 65 % phase,
+replacing its one-off summon; Tremor in the Gnashing Maw's 25 % phase; Pyre Nova in the Choir of
+Cinders' 25 % phase; Tremor and Pyre Nova got telegraphs). Versions: classic.content 0.4.1,
+classic.auto 0.4.1, classic.monsters 0.3.1.
+
+Ticks to the kill, both levels and seeds 1–3 (6 fights per cell; "deaths" = most in one run, up
+to the turn-in):
+
+| Boss (depth, quest level) | Class    | Before: killed, ticks, deaths | After: killed, ticks, deaths |
+| ------------------------- | -------- | ----------------------------- | ---------------------------- |
+| Skarn (8, 14–16)          | warrior  | 6/6, 2 039–4 339, 0           | 6/6, 2 199–3 889, 0          |
+| Skarn (8, 14–16)          | rogue    | 6/6, 987–2 216, 0             | 6/6, 854–3 704, 0            |
+| Skarn (8, 14–16)          | sorcerer | 6/6, 1 019–1 296, 0           | 6/6, 1 033–1 265, 0          |
+| Vessa (12, 20–22)         | warrior  | 6/6, 2 514–5 464, 1           | 6/6, 2 506–5 355, 0          |
+| Vessa (12, 20–22)         | rogue    | 6/6, 956–1 655, 0             | 6/6, 956–1 656, 0            |
+| Vessa (12, 20–22)         | sorcerer | 3/6, 1 401–1 581, 5           | 6/6, 1 230–1 730, 1          |
+| Hollow King (16, 26–28)   | warrior  | 4/6, 2 499–8 664, 5           | 6/6, 2 155–6 300, 0          |
+| Hollow King (16, 26–28)   | rogue    | 5/6, 1 173–2 744, 3           | 6/6, 1 316–2 530, 0          |
+| Hollow King (16, 26–28)   | sorcerer | 3/6, 1 074–1 317, 7           | 6/6, 1 059–1 327, 0          |
+
+After, every run also turned the quest in (gold and XP paid) within 1 700 ticks of the kill. The
+sorcerer's Vessa deaths came after the kill, on depth 13. Potions per fight: at most 39 (warrior
+vs Vessa), before up to 85. Skarn got slower for rogues (Call the Brood keeps 3–9 gnawlings
+around her) but stays well inside the 12 000-tick budget. Tests: `tests/quests.balance.test.ts`
+(Vessa and the Hollow King at the quest level, seeds 1–3, kill and turn-in) and
+`tests/quests.bosses.test.ts` (Skarn at the quest level, every boss at + 2).
 
 ---
 
@@ -906,11 +1095,23 @@ Rules (quest fix round 1, `progression/quests.ts`, `progression/kills.ts`, `prog
   monster there before descending (auto/ owner).
 - **Reward items (c)**: a quest's item reward goes to the bag, else the stash, else is sold at 10 %
   of its value as a last resort. Other grants (`reason` not `quest`) keep the old bag-or-sell rule.
-- **Offline (d, §15.4)**: offline progress credits its kill count to active `killMonsters` quests
-  whose target is `*`, capped at the requirement. It does not change `reachDepth`, `killBoss`,
-  `clearLevel` or the progress of other quests.
+- **Offline (d, §15.4)**: offline kills credit active `killMonsters` quests: target `*` gains
+  every offline kill; a named target gains `floor(kills / n)` when it is one of the `n` monsters
+  of the offline depth's theme tier (`offline.ts` `depthMonsterIds`), else 0; all capped at the
+  quest count. `reachDepth`, `killBoss` and `clearLevel` never progress offline.
 - **Chains (e)**: Auto accepts chained quests in the same town visit in which their prerequisite is
   turned in (auto/ owner).
+- **Auto/Idle accept every eligible quest** (by design, §15.2 step 8 and the town routine's
+  quests step): one town visit accepts every quest the hero may take (level ≥ `reqLevel`, `after`
+  done), and a newly eligible quest is itself a trip reason (`quest`). A fresh hero therefore
+  carries several quests at once; Tunnel Mother (`reqLevel` 14) is typically offered after about
+  30–60 minutes of Auto.
+- **Boss quests and Auto (quest fix round 2, §15.5)**: an Auto hero of any class kills Morrow,
+  Skarn and Vessa once it is boss-ready (level ≥ `monsterLevel(depth) + 2`), so The Warden's
+  Rest, Tunnel Mother and The Ninth Flame finish in a normal session. **Crown of Hollows** (the
+  Hollow King, depth 16, `reqLevel` 26) is a long-session goal: see §15.5 for the measured time.
+  Once there, a hero at the quest level of any class kills the boss and turns each boss quest in
+  (QA quest fix round 1, §15.6).
 - `Trusted by the Town` (achievement) needs 10 quests: `questsCompleted` targets never exceed the
   number of quests in the registry (`tests/achievements.content.test.ts`).
 
@@ -1116,7 +1317,9 @@ killed, full stash handled (no livelock), longest kill gap ≤ 99 s, 4–6 death
   per-element resist on monster mods, weapon-percent skills take the monster element.
 - The healer NPC has no explicit heal action (healing happens on interact).
 - Balance is checked to depth ~11 (150-minute runs); depths 12+ (Vessa, the Hollow King, the abyss
-  tier) are untested in long runs. Pace: depth 2–4 in 20 minutes, 7–10 in 60.
+  tier) are untested in long runs. Pace: depth 2–4 in 20 minutes, 7–10 in 60. (Quest fix round
+  2, §15.5: 4-hour Auto runs now reach depths 12–16 and kill Vessa; the depth-12 packs still
+  cause most deaths there.)
 - Gold sink: the sorcerer still keeps 45–70 % of the gold it earns after an hour (warrior and rogue
   2–57 %); it rarely finds smith upgrades. A gamble vendor or repair costs would add a sink.
 - The rogue kills about half as fast as the sorcerer (9–11 vs 24–26 per minute) but levels on par

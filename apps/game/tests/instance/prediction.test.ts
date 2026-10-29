@@ -76,6 +76,60 @@ describe("Prediction", () => {
     expect(value(p.view)).toBe(value(srv.sim.snapshot()) + 1);
   });
 
+  it("a confirmed prediction keeps the batch already shown (same identity, same events)", () => {
+    const srv = server();
+    const { p, enqueue } = predictor();
+    p.onState(0, srv.sim.snapshot());
+    enqueue("tcount.add", { by: 2 });
+    const shown = p.events;
+    const contents = [...shown];
+    expect(shown).toHaveLength(1);
+    p.onResult(srv.result(1, "tcount.add", { by: 2 }));
+    expect(p.events).toBe(shown);
+    expect(p.events).toEqual(contents);
+  });
+
+  it("a second pending action's result does not re-deliver the first action's events", () => {
+    const srv = server();
+    const { p, enqueue } = predictor();
+    p.onState(0, srv.sim.snapshot());
+    enqueue("tcount.add", { by: 2 });
+    enqueue("tcount.add", { by: 3 });
+    const afterBoth = p.events;
+    const contents = [...afterBoth];
+    expect(p.onResult(srv.result(1, "tcount.add", { by: 2 }))?.mismatch).toBeNull();
+    expect(p.events).toBe(afterBoth);
+    expect(p.onResult(srv.result(2, "tcount.add", { by: 3 }))?.mismatch).toBeNull();
+    expect(p.events).toBe(afterBoth);
+    expect(p.events).toEqual(contents);
+  });
+
+  it("a mismatching result delivers the server's events", () => {
+    const srv = server();
+    const { p, enqueue } = predictor();
+    p.onState(0, srv.sim.snapshot());
+    enqueue("tcount.add", { by: 1 });
+    // Another player changed the server state first, so the prediction is wrong.
+    srv.sim.dispatch("tcount.add", { by: 10 }, "other");
+    const result = srv.result(1, "tcount.add", { by: 1 });
+    expect(p.onResult(result)?.mismatch).not.toBeNull();
+    expect(p.events).toBe(result.events);
+    expect(p.events).toEqual([
+      { type: "tcount.added", value: value(result.snapshot), actor: "me" },
+    ]);
+  });
+
+  it("an action that was never shown delivers its events when confirmed", () => {
+    const srv = server();
+    const { p, enqueue } = predictor();
+    enqueue("tcount.add", { by: 2 });
+    p.onState(0, srv.sim.snapshot());
+    const result = srv.result(1, "tcount.add", { by: 2 });
+    expect(p.onResult(result)?.mismatch).toBeNull();
+    expect(p.events).toBe(result.events);
+    expect(p.events).toHaveLength(1);
+  });
+
   it("records server rejections and clears them on the next success", () => {
     const srv = server();
     const { p, results, enqueue } = predictor();

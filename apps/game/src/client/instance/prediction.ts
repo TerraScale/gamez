@@ -23,6 +23,13 @@ export interface PendingAction {
   payload: unknown;
   /** Hash of the predicted state right after this action; null when not predicted. */
   predictedHash: string | null;
+  /** The predicted `ok`; null when not predicted. */
+  predictedOk: boolean | null;
+  /**
+   * True once this action's events were handed to consumers (its predicted batch).
+   * A server result that confirms the prediction then adds no events again.
+   */
+  shown: boolean;
   /** Settles the promise returned by act(). */
   resolve(res: DispatchResult): void;
 }
@@ -88,6 +95,8 @@ export class Prediction {
       name,
       payload,
       predictedHash: null,
+      predictedOk: null,
+      shown: false,
       resolve,
     };
     this.#pending.push(entry);
@@ -95,9 +104,11 @@ export class Prediction {
     if (sim) {
       const res = sim.dispatch(name, payload, this.actor);
       entry.predictedHash = sim.hash();
+      entry.predictedOk = res.ok;
       if (res.ok) {
         this.#view = sim.snapshot();
         this.#events = res.events;
+        entry.shown = true;
         this.#error = null;
       } else {
         this.#error = res.error ?? null;
@@ -148,7 +159,12 @@ export class Prediction {
       }
     }
     this.#error = msg.ok ? null : (msg.error ?? { code: "rejected", message: "action rejected" });
-    if (this.#pending.length === 0) this.#events = msg.events;
+    // A confirmed prediction keeps the batch already shown (no second log of the same
+    // action). A mismatch, a different `ok`, or an action never shown delivers the server's events.
+    // The one re-log case is a mismatch, whose predicted events were already shown.
+    const confirmed =
+      entry.predictedHash !== null && mismatch === null && entry.predictedOk === msg.ok;
+    if (!(confirmed && entry.shown)) this.#events = msg.events;
     this.#rebuild();
 
     const error = { code: "lost", message: "no result from the server" };
@@ -177,10 +193,11 @@ export class Prediction {
     if (!this.#authoritative || this.#pending.length === 0) return;
     const sim = this.#simFrom(this.#authoritative);
     if (!sim) return;
+    // Replaying does not touch #events: the events of actions already shown stay as they are.
     for (const p of this.#pending) {
       const res = sim.dispatch(p.name, p.payload, this.actor);
       p.predictedHash = sim.hash();
-      if (res.ok) this.#events = res.events;
+      p.predictedOk = res.ok;
     }
     this.#view = sim.snapshot();
   }

@@ -17,6 +17,8 @@
  *   "any monster" kill quests (./offline.ts).
  * - classic.auto.allocate (pre 10, ./allocate.ts): stat/skill points by class
  *   autoAlloc / autoSkillOrder, new skills into empty bar slots.
+ * - classic.auto.rate (post 950, ./rate.ts): the online Auto/Idle rate that the
+ *   offline grant extrapolates (docs/design/offline-idle.md §4.1).
  * - Actions (./actions.ts, ./offline.ts): classic.setControl,
  *   classic.setSpeed, classic.setAutoConfig, classic.offlineProgress.
  */
@@ -31,11 +33,12 @@ import {
 } from "./actions.ts";
 import { allocateSystem } from "./allocate.ts";
 import { offlineAction } from "./offline.ts";
+import { rateSystem } from "./rate.ts";
 import { thinkSystem } from "./think.ts";
 
 export const classicAuto = defineModule({
   id: MODULE.auto,
-  version: "0.3.2",
+  version: "0.5.1",
   deps: [MODULE.core],
   optionalDeps: [
     MODULE.content,
@@ -48,9 +51,10 @@ export const classicAuto = defineModule({
   setup(world) {
     world.setResource(RES.control, defaultControl());
   },
-  systems: [thinkSystem, allocateSystem],
+  systems: [thinkSystem, allocateSystem, rateSystem],
   actions: [setControlAction, setSpeedAction, setAutoConfigAction, offlineAction],
 });
 
 export { itemScore } from "./score.ts";
-export { computeOffline, type OfflineResult } from "./offline.ts";
+export { computeOffline, offlineGrant, type OfflineGrant, type OfflineResult } from "./offline.ts";
+export { AUTO_RATE_MIN_TICKS, AUTO_RATE_WINDOW_TICKS, rateSystem } from "./rate.ts";

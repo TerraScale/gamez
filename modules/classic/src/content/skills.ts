@@ -764,7 +764,9 @@ const MONSTER_SKILLS: Record<string, SkillProto> = {
     hitTick: 8,
     speedStat: "attack",
     status: { id: "classic.status.stun", chancePct: 100, duration: 16, power: 0, powerPerRank: 0 },
-    ai: { tags: ["aoe", "control", "melee"], priority: 6, minTargets: 2 },
+    // The Gnashing Maw's last phase (content/monsters.ts). Telegraphed like every boss skill.
+    telegraph: { ticks: 26, shape: "circle" },
+    ai: { tags: ["aoe", "control", "melee"], priority: 6 },
   }),
   "classic.mskill.boss_nova": mon("boss_nova", {
     name: "Pyre Nova",
@@ -777,7 +779,9 @@ const MONSTER_SKILLS: Record<string, SkillProto> = {
     castTicks: 14,
     hitTick: 7,
     speedStat: "cast",
-    ai: { tags: ["aoe"], priority: 6, minTargets: 2 },
+    // The Choir of Cinders' last phase (content/monsters.ts). Telegraphed like every boss skill.
+    telegraph: { ticks: 30, shape: "circle" },
+    ai: { tags: ["aoe"], priority: 6 },
   }),
   "classic.mskill.boss_volley": mon("boss_volley", {
     name: "Volley",
@@ -801,6 +805,7 @@ const MONSTER_SKILLS: Record<string, SkillProto> = {
     },
     ai: { tags: ["ranged", "aoe"], priority: 5, minTargets: 2 },
   }),
+  // Skarn's first phase (content/monsters.ts): a phased boss casts it on its cooldown.
   "classic.mskill.boss_summon": mon("boss_summon", {
     name: "Call the Brood",
     description: "Summons a fresh brood of its minions.",

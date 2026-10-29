@@ -78,26 +78,42 @@ export async function adminRequest<T>(
 }
 
 /**
- * Loads everything the dashboard shows. Asks GET /api/admin/me first, so a
- * player gets a 403 result ("not an admin") without any failed request; a
- * 401/403 from the data endpoints means the same.
+ * GET /api/admin/me: ok for an admin; a 403 result ("not an admin", with
+ * `devHost` for the dev self-grant) for a player, without any failing
+ * request; 401 without a session. A server without the endpoint (404) counts
+ * as ok, so the data endpoints decide.
+ */
+export async function checkAdmin(
+  fetchFn: FetchFn,
+  token: string,
+): Promise<AdminResult<AdminMe | null>> {
+  const me = await adminRequest<AdminMe>(fetchFn, token, "GET", "/api/admin/me");
+  if (!me.ok) return me.status === 404 ? { ok: true, value: null } : me;
+  if (!me.value?.admin) {
+    return {
+      ok: false,
+      status: 403,
+      code: "forbidden",
+      message: "admins only",
+      devHost: me.value?.devHost,
+    };
+  }
+  return me;
+}
+
+/**
+ * Loads the wave C dashboard data (economy, moderation, config). Asks GET
+ * /api/admin/me first, so a player gets a 403 result ("not an admin")
+ * without any failed request; a 401/403 from the data endpoints means the
+ * same. Kept for compatibility: the sidebar shell loads per section.
  */
 export async function loadAdminData(
   fetchFn: FetchFn,
   token: string,
   days: number,
 ): Promise<AdminResult<AdminData>> {
-  const me = await adminRequest<AdminMe>(fetchFn, token, "GET", "/api/admin/me");
-  if (!me.ok && me.status !== 404) return me;
-  if (me.ok && !me.value.admin) {
-    return {
-      ok: false,
-      status: 403,
-      code: "forbidden",
-      message: "admins only",
-      devHost: me.value.devHost,
-    };
-  }
+  const me = await checkAdmin(fetchFn, token);
+  if (!me.ok) return me;
   const [telemetry, moderation, config] = await Promise.all([
     adminRequest<EconomyTelemetry>(fetchFn, token, "GET", `/api/admin/economy?days=${days}`),
     adminRequest<ModerationResponse>(fetchFn, token, "GET", "/api/admin/moderation"),

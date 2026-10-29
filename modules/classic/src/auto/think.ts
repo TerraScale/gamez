@@ -6,8 +6,8 @@
  * soon as the hero's intent went idle.
  *
  * Priority (first that applies wins):
- *  1 dead -> respawn   2 busy   3 potions   3b dodge telegraphs   4 retreat
- *  5 fight   6 loot   7 equip (side action)   8 go to town   9 town routine
+ *  1 dead -> respawn   3 potions   4 retreat (before busy and dodging: the
+ *  portal is instant)   2 busy   3b dodge telegraphs   5 fight   6 loot   7 equip (side action)   8 go to town   9 town routine
  *  10 descend (or the rift loop)   11 explore
  *
  * Once descend or toTown is chosen the hero is leaving the level (AutoLeave):
@@ -28,6 +28,7 @@ import {
   Life,
   Loot,
   Mana,
+  Monster,
   Pos,
   AreaTag,
   Supplies,
@@ -54,7 +55,7 @@ import { getAreaMap } from "../world/maps.ts";
 import { brokenGear, wornGear } from "./craft.ts";
 import { dodgeStep } from "./dodge.ts";
 import { econOf, goldOf, hasCraftingSmith } from "./econ.ts";
-import { dungeonStep, giveUpFrontier, travel } from "./dungeon.ts";
+import { dungeonStep, giveUpFrontier, liveBoss, travel } from "./dungeon.ts";
 import { engagedFoes, fightStep, isStunned, scanFoes, type Foe } from "./fight.ts";
 import { pickEquip } from "./gear.ts";
 import { walkTo } from "./route.ts";
@@ -167,6 +168,15 @@ function watchdog(c: AutoCtx): void {
     st.hops = 0;
     return;
   }
+  // Damaging a boss is progress without kills (a 2-minute fight with Skarn started a stall
+  // that walked the warrior away from her), and so are the portal trips of its retreats. Only
+  // real progress counts: a new boss focus or its life below the lowest seen. A boss the hero
+  // cannot hurt (out of reach, kiting, healing) leaves the drought and loop counters running.
+  if (bossProgress(c)) {
+    st.killAt = c.tick;
+    st.hops = 0;
+    return;
+  }
   // Time in town or dead is not a drought.
   if (c.depth === 0 || c.world.has(c.hero, Dead)) st.killAt = Math.max(st.killAt, c.tick - 1);
   const loop = st.hops >= WATCHDOG_HOPS;
@@ -186,6 +196,34 @@ function watchdog(c: AutoCtx): void {
       ? "Auto: travelling without progress, staying in the dungeon for a while"
       : "Auto: no kills for a while, looking for a fresh level",
   });
+}
+
+/** True while the hero fights a living boss (plan fight, focus on it). */
+function fightingBoss(c: AutoCtx): boolean {
+  const f = c.st.focus;
+  if (c.st.plan !== "fight" || f === 0 || c.world.has(f, Dead)) return false;
+  return c.world.get(f, Monster)?.rarity === "boss";
+}
+
+/**
+ * True on a boss-fight tick (fightingBoss) that made progress: the focus
+ * moved to this boss (AutoState.bossE) or its life fell below the lowest
+ * seen (AutoState.bossHp). Updates both fields.
+ */
+export function bossProgress(c: AutoCtx): boolean {
+  if (!fightingBoss(c)) return false;
+  const st = c.st;
+  const hp = c.world.get(st.focus, Life)?.hp ?? 0;
+  if (st.bossE !== st.focus) {
+    st.bossE = st.focus;
+    st.bossHp = hp;
+    return true;
+  }
+  if (st.bossHp === undefined || hp < st.bossHp) {
+    st.bossHp = hp;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -296,23 +334,41 @@ function potionStep(c: AutoCtx, foes: readonly Foe[]): void {
  */
 export const EMERGENCY_PCT = 15;
 
-function retreatStep(c: AutoCtx): boolean {
+/**
+ * With a boss in the fight and no life potion left the hero leaves below
+ * this life % (or retreatPct when higher): one boss hit takes a fifth to a
+ * third of a squishy hero's life (Vessa's enraged Firebolt: 40-54 of a
+ * level-20 sorcerer's 150), so retreatPct (25) came one hit too late. The
+ * portal opens next to the boss, which keeps its wound.
+ */
+export const BOSS_RETREAT_PCT = 50;
+
+/**
+ * Step 4. Runs before the busy check and before dodging: the town portal is
+ * instant and the area change cancels a cast, while a 6-tick spell or a
+ * dodge at 20 % life without a potion ended in deaths at the boss.
+ */
+function retreatStep(c: AutoCtx, foes: readonly Foe[]): boolean {
   if (c.depth === 0) return false;
   const life = lifePct(c);
-  if (life >= c.cfg.retreatPct) return false;
+  const noPotion = beltCount(c, "life") === 0;
+  const atBoss = noPotion && c.cfg.retreatPct > 0 && foes.some((f) => f.rarity === "boss");
+  const threshold = atBoss ? Math.max(c.cfg.retreatPct, BOSS_RETREAT_PCT) : c.cfg.retreatPct;
+  if (life >= threshold) return false;
   // Town portals do not work in a rift (ERR.inRift).
   if (isRiftDepth(c.depth)) return false;
   const belt = c.world.get(c.hero, Belt);
   const potionLate = (belt?.readyAt ?? 0) > c.tick + 2;
   const emergency = life < Math.min(EMERGENCY_PCT, c.cfg.retreatPct) && potionLate;
-  if (beltCount(c, "life") > 0 && !emergency) return false;
+  if (!noPotion && !emergency) return false;
   if ((c.world.get(c.hero, Supplies)?.tpScrolls ?? 0) <= 0) return false;
   // A travel command went out less than REPLAN_TICKS ago (travel sets thinkAt 20 ahead).
   if (c.st.thinkAt - c.tick > REPLAN_TICKS) return false;
   c.due = true;
   if (!travel(c, { op: "townPortal" })) return false;
   setPlan(c, "toTown", "retreat");
-  noteRetreat(c);
+  const boss = liveBoss(c);
+  noteRetreat(c, boss === 0 ? -1 : (c.world.get(boss, Life)?.hp ?? -1));
   return true;
 }
 
@@ -596,6 +652,8 @@ function thinkTick(c: AutoCtx): void {
   }
   const foes = scanFoes(c);
   potionStep(c, foes);
+  // Leaving comes first: the portal is instant and cancels a cast (see retreatStep).
+  if (retreatStep(c, foes)) return;
   if (world.has(hero, Casting) || world.has(hero, Dash) || isStunned(c)) {
     // Acting (or unable to act) is not being stuck.
     st.stuck = 0;
@@ -606,7 +664,6 @@ function thinkTick(c: AutoCtx): void {
   trackStuck(c);
   // Telegraphs fire on a fixed tick: stepping out comes before everything but potions.
   if (dodgeStep(c)) return;
-  if (retreatStep(c)) return;
   // While leaving the level only close foes and attackers are fought (see engagedFoes).
   const targets = engagedFoes(c, foes);
   if (targets.length > 0) {

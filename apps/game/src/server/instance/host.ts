@@ -20,6 +20,8 @@ export interface SocketInfo {
   mode: string;
   /** True once this socket joined the instance. */
   joined: boolean;
+  /** Epoch ms of the upgrade (admin "ws.close" duration; absent on older attachments). */
+  openedAt?: number;
 }
 
 export interface InstanceSocket {

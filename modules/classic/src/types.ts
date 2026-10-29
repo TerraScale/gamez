@@ -735,8 +735,35 @@ export interface BalanceProto {
   vendorItems: number;
   /** Offline progress cap, ms. */
   offlineCapMs: number;
-  /** Fraction of the online kill rate used offline (percent). */
+  /**
+   * Fallback model only: the share (percent) of the best skill's damage that
+   * lands while fighting; the model adds a fixed travel time per kill
+   * (offline-idle.md §4.3).
+   */
   offlineEfficiencyPct: number;
+  /**
+   * Offline XP as a percent of the hero's online Idle XP rate (default 20;
+   * docs/design/offline-idle.md §3). An admin overrides it at runtime through
+   * the tunable "classic.offlineXpPct": the server puts the effective value in
+   * the offline action's payload (`xpPct`), so replay stays deterministic.
+   */
+  offlineXpPct: number;
+  /** Offline gold (loot pickups + junk sales) as a percent of the online rate (100). */
+  offlineGoldPct: number;
+  /** Offline items kept to the stash as a percent of the base rule (100). */
+  offlineItemPct: number;
+  /**
+   * Fallback model only (hero with too little measured Auto/Idle play): the
+   * model's XP is scaled by this percent to approximate the online Idle rate
+   * (measured: online XP is 1.9-2.4x the raw model, offline-idle.md §4).
+   */
+  offlineModelXpPct: number;
+  /**
+   * Fallback model only: the model's gold (ground piles + junk sales, no
+   * upkeep) is scaled by this percent so it approximates the rate path's net
+   * gold (ground + junk − upkeep), offline-idle.md §3, §4.3. Absent = 100.
+   */
+  offlineModelGoldPct?: number;
   // ---- wave A (optional: defaults in brackets; rules.balanceDefault reads them) ----
   /** Talent points per level gained from level 2 [1]. */
   talentPointsPerLevel?: number;

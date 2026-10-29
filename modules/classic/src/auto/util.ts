@@ -55,27 +55,87 @@ export const AutoLeave = defineComponent<{ plan: "descend" | "toTown"; depth: nu
 
 /**
  * Retreat memory of the auto controller (owner: classic.auto, on the hero,
- * created lazily): the ticks of the last two retreats. Two retreats within
- * RETREAT_LOOP_TICKS mean the portal leads back into a fight the hero cannot
- * win (no potions to buy): the next return avoids the portal.
+ * created lazily): the ticks and depths of the last three retreats, and the
+ * life of the live boss at the depth of the last two (-1: none there). See
+ * retreatLoop: quick retreats mean the portal leads back into a fight the
+ * hero cannot win (no potions to buy), and the next return avoids the
+ * portal. Two retreats from different depths alone are no loop (a retreat
+ * from a boss fight followed by one on the next level used to send the hero
+ * back by waypoint, re-walking the level), three are. The optional fields
+ * came later: saves without the depths count as one depth, saves without
+ * prev2 need two retreats from one depth, and saves without bossHp never
+ * show boss progress (town.ts returnStep).
  */
-export const AutoRetreats = defineComponent<{ last: number; prev: number }>("classic.autoRetreats");
-/** Two retreats closer than this (2 min) avoid the portal on the way back. */
+export const AutoRetreats = defineComponent<{
+  last: number;
+  prev: number;
+  depth?: number;
+  prevDepth?: number;
+  /** Third-last retreat (absent until three real retreats). */
+  prev2?: number;
+  prev2Depth?: number;
+  /** Life of the live boss at `depth` / `prevDepth` when retreating, -1 when there was none. */
+  bossHp?: number;
+  prevBossHp?: number;
+}>("classic.autoRetreats");
+/** Two retreats from one depth closer than this (2 min), or three within twice this, avoid the portal on the way back. */
 export const RETREAT_LOOP_TICKS = 2400;
 
-/** Records a retreat (town portal at low life). */
-export function noteRetreat(c: AutoCtx): void {
+/**
+ * Records a retreat (town portal at low life). `bossHp` is the life of the
+ * live boss at the current depth (dungeon.ts liveBoss), -1 when there is none.
+ */
+export function noteRetreat(c: AutoCtx, bossHp: number): void {
   const r = c.world.get(c.hero, AutoRetreats);
-  if (r) c.world.update(c.hero, AutoRetreats, { last: c.tick, prev: r.last });
-  else c.world.add(c.hero, AutoRetreats, { last: c.tick, prev: -RETREAT_LOOP_TICKS });
+  if (r) {
+    c.world.update(c.hero, AutoRetreats, {
+      last: c.tick,
+      prev: r.last,
+      depth: c.depth,
+      prevDepth: r.depth ?? c.depth,
+      // The first record's prev is the -RETREAT_LOOP_TICKS placeholder, not a retreat.
+      ...(r.prev > -RETREAT_LOOP_TICKS
+        ? { prev2: r.prev, prev2Depth: r.prevDepth ?? r.depth ?? c.depth }
+        : {}),
+      bossHp,
+      prevBossHp: r.bossHp ?? -1,
+    });
+  } else {
+    c.world.add(c.hero, AutoRetreats, {
+      last: c.tick,
+      prev: -RETREAT_LOOP_TICKS,
+      depth: c.depth,
+      prevDepth: c.depth,
+      bossHp,
+      prevBossHp: -1,
+    });
+  }
 }
 
-/** True when the last two retreats were close together (see AutoRetreats). */
+/**
+ * True when the retreats loop (see AutoRetreats): the last one is recent
+ * (within W = RETREAT_LOOP_TICKS) and either the last two came from one
+ * depth within W, or the last three came within 2 W from any depths
+ * (alternating retreats from a waypoint level and the boss level below it).
+ */
 export function retreatLoop(c: AutoCtx): boolean {
   const r = c.world.get(c.hero, AutoRetreats);
-  return (
-    r !== undefined && r.last - r.prev < RETREAT_LOOP_TICKS && c.tick - r.last < RETREAT_LOOP_TICKS
-  );
+  if (r === undefined || c.tick - r.last >= RETREAT_LOOP_TICKS) return false;
+  const sameDepth = (r.depth ?? 0) === (r.prevDepth ?? 0) && r.last - r.prev < RETREAT_LOOP_TICKS;
+  const three = r.prev2 !== undefined && r.last - r.prev2 < 2 * RETREAT_LOOP_TICKS;
+  return sameDepth || three;
+}
+
+/**
+ * True when the boss of `depth` lost life between the last two retreats,
+ * both from `depth` (AutoRetreats.bossHp / prevBossHp): the retreats are
+ * part of a fight the hero is winning, not a loop.
+ */
+export function bossRetreatProgress(c: AutoCtx, depth: number): boolean {
+  const r = c.world.get(c.hero, AutoRetreats);
+  if (r === undefined || r.bossHp === undefined || r.bossHp < 0) return false;
+  if ((r.depth ?? 0) !== depth || (r.prevDepth ?? 0) !== depth) return false;
+  return (r.prevBossHp ?? -1) > r.bossHp;
 }
 
 export type ValueOf<C> = C extends ComponentType<infer T> ? T : never;

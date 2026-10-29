@@ -1237,6 +1237,14 @@ describe("offline progress", () => {
     expect(summary).toMatchObject({ ms: 3_600_000, depth: 1 });
     expect(summary.kills as number).toBeGreaterThan(0);
     expect(summary.xp as number).toBeGreaterThan(0);
+    expect(summary).toMatchObject({
+      awayMs: 3_600_000,
+      capMs: 8 * 3600 * 1000,
+      xpPct: 20,
+      goldPct: 100,
+      itemPct: 100,
+      source: "model",
+    });
     a.sim.step(1);
     b.sim.step(1);
     const ca = cmds(a.sim).map(({ tick: _t, ...c }) => c);
@@ -1260,8 +1268,8 @@ describe("offline progress", () => {
     expect(short).toMatchObject({ kills: 0, xp: 0, gold: 0, items: 0 });
   });
 
-  it("rejects bad input, a missing hero and a dead hero (hash unchanged)", () => {
-    const { sim, hero } = offlineSim();
+  it("rejects bad input and a missing hero (hash unchanged)", () => {
+    const { sim } = offlineSim();
     const h = sim.hash();
     for (const p of [
       { elapsedMs: 0 },
@@ -1277,16 +1285,23 @@ describe("offline progress", () => {
       expect(r.error?.code).toBe("bad_payload");
     }
     expect(sim.hash()).toBe(h);
-    sim.world.add(hero, Dead, { at: 0, killer: 0 });
-    const h2 = sim.hash();
-    const dead = sim.dispatch("classic.offlineProgress", { elapsedMs: 60_000 }, null);
-    expect(dead.error?.code).toBe("dead");
-    expect(sim.hash()).toBe(h2);
     const empty = autoSim();
     const h3 = empty.hash();
     const none = empty.dispatch("classic.offlineProgress", { elapsedMs: 60_000 }, null);
     expect(none.error?.code).toBe("no_hero");
     expect(empty.hash()).toBe(h3);
+  });
+
+  it("a dead hero is respawned by the grant before the grants are queued (§4.4)", () => {
+    const { sim, hero } = offlineSim();
+    sim.world.add(hero, Dead, { at: 0, killer: 0 });
+    const r = sim.dispatch("classic.offlineProgress", { elapsedMs: 3_600_000 }, null);
+    expect(r.ok, JSON.stringify(r.error)).toBe(true);
+    // The respawn is immediate: Dead is gone and no respawn is queued for later.
+    expect(sim.world.has(hero, Dead)).toBe(false);
+    sim.step(1);
+    expect(ops(sim)).toEqual(["grantXp", "grantGold", "grantItems"]);
+    expect(sim.world.getResource<RunStats>(RES.stats)!.offlineMs).toBe(3_600_000);
   });
 });
 
@@ -1327,6 +1342,6 @@ describe("determinism", () => {
 
   it("pins the hash after a fixed script", () => {
     // Wave A (T-auto): stairs-biased exploration, new town steps.
-    expect(scripted(1).hash()).toBe("47bc9ce5d15bd05c");
+    expect(scripted(1).hash()).toBe("826a1ec6540c2e3e");
   });
 });

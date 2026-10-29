@@ -4,11 +4,13 @@
  * A registered player gets 401/403 on the admin API; a dev admin (granted on the
  * local dev host) reads the economy telemetry shape; a flag switched off answers
  * GET /api/config and stops the market (503 "disabled"); every flag is restored
- * to on in a finally block, because later features need them.
+ * to on in a finally block, because later features need them. The admin dashboard
+ * checks (../admin-dashboard.ts) run inside this feature with the same accounts.
  */
 import { loginGuest } from "../client.ts";
 import { api, registerGuest } from "../accounts.ts";
 import { check, fail } from "../report.ts";
+import { dashboardDenied, dashboardReads } from "../admin-dashboard.ts";
 import type { E2eContext, E2eFeature } from "../features.ts";
 
 const FLAGS = ["bank", "market", "trade", "shops", "arena", "pass", "store"] as const;
@@ -63,6 +65,9 @@ export const adminFeature: E2eFeature = {
     const deniedWrite = await setFlags(url, player.token, { market: false });
     check(deniedWrite.status === 403, `non-admin flag write is 403 (${deniedWrite.status})`);
 
+    // Admin dashboard endpoints (admin-dashboard.md §7): 401 anonymous, 403 for a player.
+    await dashboardDenied(url, player.token);
+
     // GET /api/admin/me answers a player with 200 (no failed request in the dashboard).
     const meBefore = await api<{ admin: boolean; devHost: boolean }>(url, "/api/admin/me", {
       token: player.token,
@@ -73,10 +78,14 @@ export const adminFeature: E2eFeature = {
     );
 
     // Dev admin: the local dev host grants the caller.
-    const self = await api<{ ok: boolean; admin: string }>(url, "/api/dev/admin/self", {
-      token: player.token,
-      method: "POST",
-    });
+    const self = await api<{ ok: boolean; admin: string; accountId: string }>(
+      url,
+      "/api/dev/admin/self",
+      {
+        token: player.token,
+        method: "POST",
+      },
+    );
     check(
       self.status === 200 && self.body.admin === "dev",
       `POST /api/dev/admin/self grants the caller (${self.status})`,
@@ -120,6 +129,9 @@ export const adminFeature: E2eFeature = {
       moderation.status === 200 && Array.isArray(moderation.body.accounts),
       `dev admin reads the moderation queue (${moderation.status})`,
     );
+
+    // Admin dashboard reads (telemetry, seeded stub, every section, lookup, tunables).
+    await dashboardReads(url, player.token, self.body.accountId);
 
     // Kill switch: market off -> the market answers 503 "disabled", for everyone.
     try {

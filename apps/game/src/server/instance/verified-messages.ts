@@ -128,6 +128,8 @@ export function parseVerifiedClientMessage(
         if (!isRecord(r) || !isUint(r.tick) || !isHash(r.hash) || typeof r.pending !== "boolean")
           return null;
         msg.resume = { tick: r.tick, hash: r.hash, pending: r.pending };
+        // Optional hint (offline-idle.md §5.2): an invalid value is dropped, not rejected.
+        if (isUint(r.pendingToTick)) msg.resume.pendingToTick = r.pendingToTick;
       }
       return msg;
     }

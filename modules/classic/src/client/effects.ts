@@ -31,6 +31,13 @@ import {
   type Toast,
 } from "./contract.ts";
 import { depthLabel } from "./hud/format.ts";
+import {
+  AWAY_CARD_MIN_MS,
+  AWAY_QUEST_LINES,
+  awaySpan,
+  type AwayQuestLine,
+  type AwayView,
+} from "./hudModel.ts";
 
 /** What the planner needs from the outside (no DOM, no renderer). */
 export interface EffectEnv {
@@ -46,6 +53,11 @@ export interface EffectEnv {
   manual: boolean;
   /** Sim speed (1, 2, 4 or 8). Telegraph fills last ticks x 50 / speed ms. Default 1. */
   speed?: number;
+  /**
+   * The whole event batch being fanned out (game.ts). The offline summary reads
+   * the quest events of its batch. Absent in unit tests: no quest lines.
+   */
+  batch?: readonly GameEvent[];
 }
 
 export type Visual =
@@ -53,6 +65,8 @@ export type Visual =
   | { kind: "effect"; spec: EffectSpec }
   | { kind: "log"; logKind: LogKind; text: string; color: number }
   | { kind: "toast"; toastKind: Toast["kind"]; title: string; body: string; ms: number }
+  /** The "While you were away" card (offline-idle.md §6). Written to awayStore by game.ts. */
+  | { kind: "away"; view: AwayView }
   | { kind: "panel"; panel: PanelId }
   | { kind: "vendor"; npc: Entity }
   /** The gambler NPC opened: the gamble panel follows it (closed when the hero walks away). */
@@ -295,6 +309,27 @@ function nameOf(env: EffectEnv, e: Entity): string {
     if (h) return h.name;
   }
   return UNKNOWN_NAME;
+}
+
+/**
+ * Quest progress and completions of the batch, one line per quest (the last
+ * state wins, a completed quest stays complete). Feeds the away card.
+ */
+function batchQuestLines(env: EffectEnv): AwayQuestLine[] {
+  const byQuest = new Map<string, AwayQuestLine>();
+  for (const raw of env.batch ?? []) {
+    const ev = raw as unknown as ClassicEvent;
+    if (ev.type !== "classic.quest.progress" && ev.type !== "classic.quest.done") continue;
+    if (byQuest.get(ev.quest)?.done) continue;
+    const name = env.registry.get<{ name: string }>(KIND.quest, ev.quest)?.name ?? ev.quest;
+    byQuest.set(
+      ev.quest,
+      ev.type === "classic.quest.done"
+        ? { name, text: "complete", done: true }
+        : { name, text: `${ev.progress}/${ev.count}`, done: false },
+    );
+  }
+  return [...byQuest.values()];
 }
 
 function skillName(registry: FrozenRegistry, id: string): string {
@@ -624,10 +659,42 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       return out;
     }
     case "classic.offline.summary": {
-      const minutes = Math.floor(ev.ms / 60000);
-      const body = `${minutes} min: ${ev.kills} kills, ${ev.xp} XP, ${ev.gold} gold, ${ev.items} items`;
-      toast("offline", "While you were away", body, TOAST_LONG_MS);
-      log("system", `Offline: ${body}`, LOG_COLOR.system);
+      // A zero grant (no credited minute) shows nothing at all.
+      if (ev.ms < AWAY_CARD_MIN_MS) return out;
+      const upkeep = ev.upkeep ?? 0;
+      const net =
+        upkeep > 0
+          ? ev.found !== undefined
+            ? ` (found ${ev.found}, net of ${upkeep} upkeep)`
+            : ` (net of ${upkeep} upkeep)`
+          : "";
+      log(
+        "system",
+        `Offline ${awaySpan(ev.ms)}: ${ev.kills} kills, +${ev.xp} XP (${ev.xpPct}% rate), +${ev.gold} gold${net}, ${ev.items} items`,
+        LOG_COLOR.system,
+      );
+      const lines = batchQuestLines(env);
+      out.push({
+        kind: "away",
+        view: {
+          awayMs: ev.awayMs,
+          creditedMs: ev.ms,
+          capMs: ev.capMs,
+          kills: ev.kills,
+          xp: ev.xp,
+          gold: ev.gold,
+          upkeep,
+          ...(ev.found !== undefined ? { found: ev.found } : {}),
+          items: ev.items,
+          levels: ev.levels,
+          xpPct: ev.xpPct,
+          goldPct: ev.goldPct,
+          itemPct: ev.itemPct,
+          source: ev.source,
+          quests: lines.slice(0, AWAY_QUEST_LINES),
+          questsMore: Math.max(0, lines.length - AWAY_QUEST_LINES),
+        },
+      });
       return out;
     }
     case "classic.command.failed": {

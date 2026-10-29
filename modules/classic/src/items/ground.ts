@@ -7,7 +7,7 @@ import { ERR, fail, OK, PICKUP_RANGE, type OpResult } from "../actions.ts";
 import { AreaTag, Belt, Inventory, Loot, Pos, Wallet } from "../components.ts";
 import { emit } from "../events.ts";
 import { pct, within } from "../fixed.ts";
-import { currentDepth } from "../resources.ts";
+import { currentDepth, noteLootGold } from "../resources.ts";
 import { addRunStat, anyHero, balanceOf, baseOf, heroFind, liveHero, noteFound } from "./common.ts";
 import { beltAccept } from "./belt.ts";
 import { fitsAt, placeItem, removeItem, sortEntries, type GridBag } from "./inventory.ts";
@@ -42,6 +42,7 @@ export function execPickup(world: World, ctx: SimContext, target: Entity): OpRes
     const total = wallet.gold + loot.gold;
     world.update(hero, Wallet, { gold: total });
     addRunStat(world, "goldEarned", loot.gold);
+    noteLootGold(world, loot.gold);
     emit(ctx, { type: "classic.gold", amount: loot.gold, total, reason: "pickup" });
     emit(ctx, {
       type: "classic.loot.picked",

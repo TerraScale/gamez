@@ -215,10 +215,10 @@ export function goStairs(c: AutoCtx, kind: "stairsDown" | "stairsUp"): boolean {
   return true;
 }
 
-/** The live boss of the current area (awake or asleep), or 0. */
-export function liveBoss(c: AutoCtx): Entity {
+/** The live boss of `depth` (default: the current area; awake or asleep), or 0 (lowest id first). */
+export function liveBoss(c: AutoCtx, depth: number = c.depth): Entity {
   for (const e of c.world.query(Monster, Pos, AreaTag)) {
-    if (c.world.read(e, AreaTag).depth !== c.depth || c.world.has(e, Dead)) continue;
+    if (c.world.read(e, AreaTag).depth !== depth || c.world.has(e, Dead)) continue;
     if (c.world.read(e, Monster).rarity === "boss") return e;
   }
   return 0;
@@ -296,7 +296,20 @@ export function dungeonStep(c: AutoCtx): boolean {
       return true;
   }
 
-  let finished = stall || passing || (ea !== undefined && exploredPct(ea) >= c.cfg.explorePct);
+  // A boss-ready hero goes for the boss first: exploring explorePct of the level before
+  // used to keep it fighting the level's packs 40-110 tiles away from the boss (82 % of
+  // its time at depth 12) until a death or a retreat rebuilt the level. Deliberately
+  // ignores fog (classic.md §15.2 step 10, offline-idle.md §10 #3): the waypoint unlocks on
+  // entering the level, and fights and loot on the way still run before dungeonStep.
+  if (bossAlive && bossReady(level, c.depth) && !stall && c.cfg.autoDescend && huntBoss(c))
+    return true;
+
+  // With the boss of this depth dead and the way down open the level is done: the hero no
+  // longer explores before the boss, and exploring after it cost a warrior ~2 300 ticks.
+  const bossDone =
+    canDescend && isBossDepth(c.depth) && (dungeon?.bossesKilled.includes(c.depth) ?? false);
+  let finished =
+    stall || passing || bossDone || (ea !== undefined && exploredPct(ea) >= c.cfg.explorePct);
   if (!finished) {
     const r = explore();
     if (r === "moving") return true;
@@ -305,7 +318,6 @@ export function dungeonStep(c: AutoCtx): boolean {
   }
   if (!c.cfg.autoDescend && !stall) return explore() === "moving";
 
-  if (bossAlive && bossReady(level, c.depth) && !stall && huntBoss(c)) return true;
   // The main dungeon is done (wave A): off to town for a rift run.
   if (!bossAlive && leaveForRift(c)) return true;
   if (canDescend && goStairs(c, "stairsDown")) return true;

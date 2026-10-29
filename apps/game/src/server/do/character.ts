@@ -1,6 +1,8 @@
 import type { TilePos } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import type { CharacterApi, CharacterRecord, CharacterSummary, Env, ModeId } from "../contracts.ts";
 
 /** Max records per queue message; keeps each message well under the 128 KB limit. */
@@ -30,6 +32,12 @@ export class CharacterDO extends DurableObject<Env> implements CharacterApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "CharacterDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     void ctx.blockConcurrencyWhile(async () => {
       this.#sql.exec(`CREATE TABLE IF NOT EXISTS character (
         id TEXT PRIMARY KEY,
@@ -112,6 +120,12 @@ export class CharacterDO extends DurableObject<Env> implements CharacterApi {
 
   /** Drains the outbox into the sync queue. A throw makes the runtime retry the alarm. */
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "CharacterDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const outbox = this.#outbox;
     if (!outbox) return;
     const sink = {

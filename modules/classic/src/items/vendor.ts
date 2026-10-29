@@ -3,7 +3,8 @@
  * buy (smith items, alchemist potions and town portal scrolls), sell to the
  * junk buyer. Town-only ops need the NPC within INTERACT_RANGE. The stash is
  * in stash.ts, the gambler in gamble.ts (wave A). Purchases add
- * RunStats.goldSpent (wave A).
+ * RunStats.goldSpent (wave A). Alchemist potions and scrolls are upkeep for
+ * the offline rate (noteUpkeepGold, offline-idle.md §4.1); smith items are not.
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, INTERACT_RANGE, OK, type OpResult } from "../actions.ts";
@@ -22,6 +23,7 @@ import { emit } from "../events.ts";
 import { within } from "../fixed.ts";
 import {
   currentDepth,
+  noteUpkeepGold,
   RES,
   type AreaState,
   type VendorStock,
@@ -134,6 +136,7 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
       world.update(hero, Wallet, { gold: wallet.gold - total });
       world.update(hero, Supplies, { tpScrolls: supplies.tpScrolls + o.count });
       addRunStat(world, "goldSpent", total);
+      noteUpkeepGold(world, total);
       emit(ctx, {
         type: "classic.vendor.bought",
         npc: npc.id,
@@ -159,6 +162,7 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
     world.update(hero, Wallet, { gold: wallet.gold - total });
     world.update(hero, Belt, { slots: accepted.slots });
     addRunStat(world, "goldSpent", total);
+    noteUpkeepGold(world, total);
     emit(ctx, { type: "classic.vendor.bought", npc: npc.id, name: base.name, price: total });
     return OK;
   }

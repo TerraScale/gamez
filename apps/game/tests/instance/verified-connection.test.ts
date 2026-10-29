@@ -23,6 +23,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { SocketLike } from "../../src/client/instance/connection.ts";
 import { CLOSE_REPLACED, CLOSE_UNAUTHORIZED } from "../../src/client/instance/messages.ts";
 import { parseVerifiedServerMessage, VerifiedClient } from "../../src/client/instance/verified.ts";
+import { telemetryContext } from "../../src/client/telemetry/index.ts";
 import type { InstanceSocket, SocketInfo } from "../../src/server/instance/host.ts";
 import { VerifiedHost } from "../../src/server/instance/verified-host.ts";
 import { SqlVerifiedStore } from "../../src/server/instance/verified-store.ts";
@@ -287,6 +288,8 @@ describe("VerifiedClient", () => {
     expect(game.states[0]!.snapshot?.tick).toBe(0);
     expect(game.statuses).toEqual(["connecting", "online"]);
     expect(client.status).toBe("online");
+    // Telemetry events carry the server's contentHash (admin-dashboard.md §11.5).
+    expect(telemetryContext()).toMatchObject({ mode: "tvl", contentHash: loaded.contentHash });
 
     net.clock.now += 5000;
     expect(client.submit(game.segment(20))).toBe(true);
