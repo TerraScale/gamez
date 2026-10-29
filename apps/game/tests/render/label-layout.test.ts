@@ -6,6 +6,7 @@ import {
   estimateLabelWidth,
   insetRect,
   LABEL_MAX_STEPS,
+  labelOffView,
   labelRank,
   underChrome,
   type LabelBox,
@@ -200,5 +201,23 @@ describe("HUD label insets", () => {
     expect(underChrome(120, 0, outer, inner)).toBe(false);
     // 'Smith' (50 px wide) centred at x 130 is pulled left inside the inner rect.
     expect(clampOffset(130, 50, inner.x0, inner.x1, 4)).toBe(-19);
+  });
+});
+
+describe("labelOffView", () => {
+  const view: LabelRect = { x0: 0, y0: 0, x1: 800, y1: 600 };
+  it("hides a label whose entity is wholly off screen (it would only show clamped to the edge)", () => {
+    // QA: off-screen party members' names piled at the bottom-right corner.
+    expect(labelOffView(900, 60, 500, 515, view)).toBe(true);
+    expect(labelOffView(-50, 60, 300, 315, view)).toBe(true);
+    expect(labelOffView(400, 60, 640, 655, view)).toBe(true);
+    expect(labelOffView(400, 60, -40, -25, view)).toBe(true);
+  });
+  it("keeps labels that are at least partly in view (they are clamped, not hidden)", () => {
+    expect(labelOffView(400, 60, 300, 315, view)).toBe(false);
+    expect(labelOffView(820, 60, 300, 315, view)).toBe(false);
+    expect(labelOffView(400, 60, 590, 605, view)).toBe(false);
+    // Feet below the view, name above them still visible.
+    expect(labelOffView(400, 60, 560, 575, view)).toBe(false);
   });
 });

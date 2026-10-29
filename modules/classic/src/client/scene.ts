@@ -23,11 +23,13 @@ import {
   Npc,
   Pos,
   Projectile,
+  Reviving,
   Statuses,
   Summoned,
   Casting,
   Dash,
 } from "../components.ts";
+import { isPartyHero, partyMembers, partySize } from "../party/shared.ts";
 import { SUB, facingOf } from "../fixed.ts";
 import { lootFilterOf, RES, type AreaState, type QuestState } from "../resources.ts";
 import { lootVisible } from "../loot.ts";
@@ -82,7 +84,12 @@ export function qaTileToClient(x: number, y: number): { x: number; y: number } |
   return qaRenderer?.tileToClient?.(x, y) ?? null;
 }
 
-export type PickKind = "unit" | "loot" | "npc" | "interactable";
+/**
+ * "ally" (party, docs/design/party.md §10.4): a DOWNED party member; a tap
+ * on it is an interact (classic.interact -> revive). Standing members are
+ * never picks (clicks pass through them to the ground / monsters).
+ */
+export type PickKind = "unit" | "loot" | "npc" | "interactable" | "ally";
 
 export interface Pick {
   kind: PickKind;
@@ -103,6 +110,8 @@ export interface SceneInput {
   targeted: Entity;
   showLootLabels: boolean;
   lighting: boolean;
+  /** Identity outline ("self") around the played hero; default true. */
+  outlineHero?: boolean;
   /**
    * sim.tick at render time (ticks processed so far). The render time used for
    * hit flashes, swing progress and corpse fades is `tick - 1 + alpha`.
@@ -122,6 +131,12 @@ export interface SceneStats {
 
 /** Positions further apart than this (sub) are not interpolated (teleports). */
 export const TELEPORT_SUB = 3 * SUB;
+
+/**
+ * A control switch to a hero further than this (tiles) from the camera snaps
+ * the view instead of panning across the map (docs/design/party.md §10.6).
+ */
+export const SWITCH_SNAP_TILES = 12;
 
 const HERO_NAME_FALLBACK = "Hero";
 
@@ -461,6 +476,11 @@ export class SceneSync {
   private readonly packPlates = new Set<number>();
   /** Client-only: the last swing of each unit and the render time it was last seen. */
   private readonly swings = new Map<Entity, { action: EntityAction; at: number }>();
+  /** The hero the camera last followed (a change is a control switch) and the camera's tile target. */
+  private focusHero: Entity = 0;
+  private camera: { x: number; y: number } | null = null;
+  /** Subtitle "Reviving N%" of every member being revived this frame (rebuilt each render). */
+  private readonly reviving = new Map<Entity, string>();
   private readonly anim: UnitAnim = {
     action: "idle",
     progress: undefined,
@@ -483,6 +503,9 @@ export class SceneSync {
     this.picks = [];
     this.hits.clear();
     this.swings.clear();
+    this.focusHero = 0;
+    this.camera = null;
+    this.reviving.clear();
   }
 
   /**
@@ -571,6 +594,17 @@ export class SceneSync {
     this.updateMap(input, hero, heroPos);
     this.updateLighting(input);
 
+    // Revive channels (docs/design/party.md §7.3): progress shown on the downed target.
+    this.reviving.clear();
+    for (const r of world.query(Reviving)) {
+      const rv = world.read(r, Reviving);
+      const span = Math.max(1, rv.until - rv.startedAt);
+      const frac = clamp01((input.tick - rv.startedAt) / span);
+      this.reviving.set(rv.target, `Reviving ${Math.floor(frac * 20) * 5}%`);
+    }
+    // Summon ownership ink only matters with a party (solo output stays identical).
+    const partyTinted = partySize(world) > 1;
+
     const seen = new Set<string>();
     const picks: Pick[] = [];
     let monsters = 0;
@@ -605,11 +639,50 @@ export class SceneSync {
         action: a.action,
         tint: tintOf(proto?.tint),
         scale: 100,
-        highlight: false,
+        highlight: input.outlineHero === false ? null : "self",
         statusTint: statusTintOf(world, registry, hero),
       };
+      const reviving = this.reviving.get(hero);
+      if (reviving !== undefined) ent.subtitle = reviving;
       decorateUnit(ent, a, world, registry, hero, m?.speed ?? 0);
       put(hero, ent, null);
+    }
+
+    // Party followers: every other member, slot order. Name plate and the "party" outline;
+    // a downed member takes the dead pose and is a pick ("ally": a tap revives it).
+    for (const m of partyMembers(world)) {
+      if (m === hero) continue;
+      const cur = world.get(m, Pos);
+      if (cur === undefined || world.get(m, AreaTag)?.depth !== depth) continue;
+      const pos = interpolate(this.prev.get(m), cur, input.alpha);
+      const mover = world.get(m, Mover);
+      const heroComp = world.get(m, Hero);
+      const proto = heroComp ? registry.get<ClassProto>(KIND.class, heroComp.classId) : undefined;
+      const dead = world.has(m, Dead);
+      const a = this.unitAnim(world, registry, m, mover?.moving ?? false, dead, t);
+      const ent: ArpgRenderEntity = {
+        id: `c${m}`,
+        name: heroComp?.name ?? HERO_NAME_FALLBACK,
+        appearance: proto?.appearance ?? "unit.hero",
+        fallbackAppearance: "unit.hero",
+        kind: "unit",
+        x: pos.x / SUB,
+        y: pos.y / SUB,
+        facing: (mover?.facing ?? "s") as Facing,
+        moving: mover?.moving ?? false,
+        isSelf: false,
+        action: a.action,
+        tint: tintOf(proto?.tint),
+        scale: 100,
+        highlight: "party",
+        showLabel: true,
+        statusTint: statusTintOf(world, registry, m),
+      };
+      const reviving = this.reviving.get(m);
+      if (reviving !== undefined) ent.subtitle = reviving;
+      else if (dead) ent.subtitle = "Downed";
+      decorateUnit(ent, a, world, registry, m, mover?.speed ?? 0);
+      put(m, ent, dead ? "ally" : null);
     }
 
     // Monsters.
@@ -627,6 +700,9 @@ export class SceneSync {
         return mp && mp.tint !== 0 ? mp.tint : acc;
       }, 0);
       const tint = mod !== 0 ? multiplyTint(tintOf(proto?.tint), mod) : tintOf(proto?.tint);
+      // A summon owned by any party member wears the party ink (cyan), unless hovered.
+      const owner = world.get(e, Summoned)?.owner ?? 0;
+      const partyOwned = partyTinted && owner !== 0 && isPartyHero(world, owner);
       const damaged = life !== undefined && life.hp < life.max;
       const targeted = e === input.targeted || e === input.hovered;
       const mover = world.get(e, Mover);
@@ -657,7 +733,7 @@ export class SceneSync {
         tint,
         scale: monsterScale(mon.rarity),
         labelColor: MONSTER_LABEL_COLOR[mon.rarity],
-        highlight: e === input.hovered,
+        highlight: e === input.hovered ? true : partyOwned && !dead ? "party" : false,
         statusTint: statusTintOf(world, registry, e),
       };
       decorateUnit(ent, a, world, registry, e, mover?.speed ?? 0);
@@ -847,7 +923,7 @@ export class SceneSync {
     }
     this.picks = picks;
     this.prune(t);
-    if (heroPos !== null) this.target.follow(heroPos.x / SUB, heroPos.y / SUB);
+    if (heroPos !== null) this.focusCamera(hero, heroPos.x / SUB, heroPos.y / SUB);
     this.stats = {
       entities: seen.size,
       monsters,
@@ -855,6 +931,22 @@ export class SceneSync {
       heroY: heroPos !== null ? heroPos.y / SUB : null,
     };
     return this.stats;
+  }
+
+  /**
+   * Camera follow of the controlled hero. A control switch pans smoothly
+   * (follow) unless the new hero is more than SWITCH_SNAP_TILES away from the
+   * current view, then the camera snaps to it.
+   */
+  private focusCamera(hero: Entity, x: number, y: number): void {
+    if (hero !== this.focusHero) {
+      this.focusHero = hero;
+      const c = this.camera;
+      if (c !== null && Math.hypot(x - c.x, y - c.y) > SWITCH_SNAP_TILES)
+        this.target.snapCamera(x, y);
+    }
+    this.target.follow(x, y);
+    this.camera = { x, y };
   }
 
   /** Drops hit and swing records nobody can see any more (small maps, cheap). */

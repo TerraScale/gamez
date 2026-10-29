@@ -103,6 +103,8 @@ export interface VerifiedResync {
   tick: number;
   hash: string;
   snapshot: SimSnapshot;
+  /** Resync "offline": the deferred offline grant the server applied (shown as the away summary). */
+  offline?: { elapsedMs: number; events: GameEvent[] } | null;
 }
 
 /** Wave C: the server's answer to a bank op (protocol verified.ts "bank"). */
@@ -118,7 +120,7 @@ export interface VerifiedHandlers {
    * last server-verified tick/hash the local sim descends from, and whether
    * unacked segments exist), or null to adopt the server state.
    */
-  resume(): { tick: number; hash: string; pending: boolean } | null;
+  resume(): { tick: number; hash: string; pending: boolean; pendingToTick?: number } | null;
   state(s: VerifiedState): void;
   verified(a: VerifiedAck): void;
   resync(r: VerifiedResync): void;

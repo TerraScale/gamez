@@ -6,6 +6,7 @@ import { EntityLayer, type EntityView } from "../../src/client/render/entity-vie
 import { buildPrimitives, destroyPrimitives } from "../../src/client/render/primitives.ts";
 import { buildChunk, destroyChunk } from "../../src/client/render/ground.ts";
 import { FxLayer } from "../../src/client/render/fx.ts";
+import { FLOAT_STACK_CAP } from "../../src/client/render/float-layout.ts";
 import type { AnimVisual, SpriteVisual, Visuals } from "../../src/client/render/visuals.ts";
 
 /** A Visuals stand-in: exact keys in `anims` and `sprites` resolve, nothing else. */
@@ -441,10 +442,22 @@ describe("FxLayer", () => {
 
   it("caps float texts and recycles the oldest one", () => {
     const fx = new FxLayer(() => null);
+    // Distinct spots, so the per-spot cap does not apply: only the pool cap does.
     for (let i = 0; i < 60; i++) {
-      fx.float({ x: i, y: 0, text: String(i), color: 0xffffff, size: "l" }, { sx: 0, sy: 0 });
+      fx.float({ x: i, y: 0, text: String(i), color: 0xffffff, size: "l" }, { sx: i * 100, sy: 0 });
     }
     expect(fx.activeFloats).toBe(48);
+    fx.destroy();
+  });
+
+  it("keeps at most FLOAT_STACK_CAP floats on one spot, dropping the oldest", () => {
+    const fx = new FxLayer(() => null);
+    for (let i = 0; i < 9; i++) {
+      fx.float({ x: 0, y: 0, text: `h${i}`, color: 0xffffff }, { sx: 0, sy: 0 });
+    }
+    expect(fx.activeFloats).toBe(FLOAT_STACK_CAP);
+    const texts = fx.floatLayer.children.filter((c) => c.visible).map((c) => (c as Text).text);
+    expect(texts.sort()).toEqual(["h5", "h6", "h7", "h8"]);
     fx.destroy();
   });
 });

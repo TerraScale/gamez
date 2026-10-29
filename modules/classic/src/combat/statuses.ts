@@ -105,9 +105,10 @@ export const statusesSystem: SystemDef = {
     const depth = currentDepth(world);
     const tick = ctx.tick;
     for (const e of units) {
+      // Peek first: only units with statuses in this area are taken live (copied for rollback).
+      if (world.peek(e, Statuses)!.list.length === 0) continue;
+      if (world.peek(e, AreaTag)!.depth !== depth) continue;
       const st = world.read(e, Statuses);
-      if (st.list.length === 0) continue;
-      if (world.read(e, AreaTag).depth !== depth) continue;
       const dead = world.has(e, Dead);
       let expired = false;
       for (const s of st.list) {

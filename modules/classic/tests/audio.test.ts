@@ -280,6 +280,19 @@ const ALL_TYPES: Record<ClassicEventType, true> = {
   "classic.rift.completed": true,
   "classic.rift.failed": true,
   "classic.achievement.unlocked": true,
+  "classic.party.recruited": true,
+  "classic.party.dismissed": true,
+  "classic.party.renamed": true,
+  "classic.party.reordered": true,
+  "classic.party.control": true,
+  "classic.party.config": true,
+  "classic.party.slots": true,
+  "classic.party.downed": true,
+  "classic.party.reviving": true,
+  "classic.party.reviveCancelled": true,
+  "classic.party.revived": true,
+  "classic.party.wiped": true,
+  "classic.party.itemGiven": true,
 };
 
 /** Events that are deliberately silent (null in the table). */
@@ -293,6 +306,11 @@ const SILENT: ClassicEventType[] = [
   "classic.control",
   "classic.auto.plan",
   "classic.auto.notice",
+  "classic.party.renamed",
+  "classic.party.reordered",
+  "classic.party.config",
+  "classic.party.reviving",
+  "classic.party.reviveCancelled",
 ];
 
 /** A payload with the fields the table reads (plausible values, not a real event). */

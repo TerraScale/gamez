@@ -8,6 +8,7 @@
 import type { Entity, FrozenRegistry, SimContext, World } from "@gamez/kernel";
 import { Equipment } from "../components.ts";
 import { emit } from "../events.ts";
+import { partyOf } from "../party/shared.ts";
 import { setPieceCounts } from "../rules.ts";
 import { EQUIP_SLOTS, KIND, type ItemInstance, type SetProto } from "../types.ts";
 
@@ -56,6 +57,7 @@ export function emitSetChanges(
       name: proto?.name ?? set,
       pieces: now,
       active,
+      ...(partyOf(world) !== null ? { hero } : {}),
     });
   }
 }

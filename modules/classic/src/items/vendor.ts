@@ -3,7 +3,8 @@
  * buy (smith items, alchemist potions and town portal scrolls), sell to the
  * junk buyer. Town-only ops need the NPC within INTERACT_RANGE. The stash is
  * in stash.ts, the gambler in gamble.ts (wave A). Purchases add
- * RunStats.goldSpent (wave A).
+ * RunStats.goldSpent (wave A). Alchemist potions and scrolls are upkeep for
+ * the offline rate (noteUpkeepGold, offline-idle.md §4.1); smith items are not.
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, INTERACT_RANGE, OK, type OpResult } from "../actions.ts";
@@ -16,12 +17,12 @@ import {
   Npc,
   Pos,
   Supplies,
-  Wallet,
 } from "../components.ts";
 import { emit } from "../events.ts";
 import { within } from "../fixed.ts";
 import {
   currentDepth,
+  noteUpkeepGold,
   RES,
   type AreaState,
   type VendorStock,
@@ -30,7 +31,17 @@ import {
 } from "../resources.ts";
 import { monsterLevel, potionUnlocked, sellPrice } from "../rules.ts";
 import { KIND, type ItemInstance, type ItemRarity, type NpcProto } from "../types.ts";
-import { addRunStat, balanceOf, baseOf, liveHero, noteFound } from "./common.ts";
+import {
+  addRunStat,
+  balanceOf,
+  baseOf,
+  heroTag,
+  liveHero,
+  noteFound,
+  purseScrolls,
+  purseWallet,
+  setPurseGold,
+} from "./common.ts";
 import { beltAccept } from "./belt.ts";
 import { placeItem, removeItem } from "./inventory.ts";
 import { rollItem } from "./generate.ts";
@@ -101,18 +112,22 @@ export interface BuyOrder {
   count: number;
 }
 
-/** Buys a smith item (by stock index), an alchemist potion or a town portal scroll ("tp"). */
-export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
+/**
+ * `hero` buys a smith item (by stock index) into its bag, an alchemist potion
+ * into its belt or town portal scrolls ("tp") into the purse's Supplies.
+ * Gold always comes from the party purse (docs/design/party.md §2.2).
+ */
+export function execBuy(world: World, ctx: SimContext, hero: Entity, o: BuyOrder): OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   const npc = npcInReach(world, ctx, hero, o.npc);
   if (!("proto" in npc)) return npc;
   const bal = balanceOf(ctx.registry);
-  const wallet = world.get(hero, Wallet);
+  const wallet = purseWallet(world);
   if (!wallet) return fail(ERR.noHero, "the hero has no wallet yet");
+  const tag = heroTag(world, hero);
 
   if (o.potion !== null) {
     const sells = npc.proto.sells;
@@ -124,21 +139,23 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
     }
     if (o.potion === "tp") {
       if (!sells.tpScroll) return fail(ERR.badTarget, "this npc does not sell scrolls");
-      const supplies = world.get(hero, Supplies);
+      const supplies = purseScrolls(world);
       if (!supplies) return fail(ERR.noHero, "the hero has no supplies yet");
       if (supplies.tpScrolls + o.count > bal.maxTpScrolls) {
         return fail(ERR.badPayload, `the hero carries at most ${bal.maxTpScrolls} scrolls`);
       }
       const total = bal.tpScrollPrice * o.count;
       if (wallet.gold < total) return fail(ERR.noGold, `need ${total} gold`);
-      world.update(hero, Wallet, { gold: wallet.gold - total });
-      world.update(hero, Supplies, { tpScrolls: supplies.tpScrolls + o.count });
+      setPurseGold(world, wallet.purse, wallet.gold - total);
+      world.update(supplies.purse, Supplies, { tpScrolls: supplies.tpScrolls + o.count });
       addRunStat(world, "goldSpent", total);
+      noteUpkeepGold(world, total);
       emit(ctx, {
         type: "classic.vendor.bought",
         npc: npc.id,
         name: "Town Portal Scroll",
         price: total,
+        ...tag,
       });
       return OK;
     }
@@ -156,10 +173,17 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
     if (accepted.left > 0) return fail(ERR.beltFull, "the potion belt has no room for that many");
     const total = base.value * o.count;
     if (wallet.gold < total) return fail(ERR.noGold, `need ${total} gold`);
-    world.update(hero, Wallet, { gold: wallet.gold - total });
+    setPurseGold(world, wallet.purse, wallet.gold - total);
     world.update(hero, Belt, { slots: accepted.slots });
     addRunStat(world, "goldSpent", total);
-    emit(ctx, { type: "classic.vendor.bought", npc: npc.id, name: base.name, price: total });
+    noteUpkeepGold(world, total);
+    emit(ctx, {
+      type: "classic.vendor.bought",
+      npc: npc.id,
+      name: base.name,
+      price: total,
+      ...tag,
+    });
     return OK;
   }
 
@@ -176,7 +200,7 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
   if (wallet.gold < item.value) return fail(ERR.noGold, `need ${item.value} gold`);
   const next = placeItem(ctx.registry, bag, item);
   if (!next) return fail(ERR.bagFull, "there is no room in the bag");
-  world.update(hero, Wallet, { gold: wallet.gold - item.value });
+  setPurseGold(world, wallet.purse, wallet.gold - item.value);
   world.update(hero, Inventory, { items: next.items });
   addRunStat(world, "goldSpent", item.value);
   noteFound(world, item);
@@ -184,28 +208,45 @@ export function execBuy(world: World, ctx: SimContext, o: BuyOrder): OpResult {
     i === stockIdx ? { ...s, items: s.items.filter((_, j) => j !== o.index) } : s,
   );
   world.setResource(RES.vendors, { stocks });
-  emit(ctx, { type: "classic.vendor.bought", npc: npc.id, name: item.name, price: item.value });
+  emit(ctx, {
+    type: "classic.vendor.bought",
+    npc: npc.id,
+    name: item.name,
+    price: item.value,
+    ...tag,
+  });
   return OK;
 }
 
-/** Sells a bag item to the junk buyer (buyPct of its value). */
-export function execSell(world: World, ctx: SimContext, npcEntity: Entity, uid: number): OpResult {
+/** `hero` sells one of its bag items to the junk buyer (buyPct of its value) for purse gold. */
+export function execSell(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npcEntity: Entity,
+  uid: number,
+): OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   const npc = npcInReach(world, ctx, hero, npcEntity);
   if (!("proto" in npc)) return npc;
   if (npc.proto.buyPct <= 0) return fail(ERR.badTarget, "this npc does not buy items");
   const bag = world.get(hero, Inventory);
-  const wallet = world.get(hero, Wallet);
+  const wallet = purseWallet(world);
   if (!bag || !wallet) return fail(ERR.noHero, "the hero has no inventory yet");
   const removed = removeItem(bag, uid);
   if (!removed) return fail(ERR.unknownId, `item ${uid} is not in the bag`);
   const price = sellPrice(removed.item, npc.proto.buyPct);
   world.update(hero, Inventory, { items: removed.bag.items });
-  world.update(hero, Wallet, { gold: wallet.gold + price });
-  emit(ctx, { type: "classic.vendor.sold", npc: npc.id, name: removed.item.name, price });
+  setPurseGold(world, wallet.purse, wallet.gold + price);
+  emit(ctx, {
+    type: "classic.vendor.sold",
+    npc: npc.id,
+    name: removed.item.name,
+    price,
+    ...heroTag(world, hero),
+  });
   return OK;
 }

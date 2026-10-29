@@ -20,7 +20,7 @@
  * No town portal in a rift (ERR.inRift): no voluntary trips, no retreat.
  */
 import type { Entity } from "@gamez/kernel";
-import { AreaTag, Dead, Interactable, Monster, Pos, Supplies } from "../components.ts";
+import { AreaTag, Dead, Interactable, Monster, Pos } from "../components.ts";
 import { riftOf, RES, type DungeonState, type RiftState } from "../resources.ts";
 import {
   isRiftDepth,
@@ -40,6 +40,7 @@ import {
   isIgnored,
   moveTo,
   nearestInteractable,
+  purseScrolls,
   setIntent,
   setPlan,
   type AutoCtx,
@@ -139,7 +140,7 @@ export function riftTownStep(c: AutoCtx): StepResult {
  */
 export function leaveForRift(c: AutoCtx): boolean {
   if (c.depth < MAIN_DUNGEON_DEPTH || isRiftDepth(c.depth) || riftWanted(c) === 0) return false;
-  if ((c.world.get(c.hero, Supplies)?.tpScrolls ?? 0) > 0) {
+  if (purseScrolls(c) > 0) {
     setPlan(c, "toTown", "rift");
     travel(c, { op: "townPortal" });
     return true;

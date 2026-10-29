@@ -14,9 +14,17 @@ import { useSelect } from "../hooks.ts";
 import { Btn, PanelFrame, Row, Section, type SlotProps } from "../common.tsx";
 import { C, labelStyle } from "../styles.ts";
 
-type BoolSetting = "showDamageNumbers" | "showLootLabels" | "showMinimap" | "lighting" | "showPerf";
+type BoolSetting =
+  | "showDamageNumbers"
+  | "showLootLabels"
+  | "showMinimap"
+  | "lighting"
+  | "showPerf"
+  | "outlineHero";
 
-const FLAGS: { key: BoolSetting; label: string }[] = [
+/** Display toggles, in display order (exported for tests). */
+export const DISPLAY_FLAGS: readonly { key: BoolSetting; label: string }[] = [
+  { key: "outlineHero", label: "Outline my hero" },
   { key: "showDamageNumbers", label: "Damage numbers" },
   { key: "showLootLabels", label: "Loot labels" },
   { key: "showMinimap", label: "Minimap (M)" },
@@ -223,29 +231,41 @@ function Toggle({
   );
 }
 
+/** Label column of every slider row: the same width, so all tracks start at one x (Zoom and audio). */
+export const SLIDER_LABEL_WIDTH = 120;
+
+/** A labelled range input in a 44 px row. Zoom and the audio sliders all use it. */
 function Slider({
   label,
   value,
   onChange,
+  min = 0,
+  max = 100,
+  step = 1,
+  format = (v: number) => `${v}%`,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  format?: (v: number) => string;
 }) {
   return (
     <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44 }}>
-      <span style={{ minWidth: 120 }}>{label}</span>
+      <span style={{ minWidth: SLIDER_LABEL_WIDTH }}>{label}</span>
       <input
         type="range"
         aria-label={label}
-        min={0}
-        max={100}
-        step={1}
+        min={min}
+        max={max}
+        step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         style={{ flex: 1, height: 44 }}
       />
-      <span style={{ minWidth: 40, textAlign: "right" }}>{`${value}%`}</span>
+      <span style={{ minWidth: 40, textAlign: "right" }}>{format(value)}</span>
     </label>
   );
 }
@@ -336,7 +356,7 @@ export function SettingsPanel({ api }: SlotProps) {
         </p>
       </Section>
       <Section title="Display">
-        {FLAGS.map((f) => (
+        {DISPLAY_FLAGS.map((f) => (
           <Toggle
             key={f.key}
             label={f.label}
@@ -344,20 +364,15 @@ export function SettingsPanel({ api }: SlotProps) {
             onChange={(v) => handlers.flag(f.key, v)}
           />
         ))}
-        <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44 }}>
-          <span style={{ minWidth: 70 }}>Zoom</span>
-          <input
-            type="range"
-            aria-label="Zoom"
-            min={0.5}
-            max={2}
-            step={0.1}
-            value={settings.zoom}
-            onChange={(e) => handlers.zoom(Number(e.target.value))}
-            style={{ flex: 1, height: 44 }}
-          />
-          <span style={{ minWidth: 40, textAlign: "right" }}>{`${settings.zoom.toFixed(1)}×`}</span>
-        </label>
+        <Slider
+          label="Zoom"
+          value={settings.zoom}
+          min={0.5}
+          max={2}
+          step={0.1}
+          format={(v) => `${v.toFixed(1)}×`}
+          onChange={(n) => handlers.zoom(n)}
+        />
       </Section>
       <Section title="Audio">
         {VOLUMES.map((v) => (

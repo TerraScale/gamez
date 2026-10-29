@@ -9,9 +9,8 @@
  * that is neither an upgrade nor worth keeping.
  */
 import type { Entity } from "@gamez/kernel";
-import { pushCommand } from "../bus.ts";
-import { emit } from "../events.ts";
-import { Belt, Inventory, Level, Life, Mana, Npc, Pos, Supplies, Wallet } from "../components.ts";
+import { Belt, Inventory, Level, Life, Mana, Npc, Pos } from "../components.ts";
+import type { HeroCommand } from "../actions.ts";
 import {
   RES,
   type DungeonState,
@@ -37,15 +36,17 @@ import {
   type QuestProto,
 } from "../types.ts";
 import { craftStep, gambleStep, repairStep } from "./craft.ts";
-import { bossReady, clearObjective, travel } from "./dungeon.ts";
+import { bossReady, clearObjective, liveBoss, travel } from "./dungeon.ts";
 import { isKeeper, upgradeFor } from "./gear.ts";
+import { partyReturnWait } from "./lead.ts";
 import { riftTownStep } from "./riftLoop.ts";
 import { approach, at, type StepResult } from "./visit.ts";
 import {
   addIgnore,
-  balanceOf,
   bagFits,
+  balanceOf,
   effectiveLevel,
+  emitFor,
   inReach,
   isCasterClass,
   itemSize,
@@ -54,6 +55,10 @@ import {
   npcsByRole,
   potionAmount,
   potionOf,
+  bossRetreatProgress,
+  purseGold,
+  purseScrolls,
+  pushCmd,
   retreatLoop,
   setPlan,
   type AutoCtx,
@@ -72,7 +77,7 @@ function healStep(c: AutoCtx): StepResult {
   const life = c.world.get(c.hero, Life);
   const mana = c.world.get(c.hero, Mana);
   if ((!life || life.hp >= life.max) && (!mana || mana.mp >= mana.max)) return "skip";
-  return at(c, npc, () => pushCommand(c.world, { op: "heal", npc }));
+  return at(c, npc, () => pushCmd(c, { op: "heal", npc }));
 }
 
 /** Stash tabs by convention (wave-A.md §8): general, sets and uniques, gems, overflow. */
@@ -183,12 +188,12 @@ function sellStep(c: AutoCtx): StepResult {
   );
   return at(c, junk, () => {
     if (keptSold)
-      emit(c.ctx, {
+      emitFor(c, {
         type: "classic.auto.notice",
         code: "stash_full",
         message: "Stash is full: selling kept items",
       });
-    for (const it of sell) pushCommand(c.world, { op: "sell", npc: junk, uid: it.uid });
+    for (const it of sell) pushCmd(c, { op: "sell", npc: junk, uid: it.uid });
   });
 }
 
@@ -198,7 +203,7 @@ function stashStep(c: AutoCtx): StepResult {
   const put = sortBag(c).stash;
   if (put.length === 0) return "skip";
   return at(c, stash, () => {
-    for (const p of put) pushCommand(c.world, { op: "stashPut", uid: p.item.uid, tab: p.tab });
+    for (const p of put) pushCmd(c, { op: "stashPut", uid: p.item.uid, tab: p.tab });
   });
 }
 
@@ -241,7 +246,7 @@ export function restockPrice(c: AutoCtx): number {
   let best = Number.MAX_SAFE_INTEGER;
   for (const [, npc] of c.reg.all<NpcProto>(KIND.npc)) {
     if (npc.role !== "alchemist" || !npc.sells) continue;
-    const gold = c.world.get(c.hero, Wallet)?.gold ?? 0;
+    const gold = purseGold(c);
     const level = c.world.get(c.hero, Level)?.level ?? 1;
     const base = chooseBase(c, npc.sells.potions, "life", potionTier(level), gold);
     if (base) best = Math.min(best, base.price);
@@ -264,8 +269,8 @@ export interface Purchase {
  */
 export function planPurchases(c: AutoCtx, sells: NonNullable<NpcProto["sells"]>): Purchase[] {
   const bal = balanceOf(c.reg);
-  let gold = c.world.get(c.hero, Wallet)?.gold ?? 0;
-  let scrolls = c.world.get(c.hero, Supplies)?.tpScrolls ?? 0;
+  let gold = purseGold(c);
+  let scrolls = purseScrolls(c);
   const out: Purchase[] = [];
   const buyScrolls = (upTo: number): void => {
     if (!sells.tpScroll) return;
@@ -347,7 +352,7 @@ function buyStep(c: AutoCtx): StepResult {
   if (list.length === 0) return "skip";
   return at(c, npc, () => {
     for (const p of list)
-      pushCommand(c.world, { op: "buy", npc, index: 0, potion: p.potion, count: p.count });
+      pushCmd(c, { op: "buy", npc, index: 0, potion: p.potion, count: p.count });
   });
 }
 
@@ -375,7 +380,7 @@ function smithStep(c: AutoCtx): StepResult {
   const proto = c.world.read(npc, Npc).proto;
   const stock = c.world.getResource<VendorState>(RES.vendors)?.stocks.find((s) => s.npc === proto);
   if (!stock) return "skip";
-  const gold = c.world.get(c.hero, Wallet)?.gold ?? 0;
+  const gold = purseGold(c);
   const budget = gold - smithReserve(c);
   let best: { index: number; gain: number } | null = null;
   stock.items.forEach((it, index) => {
@@ -389,7 +394,7 @@ function smithStep(c: AutoCtx): StepResult {
   });
   if (!best) return "skip";
   const index = (best as { index: number }).index;
-  return at(c, npc, () => pushCommand(c.world, { op: "buy", npc, index, potion: null, count: 1 }));
+  return at(c, npc, () => pushCmd(c, { op: "buy", npc, index, potion: null, count: 1 }));
 }
 
 type QuestOp = { op: "acceptQuest"; quest: string } | { op: "completeQuest"; quest: string };
@@ -436,19 +441,14 @@ function questStep(c: AutoCtx): StepResult {
     const ops = questOps(c, c.world.read(npc, Npc).proto);
     if (ops.length > 0)
       return at(c, npc, () => {
-        for (const op of ops) pushCommand(c.world, op);
+        for (const op of ops) pushCmd(c, op);
       });
   }
   return "skip";
 }
 
 /** Travel step result: walking to the exit, or the command was sent (wait for the transition). */
-function goTravel(
-  c: AutoCtx,
-  e: Entity,
-  cmd: Parameters<typeof pushCommand>[1],
-  note: string,
-): StepResult {
+function goTravel(c: AutoCtx, e: Entity, cmd: HeroCommand, note: string): StepResult {
   setPlan(c, "toDungeon", note);
   const same = c.st.focus === e;
   c.st.focus = e;
@@ -504,6 +504,17 @@ function portalToBoss(c: AutoCtx, dungeon: DungeonState): boolean {
 }
 
 /**
+ * True when the portal leads back to a boss the hero is ready for
+ * (portalToBoss) and that boss is at or below half its life.
+ */
+function bossHalfDown(c: AutoCtx, dungeon: DungeonState): boolean {
+  if (!portalToBoss(c, dungeon)) return false;
+  const boss = liveBoss(c, dungeon.portal!.depth);
+  const l = boss === 0 ? undefined : c.world.get(boss, Life);
+  return l !== undefined && l.hp * 2 <= l.max;
+}
+
+/**
  * Back to the dungeon: toward a clearLevel quest objective first
  * (objectiveReturn; unless the portal leads back to a boss the hero is
  * ready for), then a Rift run once the main dungeon is done
@@ -511,9 +522,21 @@ function portalToBoss(c: AutoCtx, dungeon: DungeonState): boolean {
  * else the town stairs.
  */
 function returnStep(c: AutoCtx): StepResult {
+  // Party: wait (bounded) for the followers' own errands and for them to gather.
+  if (c.party && partyReturnWait(c)) return "wait";
   const dungeon = c.world.getResource<DungeonState>(RES.dungeon);
-  // Two quick retreats: the portal leads back into a fight the hero keeps losing.
-  const loop = retreatLoop(c);
+  // Quick retreats: the portal leads back into a fight the hero keeps losing. Not when it
+  // leads to a boss the hero is ready for, has already brought below half life, and hurt
+  // between the last two retreats from its depth: the wound is kept and pressing on wins
+  // (warrior vs Vessa: the second retreat came with her at 14 % and the waypoint way back
+  // lost the fight). Without that progress a half-dead boss that keeps winning is a loop.
+  const loop =
+    retreatLoop(c) &&
+    !(
+      dungeon !== undefined &&
+      bossHalfDown(c, dungeon) &&
+      bossRetreatProgress(c, dungeon.portal!.depth)
+    );
   const goal = dungeon ? clearObjective(c) : 0;
   if (goal > 0 && dungeon && !portalToBoss(c, dungeon)) {
     const r = objectiveReturn(c, goal, dungeon, loop);

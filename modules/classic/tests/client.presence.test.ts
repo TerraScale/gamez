@@ -309,6 +309,8 @@ describe("TownPresence: drawing other players", () => {
     expect(a.name).toBe("Player a");
     expect(a.subtitle).toBe("Lv 3 Rogue");
     expect(a.showLabel).toBe(true);
+    // Other players carry the soft green identity outline.
+    expect(a.highlight).toBe("ally");
     expect(a.appearance).toBe("unit.hero.rogue");
     expect(a.moving).toBe(false);
     expect(presence.avatars.map((v) => v.id)).toEqual(["p:a", "p:b"]);

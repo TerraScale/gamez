@@ -6,7 +6,16 @@
 import { createSim, loadMode } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
 import { mode, modules } from "../src/index.ts";
-import { buildGallerySections, type GalleryCell } from "../src/client/gallery.ts";
+import {
+  buildGallerySections,
+  cellReachable,
+  classifyIcon,
+  displayWorst,
+  iconGlyphIds,
+  tallyCells,
+  type CellReport,
+  type GalleryCell,
+} from "../src/client/gallery.ts";
 import { EFFECT_TABLE, planEvent, type EffectEnv, type Visual } from "../src/client/effects.ts";
 import { RARITY_COLOR } from "../src/client/contract.ts";
 
@@ -89,5 +98,82 @@ describe("gallery loot and stations", () => {
     const keys = new Set(section("props").cells.map((c) => c.key));
     expect(keys.has("props:station:riftObelisk")).toBe(true);
     expect(keys.has("props:station:riftExit")).toBe(true);
+  });
+});
+
+describe("gallery icon coverage", () => {
+  const glyphs = iconGlyphIds(loaded.registry);
+  const iconIds = (sec: string) =>
+    section(sec)
+      .cells.map((c) => c.extra?.icon)
+      .filter((x): x is string => typeof x === "string" && x !== "");
+
+  it("finds glyph-backed item and skill icons in the gallery sections", () => {
+    expect(iconIds("loot").some((id) => id.startsWith("icon.item."))).toBe(true);
+    expect(iconIds("skills").some((id) => id.startsWith("icon.skill."))).toBe(true);
+  });
+
+  it("counts every glyph-backed icon as glyph, never missing (even with no art)", () => {
+    for (const id of [...iconIds("loot"), ...iconIds("skills")]) {
+      expect(glyphs.has(id), id).toBe(true);
+      expect(classifyIcon(glyphs.has(id), false), id).toBe("glyph");
+    }
+  });
+
+  it("counts an id with neither art nor glyph as missing", () => {
+    const id = "icon.item.no-such-thing";
+    expect(glyphs.has(id)).toBe(false);
+    expect(classifyIcon(glyphs.has(id), false)).toBe("missing");
+  });
+
+  it("counts art-only icons as art and prefers the HUD glyph when both exist", () => {
+    expect(classifyIcon(false, true)).toBe("art");
+    expect(classifyIcon(true, true)).toBe("glyph");
+    expect(classifyIcon(true, false)).toBe("glyph");
+  });
+});
+
+describe("gallery static NPC cells", () => {
+  const npcCells = () =>
+    section("npcs").cells.filter((c) => c.kind === "unit" && c.entity?.kind === "npc");
+
+  it("marks NPC walk, attack, cast, hit and death as unreachable and shows them as static", () => {
+    const actions = new Set(npcCells().map((c) => c.action));
+    expect(actions.has("walk")).toBe(true);
+    for (const c of npcCells()) {
+      if (c.action === "idle" || c.action === undefined) continue;
+      expect(cellReachable(c), c.key).toBe(false);
+      expect(displayWorst(cellReachable(c), "exact"), c.key).toBe("static");
+    }
+  });
+
+  it("keeps NPC idle and every hero action reachable", () => {
+    for (const c of npcCells()) if (c.action === "idle") expect(cellReachable(c), c.key).toBe(true);
+    for (const c of section("heroes").cells) expect(cellReachable(c), c.key).toBe(true);
+    expect(displayWorst(true, "exact")).toBe("exact");
+  });
+
+  it("does not count static cells as problems or action fallbacks", () => {
+    const report = (over: Partial<CellReport>): CellReport => ({
+      key: "npc:walk",
+      section: "npcs",
+      kind: "unit",
+      title: "walk",
+      ref: "unit.npc.smith",
+      action: "walk",
+      resolved: "unit.npc.smith.idle.s (action-fallback)",
+      worst: "static",
+      reachable: false,
+      ...over,
+    });
+    const t = tallyCells([
+      report({}),
+      report({ key: "npc:attack", action: "attack" }),
+      report({ key: "npc:hit", action: "hit" }),
+    ]);
+    expect(t.problems).toEqual([]);
+    expect(t.actionFallbacks).toEqual([]);
+    expect(t.byKind).toEqual({ static: 3 });
+    expect(t.notPlayed).toBe(3);
   });
 });

@@ -14,6 +14,10 @@
  * wall, monsters push the hero at most a quarter of that); `moving`, `facing`
  * and `blocked` updates; gridOf(world).move.
  *
+ * Party (docs/design/party.md §7.1): every member moves like the hero
+ * (monster pushes capped the same way). Downed members (Dead) are neither
+ * indexed as solid bodies nor moved, so they never block nor get pushed.
+ *
  * Hot path (300+ units per tick): separation uses a flat per-call index of
  * the solid bodies of the area (typed arrays bucketed by 2-tile cells,
  * updated as units move) instead of one grid query per unit, so it stays
@@ -37,7 +41,8 @@ import {
 } from "../components.ts";
 import { COS64, SIN64, facingOf, isqrt, tileCenter } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
-import { currentDepth, heroOf } from "../resources.ts";
+import { partyMembers } from "../party/shared.ts";
+import { currentDepth } from "../resources.ts";
 import { gridOf } from "../spatial.ts";
 import { KIND, type SkillProto } from "../types.ts";
 import { getAreaMap, walkableSub, type ClassicMap } from "../world/maps.ts";
@@ -117,7 +122,7 @@ const index = new BodyIndex();
 
 /** Slow (0..90) of a unit from one pass over its statuses; -1 = stunned. */
 function statusEffect(world: World, registry: FrozenRegistry, e: Entity, tick: number): number {
-  const st = world.get(e, Statuses);
+  const st = world.peek(e, Statuses);
   if (!st || st.list.length === 0) return 0;
   let slow = 0;
   for (const s of st.list) {
@@ -150,11 +155,11 @@ function stillAndSlow(
   alive: boolean,
 ): number {
   if ((!alive && world.has(e, Dead)) || world.has(e, Dash)) return -1;
-  const ai = world.get(e, Ai);
+  const ai = world.peek(e, Ai);
   if (ai !== undefined && ai.state === "sleep") return -1;
   const slow = statusEffect(world, registry, e, tick);
   if (slow < 0) return -1;
-  const cast = world.has(e, Casting) ? world.get(e, Casting) : undefined;
+  const cast = world.peek(e, Casting);
   if (cast !== undefined && registry.get<SkillProto>(KIND.skill, cast.skill)?.shape !== "pulse") {
     return -1;
   }
@@ -173,17 +178,19 @@ export const movementSystem: SystemDef = {
 
     // Solid live bodies of this area (what the spatial grid holds, solid only), by ascending id.
     index.reset(map.width, map.height);
+    // Read-only scans use peek(): no rollback copy per unit and tick.
     for (const e of world.query(Body)) {
-      const b = world.read(e, Body);
+      const b = world.peek(e, Body)!;
       if (!b.solid || b.radius <= 0) continue;
-      const a = world.get(e, AreaTag);
+      const a = world.peek(e, AreaTag);
       if (a === undefined || a.depth !== depth || world.has(e, Dead)) continue;
-      const p = world.get(e, Pos);
+      const p = world.peek(e, Pos);
       if (p === undefined) continue;
       index.add(e, p.x, p.y, b.radius, world.has(e, Monster));
     }
 
-    const hero = heroOf(world);
+    // Party members (solo: [hero]); at most 4, so includes() is cheap.
+    const members = partyMembers(world);
     const grid = gridOf(world);
     let cursor = 0;
     for (const e of movers) {
@@ -191,30 +198,33 @@ export const movementSystem: SystemDef = {
       while (cursor < index.n && index.ids[cursor]! < e) cursor++;
       const slot = cursor < index.n && index.ids[cursor] === e ? cursor : -1;
       if (slot < 0) {
-        const a = world.get(e, AreaTag);
+        const a = world.peek(e, AreaTag);
         if (a === undefined || a.depth !== depth || !world.has(e, Pos)) continue;
       }
-      const m = world.read(e, Mover);
-      const wants = m.path.length > 0 || m.goalX >= 0;
+      // Peek first: the Mover (with its path) is only taken live (and copied for
+      // rollback) when this unit actually changes it.
+      const mv = world.peek(e, Mover)!;
+      const wants = mv.path.length > 0 || mv.goalX >= 0;
       // Idle units only move when pushed: skip every other read unless they overlap someone.
       if (!wants && (slot < 0 || !overlapping(slot))) {
-        if (m.moving) m.moving = false;
+        if (mv.moving) world.read(e, Mover).moving = false;
         continue;
       }
-      const slow = m.speed > 0 ? stillAndSlow(world, registry, e, tick, slot >= 0) : -1;
+      const slow = mv.speed > 0 ? stillAndSlow(world, registry, e, tick, slot >= 0) : -1;
       let speed = 0;
       if (slow >= 0) {
         // CombatStats only matters (and is only read) when the unit walks.
-        const stats = wants ? world.get(e, CombatStats) : undefined;
-        speed = effectiveSpeed(m.speed, stats ? stats.moveSpeed : 100, slow);
+        const stats = wants ? world.peek(e, CombatStats) : undefined;
+        speed = effectiveSpeed(mv.speed, stats ? stats.moveSpeed : 100, slow);
       }
       if (speed <= 0) {
-        if (m.moving) m.moving = false;
+        if (mv.moving) world.read(e, Mover).moving = false;
         continue;
       }
+      const m = world.read(e, Mover);
       const p = world.read(e, Pos);
       const r = slot >= 0 ? index.rs[slot]! : (world.get(e, Body)?.radius ?? 0);
-      if (moveUnit(map, slot, m, p, r, speed, e === hero)) grid.move(e, p.x, p.y);
+      if (moveUnit(map, slot, m, p, r, speed, members.includes(e))) grid.move(e, p.x, p.y);
     }
   },
 };

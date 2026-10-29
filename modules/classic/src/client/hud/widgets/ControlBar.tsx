@@ -15,6 +15,7 @@ const MODES: { mode: ControlMode; hint: string }[] = [
 export function ControlBar({ api }: SlotProps) {
   const phase = useSelect(api.hud, (s) => s.phase);
   const control = useSelect(api.hud, (s) => s.control);
+  const partySize = useSelect(api.hud, (s) => s.party?.members.length ?? 1);
   const compact = useHudLayout(api) !== "desktop";
   if (phase !== "play") return null;
   const planText = control.mode === "manual" ? "Manual play" : planLabel(control.plan);
@@ -42,19 +43,27 @@ export function ControlBar({ api }: SlotProps) {
           background: "rgba(0, 0, 0, 0.35)",
         }}
       >
-        {MODES.map((m) => (
-          <Btn
-            key={m.mode}
-            label={`${controlLabel(m.mode)} mode`}
-            title={m.hint}
-            pressed={control.mode === m.mode}
-            minWidth={compact ? 70 : 84}
-            height={44}
-            onClick={() => api.act(ACTION.setControl, { mode: m.mode })}
-          >
-            {controlLabel(m.mode)}
-          </Btn>
-        ))}
+        {MODES.map((m) => {
+          // With a party, "Auto" runs every member on the party AI (docs/design/party.md §3).
+          const text = m.mode === "auto" && partySize >= 2 ? "Party: Auto" : controlLabel(m.mode);
+          return (
+            <Btn
+              key={m.mode}
+              label={`${text} mode`}
+              title={
+                m.mode === "auto" && partySize >= 2
+                  ? "Every party member plays itself; the camera follows you"
+                  : m.hint
+              }
+              pressed={control.mode === m.mode}
+              minWidth={compact ? 70 : 84}
+              height={44}
+              onClick={() => api.act(ACTION.setControl, { mode: m.mode })}
+            >
+              {text}
+            </Btn>
+          );
+        })}
       </div>
       {control.mode === "idle" ? (
         <div role="group" aria-label="Speed" style={{ display: "flex", gap: 4 }}>

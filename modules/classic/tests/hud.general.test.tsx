@@ -44,6 +44,7 @@ const SETTINGS: Settings = {
   muted: false,
   quality: "auto",
   tips: true,
+  outlineHero: true,
 };
 
 function staticStore<T>(value: T): Store<T> {
@@ -218,6 +219,7 @@ describe("settings", () => {
     expect(markup).toContain("Show tips");
     expect(markup).toContain("Reset tips");
     expect(markup).toContain("Loot filter...");
+    expect(markup).toContain("Outline my hero");
   });
 
   it("shows the new automation toggles next to the wave 0 ones", () => {

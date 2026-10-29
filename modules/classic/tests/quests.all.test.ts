@@ -57,6 +57,7 @@ import {
   KIND,
   ITEM_RARITIES,
   type ItemInstance,
+  type ItemRarity,
   type MonsterProto,
   type QuestProto,
 } from "../src/types.ts";
@@ -83,6 +84,27 @@ const CRYPT_BUDGET = 13_000;
 const FAR = 2048;
 /** Depth of the Clear the Crypt level. */
 const CRYPT_DEPTH = 3;
+const ASH = "classic.quest.ash_and_ember";
+const CROWN = "classic.quest.crown_of_hollows";
+/**
+ * The reward of every quest, pinned (design §16, content/quests.ts). A change to
+ * a reward must change this table on purpose. `item` is the minimum rarity of
+ * the reward item (grantItems with minRarity), null for no item.
+ */
+const REWARDS: Record<string, { gold: number; xp: number; item: ItemRarity | null }> = {
+  [RATS]: { gold: 60, xp: 120, item: null },
+  [DEEPER]: { gold: 300, xp: 300, item: "magic" },
+  [WARDENS]: { gold: 400, xp: 400, item: "rare" },
+  [ASH]: { gold: 300, xp: 500, item: null },
+  [CLEAR]: { gold: 500, xp: 600, item: "magic" },
+  [TUNNEL]: { gold: 1500, xp: 1200, item: "rare" },
+  [CULL]: { gold: 800, xp: 800, item: null },
+  [NINTH]: { gold: 1200, xp: 1400, item: "magic" },
+  [NINTH_FLAME]: { gold: 3000, xp: 2500, item: "rare" },
+  [CROWN]: { gold: 8000, xp: 6000, item: "unique" },
+};
+/** Quests the controller may accept at level 10 with no chain (Rats, Deeper, Warden, Ash, Clear, Cull). */
+const LEVEL10_ELIGIBLE = [RATS, DEEPER, WARDENS, ASH, CLEAR, CULL];
 
 const loaded = loadMode(mode, modules);
 const QUESTS = [...loaded.registry.all<QuestProto>(KIND.quest)];
@@ -100,6 +122,11 @@ const rank = (r: string): number => ITEM_RARITIES.indexOf(r as (typeof ITEM_RARI
 class Driver {
   readonly sim: Sim;
   readonly events: ClassicEvent[] = [];
+  /**
+   * Every classic.quest.completed event with the depth the hero stood on at that
+   * tick (checked after the tick, so a turn-in in town is depth 0).
+   */
+  readonly completions: { quest: string; depth: number }[] = [];
 
   constructor(classId: string, control: "manual" | "idle" | "auto" = "manual", seed = SEED) {
     this.sim = createSim(loaded, { seed });
@@ -126,6 +153,7 @@ class Driver {
         const e = raw as ClassicEvent;
         out.push(e);
         this.events.push(e);
+        this.noteCompletion(e);
       }
     }
     return out;
@@ -141,8 +169,17 @@ class Driver {
 
   dispatch(name: string, payload: unknown) {
     const res = this.sim.dispatch(name, payload, null);
-    for (const raw of res.events as GameEvent[]) this.events.push(raw as ClassicEvent);
+    for (const raw of res.events as GameEvent[]) {
+      this.events.push(raw as ClassicEvent);
+      this.noteCompletion(raw as ClassicEvent);
+    }
     return res;
+  }
+
+  private noteCompletion(e: ClassicEvent): void {
+    if (e.type === "classic.quest.completed") {
+      this.completions.push({ quest: e.quest, depth: currentDepth(this.world) });
+    }
   }
 
   /** Grants 6 rare items of item level `ilvl` into the bag (applied on the next step). */
@@ -677,6 +714,87 @@ describe("quests: finish, turn in, reward, chain", () => {
   });
 });
 
+describe("quests: turn-in location and exact rewards", () => {
+  for (const [id, qp] of QUESTS) {
+    it(`${qp.name}: turn-in from the dungeon (depth 1) is not_in_town, changes nothing and keeps it done`, () => {
+      const d = new Driver("classic.warrior");
+      d.setLevel(qp.reqLevel);
+      if (qp.after !== "") d.world.setResource(RES.quests, { active: [], completed: [qp.after] });
+      d.accept(id);
+      finish(d, id);
+      expect(d.hudState(id)).toBe("done");
+      d.enter(1);
+      expect(currentDepth(d.world)).toBe(1);
+      const before = d.sim.hash();
+      const res = d.dispatch(ACTION.completeQuest, { quest: id });
+      expect(res.ok).toBe(false);
+      expect(res.error?.code).toBe(ERR.notInTown);
+      expect(d.sim.hash()).toBe(before);
+      expect(d.quests().active.find((q) => q.id === id)?.done).toBe(true);
+      expect(d.quests().completed).not.toContain(id);
+      expect(d.completions.filter((c) => c.quest === id)).toEqual([]);
+    });
+
+    it(`${qp.name}: pinned reward is granted exactly (gold, xp, item rarity or no item)`, () => {
+      const pin = REWARDS[id];
+      expect(pin, `reward pinned for ${id}`).toBeDefined();
+      expect(qp.reward, id).toEqual(pin);
+      const d = new Driver("classic.warrior");
+      d.setLevel(qp.reqLevel);
+      if (qp.after !== "") d.world.setResource(RES.quests, { active: [], completed: [qp.after] });
+      d.accept(id);
+      finish(d, id);
+      d.nearHale();
+      const gold0 = d.world.read(d.hero, Wallet).gold;
+      const xp0 = d.world.read(d.hero, Level).xp;
+      const bagBefore = new Set(bagUids(d.world));
+      const turn = d.dispatch(ACTION.completeQuest, { quest: id });
+      expect(turn.ok, turn.error?.message).toBe(true);
+      expect(turn.events).toContainEqual({
+        type: "classic.quest.completed",
+        quest: id,
+        gold: pin!.gold,
+        xp: pin!.xp,
+      });
+      expect(d.world.read(d.hero, Level).xp - xp0, "xp").toBe(pin!.xp);
+      d.step(1);
+      expect(d.world.read(d.hero, Wallet).gold - gold0, "gold").toBe(pin!.gold);
+      const fresh = bagUids(d.world).filter((uid) => !bagBefore.has(uid));
+      if (pin!.item === null) {
+        expect(fresh, "no reward item").toEqual([]);
+      } else {
+        expect(fresh.length, "one reward item").toBe(1);
+        const item = itemOf(d.world, fresh[0]!);
+        expect(rank(item.rarity), `reward rarity >= ${pin!.item}`).toBeGreaterThanOrEqual(
+          rank(pin!.item),
+        );
+      }
+    });
+  }
+
+  it("Into the Ninth: reachDepth 12, after Deeper Still, level 16; done once the deepest depth is 12", () => {
+    const d = new Driver("classic.warrior");
+    d.setLevel(16);
+    d.world.setResource(RES.quests, { active: [], completed: [DEEPER] });
+    d.nearHale();
+    expect(quest(NINTH)).toMatchObject({
+      kind: "reachDepth",
+      count: 12,
+      reqLevel: 16,
+      after: DEEPER,
+    });
+    d.accept(NINTH);
+    dungeonOf(d.world).deepest = 11;
+    d.step(1);
+    expect(d.quests().active.find((q) => q.id === NINTH)?.done).toBe(false);
+    dungeonOf(d.world).deepest = 12;
+    const done = d.step(1);
+    expect(done).toContainEqual({ type: "classic.quest.done", quest: NINTH });
+    expect(d.turnIn(NINTH).ok).toBe(true);
+    expect(d.quests().completed).toContain(NINTH);
+  });
+});
+
 describe("quests: the whole chain", () => {
   it("runs every quest to completed, with every id in QuestState.completed and Trusted by the Town unlocked", () => {
     const d = new Driver("classic.warrior");
@@ -715,6 +833,9 @@ describe("quests: Idle and Auto, per class", () => {
       const deeper =
         d.events.slice(d.events.indexOf(turned!) + 1).find(isDeeper) ?? d.until(6000, isDeeper);
       expect(deeper, "Idle never accepted Deeper Still in 6000 more ticks").toBeDefined();
+      // Every turn-in happened in town (depth 0, checked at the tick it was made).
+      expect(d.completions.length).toBeGreaterThan(0);
+      expect(d.completions.filter((c) => c.depth !== 0)).toEqual([]);
     }, 90_000);
 
     it(`${cls}: Auto completes Clear the Crypt once it is active and the hero reached depth 4`, () => {
@@ -737,6 +858,7 @@ describe("quests: Idle and Auto, per class", () => {
       expect(done, `Auto never turned in Clear the Crypt in ${CRYPT_BUDGET} ticks`).toBeDefined();
       expect(d.events).toContainEqual({ type: "classic.quest.done", quest: CLEAR });
       expect(d.quests().completed).toContain(CLEAR);
+      expect(d.completions.filter((c) => c.quest === CLEAR).map((c) => c.depth)).toEqual([0]);
     }, 120_000);
 
     it(`${cls}: Auto accepts a chained quest in the same visit its prerequisite is turned in`, () => {
@@ -763,7 +885,139 @@ describe("quests: Idle and Auto, per class", () => {
       expect(accepted?.type, "Auto left town before accepting The Tunnel Mother").toBe(
         "classic.quest.accepted",
       );
+      expect(d.completions.filter((c) => c.depth !== 0)).toEqual([]);
     }, 120_000);
+  }
+});
+
+/**
+ * Lets the controller play one quest from a fresh hero, with no accept or
+ * turn-in dispatched by the test: every accept, progress and turn-in is the
+ * controller's. Returns what it did, measured tick by tick.
+ */
+function playOwnQuest(d: Driver, id: string, budget: number) {
+  const qp = quest(id);
+  let acceptedAt = -1;
+  let progressSeen = 0;
+  let turnedInAt = -1;
+  let turnInDepth = -1;
+  let gold = 0;
+  let xp = 0;
+  for (let i = 0; i < budget && turnedInAt < 0; i++) {
+    const g0 = d.world.read(d.hero, Wallet).gold;
+    const x0 = d.world.read(d.hero, Level).xp;
+    for (const e of d.step(1)) {
+      if (e.type === "classic.quest.accepted" && e.quest === id && acceptedAt < 0) acceptedAt = i;
+      if (e.type === "classic.quest.progress" && e.quest === id) {
+        progressSeen = Math.max(progressSeen, e.progress);
+      }
+      if (e.type === "classic.quest.completed" && e.quest === id) {
+        turnedInAt = i;
+        turnInDepth = currentDepth(d.world);
+        // The reward XP lands in the turn-in tick; the gold is a queued grant (next tick).
+        xp = d.world.read(d.hero, Level).xp - x0;
+        d.step(1);
+        gold = d.world.read(d.hero, Wallet).gold - g0;
+      }
+    }
+  }
+  return {
+    acceptedAt,
+    progressSeen,
+    turnedInAt,
+    turnInDepth,
+    gold,
+    xp,
+    reward: qp.reward,
+    count: qp.count,
+  };
+}
+
+describe("quests: Auto and Idle play a quest on their own, per class", () => {
+  for (const cls of CLASSES) {
+    it(`${cls}: Auto accepts Rats in the Cellar, progresses it, completes it and is paid the reward`, () => {
+      const d = new Driver(cls, "auto");
+      const run = playOwnQuest(d, RATS, 12_000);
+      expect(run.acceptedAt, "Auto accepted Rats in the Cellar").toBeGreaterThanOrEqual(0);
+      expect(run.progressSeen, "Auto progressed Rats in the Cellar").toBeGreaterThan(0);
+      expect(
+        run.turnedInAt,
+        "Auto turned in Rats in the Cellar in 12000 ticks",
+      ).toBeGreaterThanOrEqual(0);
+      expect(run.turnInDepth, "turn-in in town").toBe(0);
+      expect(run.xp, "reward xp").toBeGreaterThanOrEqual(REWARDS[RATS]!.xp);
+      expect(run.gold, "reward gold").toBeGreaterThanOrEqual(REWARDS[RATS]!.gold);
+      expect(d.quests().completed).toContain(RATS);
+    }, 90_000);
+
+    it(`${cls}: Idle at speed 4 accepts Rats in the Cellar, progresses it, completes it and is paid the reward`, () => {
+      const d = new Driver(cls, "idle");
+      // Idle is the only mode with speed above 1 (the host steps `speed` ticks per 50 ms).
+      // The sim has no speed effect, so the same ticks must play the same quest.
+      const set = d.dispatch(ACTION.setSpeed, { speed: 4 });
+      expect(set.ok, set.error?.message).toBe(true);
+      expect(set.events).toContainEqual({ type: "classic.control", mode: "idle", speed: 4 });
+      const run = playOwnQuest(d, RATS, 12_000);
+      expect(run.acceptedAt, "Idle accepted Rats in the Cellar").toBeGreaterThanOrEqual(0);
+      expect(run.progressSeen, "Idle progressed Rats in the Cellar").toBeGreaterThan(0);
+      expect(
+        run.turnedInAt,
+        "Idle turned in Rats in the Cellar in 12000 ticks",
+      ).toBeGreaterThanOrEqual(0);
+      expect(run.turnInDepth, "turn-in in town").toBe(0);
+      expect(run.xp, "reward xp").toBeGreaterThanOrEqual(REWARDS[RATS]!.xp);
+      expect(run.gold, "reward gold").toBeGreaterThanOrEqual(REWARDS[RATS]!.gold);
+      expect(d.quests().completed).toContain(RATS);
+    }, 90_000);
+  }
+
+  it("speed above 1 is refused outside Idle (setSpeed needs idle)", () => {
+    const d = new Driver("classic.warrior", "auto");
+    const res = d.dispatch(ACTION.setSpeed, { speed: 4 });
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe("quests: one town visit accepts every eligible quest (design 15.2 step 8)", () => {
+  for (const cls of CLASSES) {
+    for (const mode of ["auto", "idle"] as const) {
+      it(`${cls} ${mode}: every quest eligible at level 10 is accepted in one visit to town`, () => {
+        // The hero starts in the dungeon at level 10: the quest trip is the only reason to go to town.
+        const d = new Driver(cls, mode);
+        d.setLevel(10);
+        d.step(1);
+        d.enter(1);
+        const eligible = QUESTS.filter(([, q]) => q.reqLevel <= 10 && q.after === "").map(
+          ([id]) => id,
+        );
+        expect(new Set(eligible)).toEqual(new Set(LEVEL10_ELIGIBLE));
+        const from = d.events.length;
+        const accepted = (): ClassicEvent[] =>
+          d.events.slice(from).filter((e) => e.type === "classic.quest.accepted");
+        // Run until every eligible quest is accepted (or the budget ends).
+        let ticks = 0;
+        while (accepted().length < eligible.length && ticks < 20_000) {
+          d.step(1);
+          ticks++;
+        }
+        const got = accepted().map(
+          (e) => (e as Extract<ClassicEvent, { type: "classic.quest.accepted" }>).quest,
+        );
+        expect(new Set(got), `${mode} accepted the eligible quests in ${ticks} ticks`).toEqual(
+          new Set(eligible),
+        );
+        // One visit: the accepts happened at depth 0, and no trip to the dungeon came between the first and the last.
+        const firstIdx = d.events.findIndex((e) => e.type === "classic.quest.accepted");
+        const lastIdx =
+          d.events.length -
+          1 -
+          [...d.events].reverse().findIndex((e) => e.type === "classic.quest.accepted");
+        const between = d.events.slice(firstIdx, lastIdx + 1);
+        const leftTown = between.some((e) => e.type === "classic.area.changed" && e.depth > 0);
+        expect(leftTown, "left town between the first and the last accept").toBe(false);
+        expect(d.completions).toEqual([]);
+      }, 90_000);
+    }
   }
 });
 

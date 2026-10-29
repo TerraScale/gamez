@@ -5,8 +5,9 @@
  * each segment on its own copy (packages/kernel/src/replay.ts), persists the
  * verified ones, and answers anything else with a resync to the last verified
  * state. A wall-time credit ledger bounds sim time by real time (anti
- * speed-hack), offline progress is granted from server-measured absence, and
- * verified state is reported to the read model through the outbox.
+ * speed-hack), offline progress is granted from server-measured absence
+ * (docs/design/offline-idle.md §5), and verified state is reported to the
+ * read model through the outbox.
  *
  * Durable state = base snapshot at tick B + the verified segment log (B, T].
  * The "verified" ack goes out only after the segment row committed.
@@ -21,6 +22,7 @@ import {
   replaySegment,
   stableHash,
   type ClientDrivenPolicy,
+  type InstanceReport,
   type LoadedMode,
   type Sim,
   type SimSnapshot,
@@ -44,6 +46,8 @@ import {
   type VerifiedServerMessage,
   type VerifyLimits,
 } from "@gamez/protocol";
+import { SimTally } from "../analytics/sim-tally.ts";
+import type { Analytics } from "../analytics/types.ts";
 import type { ReportEnvelope } from "../contracts.ts";
 import {
   actionCode,
@@ -171,6 +175,18 @@ export interface VerifiedHostDeps {
   log?(level: "info" | "warn" | "error", message: string, data?: unknown): void;
   /** Wave C: bank, builds, season progress (null/absent: no platform). */
   platform?: VerifiedPlatformDeps | null;
+  /**
+   * Admin tunables (ConfigResponse.tunables) for the offline payload
+   * (offline-idle.md §5.4). Awaited right before a grant only; a failure
+   * counts as `{}` (the mode's data defaults apply).
+   */
+  offlineTunables?(): Promise<Readonly<Record<string, number>>>;
+  /**
+   * Admin dashboard points (docs/design/admin-dashboard.md §5, §11.2): verified
+   * play and offline grants are folded by policy.analytics into a SimTally and
+   * written here. Absent: nothing is written.
+   */
+  analytics?: Analytics;
 }
 
 interface Limits {
@@ -184,6 +200,17 @@ interface Limits {
 type LoadResult = "ok" | "new" | "carried" | "reset";
 
 type Segment = Extract<VerifiedClientMessage, { t: "segment" }>;
+
+/** ADR 0007 R1: drops the gameplay points of an imported (quarantined) hero. */
+function quarantinedAnalytics(inner: Analytics): Analytics {
+  return {
+    write(metric, blobs, doubles, index) {
+      if (metric === "sim.tally" || metric === "sim.offline") return;
+      inner.write(metric, blobs, doubles, index);
+    },
+    flush: () => inner.flush(),
+  };
+}
 
 export class VerifiedHost {
   readonly #d: VerifiedHostDeps;
@@ -203,6 +230,10 @@ export class VerifiedHost {
   readonly #limits = new WeakMap<InstanceSocket, Limits>();
   /** A season report is in flight (one at a time; the next compaction retries). */
   #seasonInFlight = false;
+  /** Admin analytics of verified play (in memory; flushed at compaction, close and when due). */
+  readonly #tally: SimTally;
+  /** Wall time of the last join (in memory): the start of a segment gap at the earliest (§5.6). */
+  #joinAt = 0;
 
   constructor(deps: VerifiedHostDeps) {
     const tick = deps.loaded.mode.tick;
@@ -210,6 +241,7 @@ export class VerifiedHost {
     this.#d = deps;
     this.#serverOnly = new Set(deps.policy.serverOnlyActions);
     this.#msPerTick = 1000 / tick.hz;
+    this.#tally = new SimTally(deps.loaded.mode.id, deps.policy.analytics);
   }
 
   get mode(): string {
@@ -242,15 +274,20 @@ export class VerifiedHost {
     return this.#enqueue(() => this.#handle(socket, frame));
   }
 
-  /** A socket closed: the last joined one marks the player inactive and compacts. */
+  /**
+   * A socket closed: the last joined one compacts. It does not move
+   * lastActiveAt (offline-idle.md §5.1): a hidden-tab rejoin closes the old
+   * socket just before it joins again, and the absence must survive that.
+   */
   handleClose(socket: InstanceSocket): Promise<void> {
     return this.#enqueue(async () => {
       if (!socket.info.joined) return;
       if (this.#joined().some((s) => s !== socket)) return;
       if (!this.#rec || !this.#sim) return;
-      this.#rec.lastActiveAt = this.#d.now();
       if (this.#rec.verifiedTick > this.#rec.baseTick) this.#compact();
       else this.#d.store.saveMeta(this.#rec);
+      // #compact flushed already; a close without new play flushes what is left.
+      this.#flushTally(this.#d.now());
     });
   }
 
@@ -361,28 +398,19 @@ export class VerifiedHost {
       });
     }
 
-    // Offline progress from server-measured absence (never when the client holds unsent play).
-    let grant: OfflineGrant | null = null;
-    const offline = this.#d.policy.offline;
-    if (!fresh && loadResult === "ok" && offline && msg.resume?.pending !== true) {
-      const elapsed = now - rec.lastActiveAt;
-      if (elapsed >= offline.minMs && this.#safe(() => offline.eligible(sim.world), false)) {
-        const elapsedMs = Math.min(elapsed, offline.capMs);
-        const res = sim.dispatch(offline.action, { elapsedMs }, SERVER_ACTOR);
-        if (res.ok) grant = { elapsedMs, events: res.events };
-        else this.#log("info", `verified ${this.#d.name}: offline grant refused`, res.error);
-      }
-    }
-
     const resume = msg.resume;
-    const continued =
+    const canContinue =
       !fresh &&
       loadResult === "ok" &&
-      grant === null &&
       resume !== undefined &&
       this.#ancestors.get(resume.tick) === resume.hash;
+    // Offline progress from server-measured absence (offline-idle.md §5.2).
+    const grant =
+      !fresh && loadResult === "ok" ? await this.#joinOffline(sim, resume, canContinue, now) : null;
+    const continued = canContinue && grant === null;
 
     rec.epoch++;
+    this.#joinAt = now;
     if (grant || fresh || loadResult !== "ok") {
       // No double dip: offline progress and new games start the ledger over.
       rec.creditMs = START_CREDIT_MS;
@@ -446,6 +474,7 @@ export class VerifiedHost {
       return;
     }
     if (msg.fromTick !== rec.verifiedTick) {
+      this.#tally.abort("gap");
       await this.#resync(
         socket,
         msg.seq,
@@ -464,6 +493,7 @@ export class VerifiedHost {
     };
     const shape = checkSegment(msg, rec.verifiedTick, limits);
     if (shape) {
+      this.#tally.abort(shape.code);
       await this.#resync(socket, msg.seq, shape.code, shape.message, now);
       return;
     }
@@ -472,6 +502,7 @@ export class VerifiedHost {
     const span = msg.toTick - msg.fromTick;
     const minCost = (span * this.#msPerTick) / Math.max(1, policy.maxSpeed);
     if (rec.creditMs - minCost < -TOLERANCE_MS) {
+      this.#tally.abort("too_fast");
       await this.#resync(socket, msg.seq, "too_fast", this.#tooFastMessage(minCost), now);
       return;
     }
@@ -483,15 +514,18 @@ export class VerifiedHost {
       speedOf: (w) => policy.speedOf(w),
       maxSpeed: policy.maxSpeed,
       expectHash: msg.hash,
+      onEvents: this.#tally.onEvents,
     });
     if (!out.ok) {
       // The server did the work: a failed replay costs credit like a good one.
       rec.creditMs -= out.costMs;
+      this.#tally.abort(out.code);
       this.#restoreSim();
       await this.#resync(socket, msg.seq, out.code, out.message, now);
       return;
     }
     if (rec.creditMs - out.costMs < -TOLERANCE_MS) {
+      this.#tally.abort("too_fast");
       this.#restoreSim();
       await this.#resync(socket, msg.seq, "too_fast", this.#tooFastMessage(out.costMs), now);
       return;
@@ -506,7 +540,8 @@ export class VerifiedHost {
     rec.creditMs -= out.costMs;
     rec.verifiedTick = msg.toTick;
     rec.verifiedHash = out.hash;
-    rec.lastActiveAt = now;
+    // Only real sim progress counts as activity (a 0-tick segment never gets here: duplicate).
+    if (msg.toTick > msg.fromTick) rec.lastActiveAt = now;
     rec.segmentsTotal++;
     const stored: StoredSegment = {
       fromTick: msg.fromTick,
@@ -525,11 +560,18 @@ export class VerifiedHost {
       rec.creditMs = prev.credit;
       rec.lastActiveAt = prev.lastActiveAt;
       rec.segmentsTotal--;
+      this.#tally.abort("internal");
       this.#restoreSim();
       await this.#resync(socket, msg.seq, "internal", "the segment could not be saved", now, false);
       return;
     }
+    this.#tally.commit(sim.world, msg.toTick - msg.fromTick, out.costMs);
     this.#sendVerified(socket, msg.seq);
+    this.#segmentGap(prev.lastActiveAt, out.costMs, now);
+    // The client's unverified play from before its rejoin has verified: pay the absence (§5.3).
+    if (rec.offlineDueMs > 0 && rec.verifiedTick >= rec.offlineDueTick) {
+      if (await this.#deferredGrant(socket, msg.seq, now)) return;
+    }
     if (rec.verifiedTick - rec.baseTick >= COMPACT_TICKS || now - rec.baseAt >= COMPACT_MS) {
       try {
         this.#compact();
@@ -538,6 +580,7 @@ export class VerifiedHost {
         this.#log("error", `verified ${this.#d.name}: compaction failed`, err);
       }
     }
+    if (this.#tally.due(now)) this.#flushTally(now);
   }
 
   #tooFastMessage(cost: number): string {
@@ -565,9 +608,15 @@ export class VerifiedHost {
     message: string,
     now: number,
     count = true,
+    offline: OfflineGrant | null = null,
   ): Promise<void> {
     const rec = this.#rec!;
     rec.epoch++;
+    this.#tally.resync(code);
+    // A deferred grant waits for play the client just lost: the next verified segment pays it.
+    if (rec.offlineDueMs > 0 && code !== "offline") {
+      rec.offlineDueTick = Math.min(rec.offlineDueTick, rec.verifiedTick);
+    }
     if (count) this.#countMismatch(code, now);
     try {
       this.#d.store.saveMeta(rec);
@@ -583,7 +632,148 @@ export class VerifiedHost {
       tick: rec.verifiedTick,
       hash: rec.verifiedHash,
       snapshot: await packSnapshot(this.#sim!.snapshot()),
+      ...(offline ? { offline } : {}),
     });
+  }
+
+  // ---- offline progress (docs/design/offline-idle.md §5) -----------------------
+
+  /**
+   * A segment after a long silence on a live socket (§5.6): a page frozen in
+   * the background (mobile app switch, laptop sleep) resumes and sends its
+   * queued segment on the old socket before it rejoins, so the join sees no
+   * absence. The wall time since the last verified progress (or the last join,
+   * whichever is later), minus the segment's own play time, is an absence when
+   * it reaches minMs: it becomes owed time, paid right after this segment by
+   * the deferred grant (eligibility checked there). Nothing is owed yet, so a
+   * deferral from a join is never moved earlier.
+   */
+  #segmentGap(prevActiveAt: number, playMs: number, now: number): void {
+    const offline = this.#d.policy.offline;
+    const rec = this.#rec!;
+    if (!offline || rec.offlineDueMs > 0) return;
+    const gap = Math.floor(now - Math.max(prevActiveAt, this.#joinAt) - Math.max(0, playMs));
+    if (gap < offline.minMs) return;
+    rec.offlineDueMs = gap;
+    rec.offlineDueTick = rec.verifiedTick;
+  }
+
+  /**
+   * The join's offline decision (§5.2), on the loaded verified state. U = the
+   * unverified ticks the client still holds past the verified tick (only when
+   * it can continue). U === 0: grant now for the absence plus anything owed.
+   * U > 0: defer, owing the absence minus the client's own play (x1 estimate),
+   * paid once that play verified (#deferredGrant) or at a later join. The
+   * caller persists the record (compaction after a grant, saveMeta otherwise).
+   */
+  async #joinOffline(
+    sim: Sim,
+    resume: Extract<VerifiedClientMessage, { t: "join" }>["resume"],
+    canContinue: boolean,
+    now: number,
+  ): Promise<OfflineGrant | null> {
+    const offline = this.#d.policy.offline;
+    const rec = this.#rec!;
+    if (!offline) return null;
+    const elapsed = Math.max(0, now - rec.lastActiveAt);
+    const pendingTo = resume?.pendingToTick ?? 0;
+    const unverified =
+      canContinue && pendingTo > rec.verifiedTick ? pendingTo - rec.verifiedTick : 0;
+    // Deferral comes before the eligibility check: the client's unverified play
+    // may switch to Auto/Idle just before leaving (click Idle, close the tab).
+    // #deferredGrant checks eligibility on the caught-up verified state.
+    if (unverified === 0 && !this.#safe(() => offline.eligible(sim.world), false)) {
+      // Not farming while away: the absence is consumed, never paid later.
+      this.#clearDue();
+      rec.lastActiveAt = now;
+      return null;
+    }
+    if (unverified > 0) {
+      rec.offlineDueMs += Math.max(0, Math.floor(elapsed - unverified * this.#msPerTick));
+      rec.offlineDueTick = pendingTo;
+      // The absence moved into offlineDueMs: a later join must not count it again.
+      rec.lastActiveAt = now;
+      return null;
+    }
+    const owed = elapsed + rec.offlineDueMs;
+    this.#clearDue();
+    if (owed < offline.minMs) return null;
+    const tunables = await this.#offlineTunables();
+    return this.#grantOffline(sim, Math.min(owed, offline.capMs), tunables);
+  }
+
+  /**
+   * Pays a deferred grant after the segment that reached offlineDueTick
+   * verified (§5.3): dispatch, new base, ledger restart, resync "offline"
+   * (after that segment's "verified" ack). The due fields are cleared in
+   * every case. True when a grant was sent (the caller is done).
+   */
+  async #deferredGrant(socket: InstanceSocket, seq: number, now: number): Promise<boolean> {
+    const rec = this.#rec!;
+    const sim = this.#sim!;
+    const offline = this.#d.policy.offline;
+    const due = rec.offlineDueMs;
+    this.#clearDue();
+    let grant: OfflineGrant | null = null;
+    if (offline && due >= offline.minMs && this.#safe(() => offline.eligible(sim.world), false)) {
+      const tunables = await this.#offlineTunables();
+      grant = this.#grantOffline(sim, Math.min(due, offline.capMs), tunables);
+    }
+    if (!grant) {
+      this.#d.store.saveMeta(rec);
+      return false;
+    }
+    rec.verifiedTick = sim.tick;
+    rec.verifiedHash = sim.hash();
+    rec.creditMs = START_CREDIT_MS;
+    rec.creditAt = now;
+    rec.lastActiveAt = now;
+    this.#compact();
+    await this.#resync(socket, seq, "offline", "progress while you were away", now, false, grant);
+    return true;
+  }
+
+  /**
+   * Every offline grant goes through here: dispatches the mode's offline
+   * action (server actor) with policy.offline.payload(elapsedMs, tunables).
+   * The caller commits (compaction) and restarts the ledger.
+   */
+  #grantOffline(
+    sim: Sim,
+    elapsedMs: number,
+    tunables: Readonly<Record<string, number>>,
+  ): OfflineGrant | null {
+    const offline = this.#d.policy.offline;
+    if (!offline) return null;
+    const ms = Math.max(1, Math.floor(elapsedMs));
+    const payload = this.#safe(() => offline.payload?.(ms, tunables), undefined) ?? {
+      elapsedMs: ms,
+    };
+    const res = sim.dispatch(offline.action, payload, SERVER_ACTOR);
+    if (!res.ok) {
+      this.#log("info", `verified ${this.#d.name}: offline grant refused`, res.error);
+      return null;
+    }
+    this.#tally.offline(sim.world, ms, res.events);
+    return { elapsedMs: ms, events: res.events };
+  }
+
+  /** The admin's live tunables, or {} (no dep, or it failed: fail open to the data defaults). */
+  async #offlineTunables(): Promise<Readonly<Record<string, number>>> {
+    if (!this.#d.offlineTunables) return {};
+    try {
+      const t = await this.#d.offlineTunables();
+      return t && typeof t === "object" ? t : {};
+    } catch (err) {
+      this.#log("warn", `verified ${this.#d.name}: offline tunables unreadable, defaults`, err);
+      return {};
+    }
+  }
+
+  #clearDue(): void {
+    const rec = this.#rec!;
+    rec.offlineDueMs = 0;
+    rec.offlineDueTick = 0;
   }
 
   #countMismatch(code: ResyncCode, now: number): void {
@@ -1071,6 +1261,8 @@ export class VerifiedHost {
     rec.creditMs = START_CREDIT_MS;
     rec.creditAt = now;
     rec.lastActiveAt = now;
+    rec.offlineDueMs = 0;
+    rec.offlineDueTick = 0;
     this.#compact();
     this.#send(socket, {
       t: "vstate",
@@ -1271,6 +1463,9 @@ export class VerifiedHost {
   /** Replaces memory with a new game (not yet written); lifetime fields carry over from `prior`. */
   #newGame(prior: VerifiedRecord | null): void {
     const now = this.#d.now();
+    // The pending tally is the outgoing hero's: flush it under that hero's
+    // quarantine (ADR 0007 R1) before the new, unquarantined record replaces it.
+    this.#flushTally(now, this.#rec ?? prior);
     const seed = this.#d.randomSeed() >>> 0;
     const sim = createSim(this.#d.loaded, { seed });
     this.#sim = sim;
@@ -1293,6 +1488,8 @@ export class VerifiedHost {
       accountId: prior?.accountId ?? "",
       displayName: prior?.displayName ?? "",
       counters: prior?.counters ?? emptyCounters(),
+      offlineDueMs: 0,
+      offlineDueTick: 0,
     };
   }
 
@@ -1328,13 +1525,37 @@ export class VerifiedHost {
     });
     if (appended > 0) this.#d.scheduleFlush();
     this.#reportSeason(sim);
+    this.#flushTally(rec.baseAt);
+  }
+
+  /**
+   * Writes the pending analytics points (never throws; no-op without a sink or data).
+   * ADR 0007 R1: an imported hero's state is client-authored, so its gameplay
+   * points (sim.tally, sim.offline: kills, gold, xp rates) would skew the
+   * game-wide balance metrics. They are dropped; verification health
+   * (verify.*) is still written.
+   */
+  #flushTally(now: number, owner: VerifiedRecord | null = this.#rec): void {
+    const analytics = this.#d.analytics;
+    if (!analytics) return;
+    const accountId = owner?.accountId || accountOfInstance(this.#d.name);
+    this.#tally.flush(
+      owner?.imported ? quarantinedAnalytics(analytics) : analytics,
+      accountId,
+      now,
+    );
   }
 
   /** Appends changed report rows to the outbox (inside the caller's transaction). */
   #appendReports(sim: Sim): number {
     const { outbox, policy, store, loaded } = this.#d;
     if (!outbox || !policy.reports) return 0;
-    const rows = this.#safe(() => policy.reports?.(sim.world, loaded.registry) ?? [], []);
+    const rows = this.#safe<InstanceReport[] | null>(
+      () => policy.reports?.(sim.world, loaded.registry) ?? [],
+      null,
+    );
+    // A failing hook reports nothing: never tombstone rows because of it.
+    if (rows === null) return 0;
     const rec = this.#rec!;
     let n = 0;
     for (const row of rows) {
@@ -1355,6 +1576,17 @@ export class VerifiedHost {
       outbox.append(row.table, `${this.#d.name}/${row.key}`, "upsert", envelope);
       store.setReportHash(row.table, row.key, hash);
       n++;
+    }
+    // Rows that left a complete table (a dismissed member, a reset party) are
+    // tombstoned, so they stop being ranked and the table stays bounded.
+    for (const table of policy.completeReportTables ?? []) {
+      const live = new Set(rows.filter((r) => r.table === table).map((r) => r.key));
+      for (const key of store.reportKeys(table)) {
+        if (live.has(key)) continue;
+        outbox.append(table, `${this.#d.name}/${key}`, "delete", null);
+        store.deleteReportHash(table, key);
+        n++;
+      }
     }
     return n;
   }

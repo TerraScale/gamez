@@ -51,6 +51,7 @@ import {
   KIND,
   type EquipSlot,
   type ItemBaseProto,
+  type MonsterModProto,
   type MonsterProto,
   type SkillModifier,
   type SkillProto,
@@ -999,38 +1000,41 @@ describe("boss phases", () => {
 // A scripted fight
 // ---------------------------------------------------------------------------
 
+/** True when the monster telegraph zone `g` (team monster) contains the point with a body. */
+function inTelegraph(w: World, g: Entity, x: number, y: number, body: number): boolean {
+  const v = w.get(g, GroundEffect);
+  if (!v || !v.once || v.team !== "monster") return false;
+  const p = w.read(g, Pos);
+  const dx = x - p.x;
+  const dy = y - p.y;
+  const shape = v.shape ?? "circle";
+  if (shape === "circle") {
+    const r = v.radius + body;
+    return dx * dx + dy * dy <= r * r;
+  }
+  if (shape === "cone") {
+    const r = (v.length ?? 0) + body;
+    return (
+      dx * dx + dy * dy <= r * r &&
+      (dx === 0 && dy === 0 ? true : angleDiff(angleOf(dx, dy), v.angle ?? 0) <= (v.arc ?? 8))
+    );
+  }
+  const [lx, ly] = angleVec(v.angle ?? 0, v.length ?? 0);
+  return nearSegment(x, y, p.x, p.y, lx, ly, Math.floor((v.width ?? 256) / 2) + body);
+}
+
 /** Every live monster telegraph zone (team monster) containing the point with a body. */
 function inZone(w: World, x: number, y: number, body: number): boolean {
-  for (const g of telegraphs(w)) {
-    const v = w.read(g, GroundEffect);
-    if (v.team !== "monster") continue;
-    const p = w.read(g, Pos);
-    const dx = x - p.x;
-    const dy = y - p.y;
-    const shape = v.shape ?? "circle";
-    if (shape === "circle") {
-      const r = v.radius + body;
-      if (dx * dx + dy * dy <= r * r) return true;
-    } else if (shape === "cone") {
-      const r = (v.length ?? 0) + body;
-      if (
-        dx * dx + dy * dy <= r * r &&
-        (dx === 0 && dy === 0 ? true : angleDiff(angleOf(dx, dy), v.angle ?? 0) <= (v.arc ?? 8))
-      )
-        return true;
-    } else {
-      const [lx, ly] = angleVec(v.angle ?? 0, v.length ?? 0);
-      if (nearSegment(x, y, p.x, p.y, lx, ly, Math.floor((v.width ?? 256) / 2) + body)) return true;
-    }
-  }
+  for (const g of telegraphs(w)) if (inTelegraph(w, g, x, y, body)) return true;
   return false;
 }
 
 /**
  * Drives the hero: steps out of any monster telegraph zone, else attacks the
  * target with a repeating skill intent. Returns ticks to kill (or -1), the
- * hero's deaths (0/1), hits taken from telegraphs and the longest stretch
- * without acting (moving or casting).
+ * hero's deaths (0/1), hits taken from telegraphs, the telegraphs aimed at
+ * the hero (zone over the hero, body 80, when placed) and the longest
+ * stretch without acting (moving or casting).
  */
 function scriptedFight(
   sim: Sim,
@@ -1044,6 +1048,7 @@ function scriptedFight(
   died: boolean;
   deaths: number;
   telegraphHits: number;
+  telegraphs: number;
   maxIdle: number;
   phases: number;
 } {
@@ -1052,6 +1057,7 @@ function scriptedFight(
   let lastActive = sim.tick;
   let maxIdle = 0;
   let telegraphHits = 0;
+  let aimed = 0;
   let phases = 0;
   let deaths = 0;
   const dodge = o.dodge ?? true;
@@ -1070,7 +1076,7 @@ function scriptedFight(
     if (w.has(h, Dead)) {
       deaths++;
       if (deaths >= lives) {
-        return { ticks: -1, died: true, deaths, telegraphHits, maxIdle, phases };
+        return { ticks: -1, died: true, deaths, telegraphHits, telegraphs: aimed, maxIdle, phases };
       }
       // Stand back up in place (stands in for respawn + walking back; the boss keeps its life).
       w.remove(h, Dead);
@@ -1093,7 +1099,15 @@ function scriptedFight(
       if (mana.mp < mana.max) w.update(h, Mana, { mp: mana.max });
     }
     if (!w.exists(target) || w.has(target, Dead)) {
-      return { ticks: sim.tick - start, died: false, deaths, telegraphHits, maxIdle, phases };
+      return {
+        ticks: sim.tick - start,
+        died: false,
+        deaths,
+        telegraphHits,
+        telegraphs: aimed,
+        maxIdle,
+        phases,
+      };
     }
     const p = w.read(h, Pos);
     const map = getAreaMap(w, sim.loaded.registry);
@@ -1147,11 +1161,16 @@ function scriptedFight(
         telegraphHits++;
       }
     }
+    if (w.exists(h)) {
+      const hp = w.read(h, Pos);
+      for (const e of of(ev, "classic.telegraph"))
+        if (w.exists(e.entity) && inTelegraph(w, e.entity, hp.x, hp.y, 80)) aimed++;
+    }
     phases += of(ev, "classic.boss.phase").length;
     if (w.has(h, Casting) || w.read(h, Mover).moving) lastActive = sim.tick;
     maxIdle = Math.max(maxIdle, sim.tick - lastActive);
   }
-  return { ticks: -1, died: false, deaths, telegraphHits, maxIdle, phases };
+  return { ticks: -1, died: false, deaths, telegraphHits, telegraphs: aimed, maxIdle, phases };
 }
 
 describe("scripted boss fight", () => {
@@ -1224,6 +1243,7 @@ describe("real boss and guardian content", () => {
       "classic.mskill.boss_cleave",
       "classic.mskill.boss_quake",
       "classic.mskill.boss_rush",
+      "classic.mskill.boss_slam",
     ]);
     const choir = reg.get<MonsterProto>(KIND.monster, "classic.monster.guardian_choir")!;
     expect(allSkills(choir)).toEqual(
@@ -1231,8 +1251,34 @@ describe("real boss and guardian content", () => {
         "classic.mskill.boss_meteor",
         "classic.mskill.boss_frost_nova",
         "classic.mskill.boss_volley",
+        "classic.mskill.boss_nova",
       ]),
     );
+  });
+
+  it("every monster skill is used: by a monster, a boss or guardian phase, or a mod", () => {
+    // QA round 1: Tremor, Pyre Nova and Call the Brood were defined but used by nobody.
+    const used = new Set<string>();
+    for (const [, m] of monsters) {
+      for (const s of allSkills(m)) used.add(s);
+      if (m.onDeathSkill) used.add(m.onDeathSkill);
+    }
+    for (const [, mod] of reg.all<MonsterModProto>(KIND.monsterMod)) {
+      if (mod.onDeathSkill) used.add(mod.onDeathSkill);
+    }
+    const unused = reg
+      .all<SkillProto>(KIND.skill)
+      .map(([id]) => id)
+      .filter((id) => id.startsWith("classic.mskill.") && !used.has(id));
+    expect(unused).toEqual([]);
+    // The three are wired where they fit: Skarn's brood, the Maw's stamp, the Choir's heat wave.
+    const phaseSkills = (id: string) =>
+      (reg.get<MonsterProto>(KIND.monster, id)?.phases ?? []).flatMap((p) => p.skills);
+    expect(phaseSkills("classic.monster.boss_tunnel_mother")).toContain(
+      "classic.mskill.boss_summon",
+    );
+    expect(phaseSkills("classic.monster.guardian_maw")).toContain("classic.mskill.boss_slam");
+    expect(phaseSkills("classic.monster.guardian_choir")).toContain("classic.mskill.boss_nova");
   });
 
   it("every boss/guardian skill and the enrage status resolve; telegraph shapes match", () => {
@@ -1279,7 +1325,7 @@ describe("determinism", () => {
   });
 
   it("pins the hash after a fixed script", () => {
-    expect(script(7).hash()).toBe("ae66494edd1e728f");
+    expect(script(7).hash()).toBe("528266a92130c624");
   });
 });
 
@@ -1472,7 +1518,7 @@ describe("evidence: real bosses vs a level-appropriate scripted hero", () => {
   }
 
   const fmt = (r: ReturnType<typeof fight>) =>
-    `${r.ticks > 0 ? `${(r.ticks / 20).toFixed(0)} s` : "no kill"} / ${r.deaths} deaths / ${r.telegraphHits} tg hits`;
+    `${r.ticks > 0 ? `${(r.ticks / 20).toFixed(0)} s` : "no kill"} / ${r.deaths} deaths / ${r.telegraphHits}/${r.telegraphs} tg hits/aimed`;
 
   it("reports time-to-kill and hero deaths per boss (dodging and standing)", () => {
     const rows: string[] = [];
@@ -1488,7 +1534,15 @@ describe("evidence: real bosses vs a level-appropriate scripted hero", () => {
         expect(d.ticks, id).toBeGreaterThan(0);
         expect(d.maxIdle, id).toBeLessThanOrEqual(40);
         expect(d.phases, id).toBe(proto(id).phases!.length);
-        expect(d.telegraphHits, id).toBeLessThan(s.telegraphHits);
+        // Hits per telegraph aimed at the hero: dodging must take under 75 % of the
+        // standing hero's rate. Fight lengths differ (the standing hero can kill
+        // sooner), so neither the hit totals nor hits per tick compare dodging.
+        // Cross-multiplied: d.hits / d.tg < 0.75 * s.hits / s.tg.
+        expect(d.telegraphs, id).toBeGreaterThan(0);
+        expect(s.telegraphs, id).toBeGreaterThan(0);
+        expect(4 * d.telegraphHits * s.telegraphs, id).toBeLessThan(
+          3 * s.telegraphHits * d.telegraphs,
+        );
       });
     }
     // Logged on purpose: these are the numbers reported for the boss rework.

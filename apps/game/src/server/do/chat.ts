@@ -18,6 +18,9 @@ import { ChatHost, MEMBERSHIP_TTL_MS, type ChatSocket, type ChatSocketInfo } fro
 import { createModerator } from "../chat/moderation.ts";
 import { ChatStore } from "../chat/store.ts";
 import { CHAT_HEADERS, sqlStoreOf, type ChatChannelApi, type Env } from "../contracts.ts";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
+import { chatWsMode, wsClosed, wsOpened } from "../analytics/ws.ts";
 
 const FLUSH_BATCH = 200;
 /** Same default delay as Outbox.scheduleFlush. */
@@ -38,6 +41,12 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChatChannelDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const name = ctx.id.name ?? ctx.id.toString();
     this.#store = new ChatStore(sqlStoreOf(ctx.storage), name);
     this.#outbox = new Outbox(ctx.storage.sql, `chat:${name}`);
@@ -63,8 +72,13 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
     const tag = request.headers.get(CHAT_HEADERS.tag) || null;
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server, [accountTag(accountId)]);
-    const info: ChatSocketInfo = { accountId, name, kind, tag };
+    const info: ChatSocketInfo = { accountId, name, kind, tag, openedAt: Date.now() };
     server.serializeAttachment(info);
+    wsOpened(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "chat",
+      chatWsMode(this.#store.channel),
+    );
     const host = this.#hostOf();
     await host.open(this.#wrap(server));
     // R10: a guild channel re-checks every open socket's membership on an alarm.
@@ -73,12 +87,27 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
   }
 
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChatChannelDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     if (!ws.deserializeAttachment()) return;
     // Never rejects (ChatHost.handleMessage handles its own failures).
     void this.#hostOf().handleMessage(this.#wrap(ws), message);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    const info = ws.deserializeAttachment() as ChatSocketInfo | null;
+    wsClosed(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "chat",
+      chatWsMode(this.#store.channel),
+      code,
+      info?.openedAt,
+      Date.now(),
+    );
     try {
       ws.close(code, reason);
     } catch {
@@ -104,6 +133,12 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
    * the runtime's alarm retries).
    */
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChatChannelDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const host = this.#hostOf();
     await host.sweepMembers();
     if (host.needsMembershipSweep()) await this.#alarmAt(Date.now() + MEMBERSHIP_TTL_MS);
@@ -179,6 +214,7 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
         (await this.env.ACCOUNT.getByName(accountId).guild())?.guildId ?? null,
       waitUntil: (promise) => this.ctx.waitUntil(promise),
       log: (message, err) => console.error(message, err),
+      analytics: analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
     });
     return this.#host;
   }

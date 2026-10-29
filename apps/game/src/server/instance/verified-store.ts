@@ -35,7 +35,11 @@ export interface VerifiedRecord {
   /** Speed ledger: wall-time credit (ms) as of creditAt. */
   creditMs: number;
   creditAt: number;
-  /** Last verified segment or socket close (offline progress measures from here). */
+  /**
+   * Wall time (ms) of the last verified sim progress: a segment that covered
+   * ticks, an offline grant, a new game or an import (offline-idle.md §5.1).
+   * Offline progress measures the absence from here. A socket close does not move it.
+   */
   lastActiveAt: number;
   /** The current state descends from an imported local save. */
   imported: boolean;
@@ -49,6 +53,13 @@ export interface VerifiedRecord {
   accountId: string;
   displayName: string;
   counters: MismatchCounters;
+  /**
+   * Deferred offline grant (offline-idle.md §5.3): absence (ms) still owed,
+   * paid once the client's unverified play up to `offlineDueTick` verified,
+   * or added at the next join. 0 = nothing owed.
+   */
+  offlineDueMs: number;
+  offlineDueTick: number;
 }
 
 /** One verified segment of the log (B, verifiedTick]. */
@@ -73,6 +84,10 @@ export interface VerifiedStore {
   /** Last stored report hash of a read-model row. */
   reportHash(table: string, key: string): string | null;
   setReportHash(table: string, key: string, hash: string): void;
+  /** Keys of `table` that have a stored report hash, sorted. */
+  reportKeys(table: string): string[];
+  /** Forgets a row's report hash (after its tombstone was appended). */
+  deleteReportHash(table: string, key: string): void;
   /** Runs fn atomically (all writes or none). */
   transaction<T>(fn: () => T): T;
 }
@@ -96,6 +111,8 @@ interface InstanceRow extends Record<string, SqlStorageValue> {
   account_id: string;
   display_name: string;
   counters: string;
+  offline_due_ms: number | null;
+  offline_due_tick: number | null;
 }
 
 interface SegmentRow extends Record<string, SqlStorageValue> {
@@ -120,6 +137,11 @@ function parseCounters(text: string): MismatchCounters {
   } catch {
     return emptyCounters();
   }
+}
+
+/** A stored non-negative number, or 0 (NULL from rows written before the column existed). */
+function uint(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
 }
 
 function parseIds(text: string): string[] {
@@ -159,8 +181,23 @@ export class SqlVerifiedStore implements VerifiedStore {
       module_ids TEXT NOT NULL,
       account_id TEXT NOT NULL,
       display_name TEXT NOT NULL,
-      counters TEXT NOT NULL
+      counters TEXT NOT NULL,
+      offline_due_ms INTEGER NOT NULL DEFAULT 0,
+      offline_due_tick INTEGER NOT NULL DEFAULT 0
     )`);
+    // Offline-idle (offline-idle.md §5.3): tables created before these columns get
+    // them once (sqlite_master, because PRAGMA is restricted in DOs). Old rows read 0.
+    const tableSql =
+      sql
+        .exec<{ sql: string }>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'verified_instance'",
+        )
+        .toArray()[0]?.sql ?? "";
+    for (const col of ["offline_due_ms", "offline_due_tick"]) {
+      if (!new RegExp(`\\b${col}\\b`).test(tableSql)) {
+        sql.exec(`ALTER TABLE verified_instance ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
+      }
+    }
     sql.exec(`CREATE TABLE IF NOT EXISTS verified_segment (
       to_tick INTEGER PRIMARY KEY,
       from_tick INTEGER NOT NULL,
@@ -205,6 +242,8 @@ export class SqlVerifiedStore implements VerifiedStore {
       accountId: row.account_id,
       displayName: row.display_name,
       counters: parseCounters(row.counters),
+      offlineDueMs: uint(row.offline_due_ms),
+      offlineDueTick: uint(row.offline_due_tick),
     };
   }
 
@@ -227,8 +266,9 @@ export class SqlVerifiedStore implements VerifiedStore {
       this.#db.sql.exec(
         `INSERT INTO verified_instance (id, instance_id, seed, epoch, base, base_tick, base_at,
            verified_tick, verified_hash, credit_ms, credit_at, last_active_at, imported, import_used,
-           segments_total, module_ids, account_id, display_name, counters)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           segments_total, module_ids, account_id, display_name, counters, offline_due_ms,
+           offline_due_tick)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET instance_id = excluded.instance_id, seed = excluded.seed,
            epoch = excluded.epoch, base = excluded.base, base_tick = excluded.base_tick,
            base_at = excluded.base_at, verified_tick = excluded.verified_tick,
@@ -237,7 +277,8 @@ export class SqlVerifiedStore implements VerifiedStore {
            imported = excluded.imported, import_used = excluded.import_used,
            segments_total = excluded.segments_total, module_ids = excluded.module_ids,
            account_id = excluded.account_id, display_name = excluded.display_name,
-           counters = excluded.counters`,
+           counters = excluded.counters, offline_due_ms = excluded.offline_due_ms,
+           offline_due_tick = excluded.offline_due_tick`,
         rec.instanceId,
         rec.seed,
         rec.epoch,
@@ -256,6 +297,8 @@ export class SqlVerifiedStore implements VerifiedStore {
         rec.accountId,
         rec.displayName,
         JSON.stringify(rec.counters),
+        uint(rec.offlineDueMs),
+        uint(rec.offlineDueTick),
       );
       this.#db.sql.exec("DELETE FROM verified_segment");
     });
@@ -282,7 +325,7 @@ export class SqlVerifiedStore implements VerifiedStore {
     this.#db.sql.exec(
       `UPDATE verified_instance SET epoch = ?, verified_tick = ?, verified_hash = ?, credit_ms = ?,
          credit_at = ?, last_active_at = ?, imported = ?, import_used = ?, segments_total = ?,
-         account_id = ?, display_name = ?, counters = ?
+         account_id = ?, display_name = ?, counters = ?, offline_due_ms = ?, offline_due_tick = ?
        WHERE id = 1`,
       rec.epoch,
       rec.verifiedTick,
@@ -296,6 +339,8 @@ export class SqlVerifiedStore implements VerifiedStore {
       rec.accountId,
       rec.displayName,
       JSON.stringify(rec.counters),
+      uint(rec.offlineDueMs),
+      uint(rec.offlineDueTick),
     );
   }
 
@@ -314,6 +359,17 @@ export class SqlVerifiedStore implements VerifiedStore {
       key,
       hash,
     );
+  }
+
+  reportKeys(table: string): string[] {
+    return this.#db.sql
+      .exec<{ key: string }>("SELECT key FROM report_state WHERE tbl = ? ORDER BY key", table)
+      .toArray()
+      .map((r) => r.key);
+  }
+
+  deleteReportHash(table: string, key: string): void {
+    this.#db.sql.exec("DELETE FROM report_state WHERE tbl = ? AND key = ?", table, key);
   }
 
   transaction<T>(fn: () => T): T {

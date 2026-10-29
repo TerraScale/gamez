@@ -4,7 +4,12 @@
  * sim is trusted for *where* the hero is, the server only enforces shape,
  * bounds, rate and cosmetic limits.
  */
-import type { EntityState, TilePos } from "@gamez/protocol";
+import {
+  MAX_COMPANIONS,
+  type CompanionPose,
+  type EntityState,
+  type TilePos,
+} from "@gamez/protocol";
 import { walkAt } from "@gamez/world";
 
 /** Longest path a pose may report, in tiles. */
@@ -18,7 +23,7 @@ export const DEFAULT_APPEARANCE = "unit.hero";
 /** "unit.hero" or "unit.hero.<x>" with lowercase segments; anything else falls back to the default. */
 export const APPEARANCE_PATTERN = /^unit\.hero(\.[a-z0-9_]+)*$/;
 
-/** Control characters (C0, DEL, C1) removed from tags. */
+/** Control characters (C0, DEL, C1) removed from operator tags. */
 const CONTROL = /\p{Cc}/gu;
 /**
  * The shape of a client-reported tag (R11): "Lv <level> <word>", plain ASCII,
@@ -31,6 +36,11 @@ export const LEVEL_TAG_PATTERN = /^Lv ([1-9][0-9]{0,3}) ([A-Za-z][A-Za-z' -]{0,3
  * digits only, so it carries no text either.
  */
 export const LATENCY_TAG_PATTERN = /^lt-[0-9]{1,16}$/;
+
+/** Longest companion name (party.md §11.3); names are game-data words (R11). */
+export const MAX_COMPANION_NAME = 24;
+/** Companion offsets are whole tiles in -MAX_OFFSET..MAX_OFFSET from the avatar. */
+export const MAX_COMPANION_OFFSET = 4;
 
 export type PoseReason = "bad-pose" | "out-of-bounds" | "path-too-long";
 
@@ -51,6 +61,11 @@ export interface CleanPose {
   appearance: string;
   /** Absent when the reported tag is missing or empty after sanitising. */
   tag?: string;
+  /**
+   * Present when the report carried a companions array (possibly []: clear the
+   * list). Absent = the avatar keeps its previous list.
+   */
+  companions?: CompanionPose[];
 }
 
 export type PoseCheck = { ok: true; pose: CleanPose } | { ok: false; reason: PoseReason };
@@ -73,11 +88,16 @@ function inBounds(t: TilePos, bounds: PoseBounds): boolean {
   return t.x >= 0 && t.y >= 0 && t.x < bounds.width && t.y < bounds.height;
 }
 
+/** The appearance when it is a string that matches the pattern and length limit, else undefined. */
+export function validAppearance(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  if (v.length > MAX_APPEARANCE || !APPEARANCE_PATTERN.test(v)) return undefined;
+  return v;
+}
+
 /** Appearance id if it matches the pattern and length limit, else "unit.hero". */
 export function sanitiseAppearance(v: unknown): string {
-  if (typeof v !== "string") return DEFAULT_APPEARANCE;
-  if (v.length > MAX_APPEARANCE || !APPEARANCE_PATTERN.test(v)) return DEFAULT_APPEARANCE;
-  return v;
+  return validAppearance(v) ?? DEFAULT_APPEARANCE;
 }
 
 /**
@@ -105,6 +125,54 @@ export function sanitisePoseTag(v: unknown, tagWords: readonly string[] = []): s
   const m = LEVEL_TAG_PATTERN.exec(v);
   if (!m || !tagWords.includes(m[2]!)) return undefined;
   return v;
+}
+
+/**
+ * A companion's name, shown next to it to every player in town. Like the
+ * pose tag (R11) it is not free text: only a word of the world's game-data
+ * vocabulary (`tagWords`: the classic class names and "Hero") is relayed, so
+ * the client reports the companion's class name, never the player-chosen hero
+ * name. Exact match (look-alike letters, links and insults are dropped);
+ * undefined for anything else, which drops the companion.
+ */
+export function sanitiseCompanionName(
+  v: unknown,
+  tagWords: readonly string[] = [],
+): string | undefined {
+  if (typeof v !== "string" || v.length > MAX_COMPANION_NAME) return undefined;
+  return tagWords.includes(v) ? v : undefined;
+}
+
+/** An offset rounded to a whole tile and clamped to -4..4; undefined for a non-number. */
+function companionOffset(v: unknown): number | undefined {
+  if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
+  const r = Math.round(v);
+  return Math.min(MAX_COMPANION_OFFSET, Math.max(-MAX_COMPANION_OFFSET, r));
+}
+
+/**
+ * Companion list from a raw report. Entries with a bad appearance (the same rule
+ * as the avatar's), a name outside `tagWords` (sanitiseCompanionName, R11) or a
+ * non-number offset are dropped; offsets are rounded and clamped to -4..4; the
+ * result keeps at most MAX_COMPANIONS valid entries, in report order. A
+ * non-array gives [].
+ */
+export function sanitiseCompanions(v: unknown, tagWords: readonly string[] = []): CompanionPose[] {
+  if (!Array.isArray(v)) return [];
+  const out: CompanionPose[] = [];
+  for (const raw of v) {
+    if (out.length >= MAX_COMPANIONS) break;
+    if (!isRecord(raw)) continue;
+    const appearance = validAppearance(raw.appearance);
+    const name = sanitiseCompanionName(raw.name, tagWords);
+    const dx = companionOffset(raw.dx);
+    const dy = companionOffset(raw.dy);
+    if (appearance === undefined || name === undefined || dx === undefined || dy === undefined) {
+      continue;
+    }
+    out.push({ appearance, name, dx, dy });
+  }
+  return out;
 }
 
 /**
@@ -142,6 +210,9 @@ export function sanitisePose(raw: unknown, bounds: PoseBounds): PoseCheck {
     appearance: sanitiseAppearance(raw.appearance),
   };
   if (tag !== undefined) pose.tag = tag;
+  if (Array.isArray(raw.companions)) {
+    pose.companions = sanitiseCompanions(raw.companions, bounds.tagWords);
+  }
   return { ok: true, pose };
 }
 
@@ -226,14 +297,87 @@ export function continueWalk(
 }
 
 /**
+ * The avatar state a checked pose turns `old` into at `now` (chunk.ts #pose):
+ * the walk continues (continueWalk), the look and tag are replaced, and the
+ * companions are replaced only when the report carried a list. Otherwise the
+ * previous list is kept.
+ */
+export function poseState(old: EntityState, pose: CleanPose, now: number): EntityState {
+  const state: EntityState = {
+    ...old,
+    ...continueWalk(old, pose, now),
+    appearance: pose.appearance,
+  };
+  delete state.tag;
+  if (pose.tag !== undefined) state.tag = pose.tag;
+  if (pose.companions !== undefined) state.companions = pose.companions;
+  return state;
+}
+
+/**
+ * The pose a relay forwards when `next` replaces a still-queued `prev` of the
+ * same avatar (relay.ts #queuePose). Companions mean "absent = unchanged", so a
+ * list that `next` does not repeat (notably the one-shot [] sent when the party
+ * shrinks to one) is carried over instead of being lost with `prev`.
+ */
+export function coalescePose<P extends { companions?: CompanionPose[] }>(
+  prev: P | undefined,
+  next: P,
+): P {
+  if (next.companions !== undefined || prev?.companions === undefined) return next;
+  return { ...next, companions: prev.companions };
+}
+
+/**
+ * The relay's queue of client poses waiting for the next batch RPC to the
+ * chunk: one entry per avatar, the newest pose wins (coalesced, so a
+ * companions change survives being overwritten before it was sent).
+ */
+export class PoseQueue<E extends { pose: { companions?: CompanionPose[] } }> {
+  readonly #byId = new Map<string, E>();
+
+  get size(): number {
+    return this.#byId.size;
+  }
+
+  put(id: string, entry: E): void {
+    const prev = this.#byId.get(id)?.pose;
+    this.#byId.set(id, { ...entry, pose: coalescePose(prev, entry.pose) });
+  }
+
+  /** Every queued entry (in first-queued order); the queue is empty afterwards. */
+  drain(): E[] {
+    const out = [...this.#byId.values()];
+    this.#byId.clear();
+    return out;
+  }
+}
+
+/** Same companions to draw; an absent list and an empty one draw alike. */
+function sameCompanions(a: CompanionPose[] | undefined, b: CompanionPose[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  if (x.length !== y.length) return false;
+  for (let i = 0; i < x.length; i++) {
+    const p = x[i]!;
+    const q = y[i]!;
+    if (p.appearance !== q.appearance || p.name !== q.name || p.dx !== q.dx || p.dy !== q.dy) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * True when `next` (the state a pose turns into) would draw exactly like `old`
- * at `now`: both standing on the same tile with the same look. Keepalive poses
- * of a hero standing still are answered without a delta (no fan-out cost).
+ * at `now`: both standing on the same tile with the same look and companions.
+ * Keepalive poses of a hero standing still are answered without a delta (no fan-out cost).
  */
 export function sameStanding(old: EntityState, next: EntityState, now: number): boolean {
   if (next.path.length > 0) return false;
   if (old.appearance !== next.appearance || old.tag !== next.tag || old.name !== next.name)
     return false;
+  if (!sameCompanions(old.companions, next.companions)) return false;
   const at = walkAt(old, now);
   return !at.next && sameTile(at.from, next.pos);
 }

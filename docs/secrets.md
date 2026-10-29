@@ -7,21 +7,26 @@ optional, and leaving it out disables or stubs the feature it enables. Never com
 
 ## Overview
 
-| Name                    | Kind          | Required | Enables                                                                                                 |
-| ----------------------- | ------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `AUTH_SECRET`           | secret        | yes      | HMAC key for session tokens and (with a derived key) the OAuth state cookie                             |
-| `GOOGLE_CLIENT_ID`      | secret or var | no       | Real "Sign in with Google" (needs the secret too)                                                       |
-| `GOOGLE_CLIENT_SECRET`  | secret        | no       | Same                                                                                                    |
-| `DISCORD_CLIENT_ID`     | secret or var | no       | Real "Sign in with Discord" (needs the secret too)                                                      |
-| `DISCORD_CLIENT_SECRET` | secret        | no       | Same                                                                                                    |
-| `APPLE_CLIENT_ID`       | var           | no       | Reserved: Sign in with Apple is **stub-only in wave B** (see below)                                     |
-| `APPLE_TEAM_ID`         | var           | no       | Reserved (Apple client-secret JWT)                                                                      |
-| `APPLE_KEY_ID`          | var           | no       | Reserved (Apple client-secret JWT)                                                                      |
-| `APPLE_PRIVATE_KEY`     | secret        | no       | Reserved (ES256 `.p8` key that signs the Apple client-secret JWT)                                       |
-| `OAUTH_STUB`            | var           | no       | `"1"`: local stub OAuth provider (and `/api/dev/*`) on any host. `"0"`: never. Unset: only on dev hosts |
-| `ADMIN_ACCOUNT_IDS`     | var           | no       | Comma-separated account ids allowed on `/api/admin/*` (chat moderation review)                          |
-| `MODERATION`            | var           | no       | Chat moderation: `"llama-guard"` (default when `AI` is bound), `"stub"`, `"off"`                        |
-| `AI`                    | binding       | no       | Workers AI, used by chat moderation (Llama Guard). Not bound by default                                 |
+| Name                    | Kind          | Required | Enables                                                                                                  |
+| ----------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `AUTH_SECRET`           | secret        | yes      | HMAC key for session tokens and (with a derived key) the OAuth state cookie                              |
+| `GOOGLE_CLIENT_ID`      | secret or var | no       | Real "Sign in with Google" (needs the secret too)                                                        |
+| `GOOGLE_CLIENT_SECRET`  | secret        | no       | Same                                                                                                     |
+| `DISCORD_CLIENT_ID`     | secret or var | no       | Real "Sign in with Discord" (needs the secret too)                                                       |
+| `DISCORD_CLIENT_SECRET` | secret        | no       | Same                                                                                                     |
+| `APPLE_CLIENT_ID`       | var           | no       | Reserved: Sign in with Apple is **stub-only in wave B** (see below)                                      |
+| `APPLE_TEAM_ID`         | var           | no       | Reserved (Apple client-secret JWT)                                                                       |
+| `APPLE_KEY_ID`          | var           | no       | Reserved (Apple client-secret JWT)                                                                       |
+| `APPLE_PRIVATE_KEY`     | secret        | no       | Reserved (ES256 `.p8` key that signs the Apple client-secret JWT)                                        |
+| `OAUTH_STUB`            | var           | no       | `"1"`: local stub OAuth provider (and `/api/dev/*`) on any host. `"0"`: never. Unset: only on dev hosts  |
+| `ADMIN_ACCOUNT_IDS`     | var           | no       | Comma-separated account ids allowed on `/api/admin/*` (chat moderation review)                           |
+| `MODERATION`            | var           | no       | Chat moderation: `"llama-guard"` (default when `AI` is bound), `"stub"`, `"off"`                         |
+| `AI`                    | binding       | no       | Workers AI, used by chat moderation (Llama Guard). Not bound by default                                  |
+| `ANALYTICS_ACCOUNT_ID`  | secret or var | no       | Admin dashboard: account id for the Analytics Engine SQL API (needs the token too)                       |
+| `ANALYTICS_API_TOKEN`   | secret        | no       | Admin dashboard: API token with **Account Analytics: Read**. Absent = the dashboard reads the local stub |
+| `ANALYTICS_DATASET`     | var           | no       | Analytics Engine dataset queried by the dashboard (default `gamez_events`)                               |
+| `ANALYTICS_LOCAL`       | var           | no       | Local analytics stub (MetricsDO): `"0"` never, `"1"` always also write it, unset = dev builds only       |
+| `VITE_BUILD_ID`         | build env     | no       | Client build id in client telemetry (version adoption in Tech health). Unset = `"dev"`                   |
 
 "secret" = set with `cf workers secrets …` (encrypted, write-only). "var" = a plain text binding
 (`bindings.text(...)` in `cloudflare.config.ts`) or a secret; client ids are not sensitive, but
@@ -288,6 +293,29 @@ key beyond `AUTH_SECRET`, which is declared.
   intent's metadata. **Unverified** against Stripe itself.
 - The webhook carries no amount, so a paid event is not checked against the price charged. Adding
   the amount to `VerifiedWebhook` would close that.
+
+## Admin dashboard analytics
+
+`docs/design/admin-dashboard.md` §4. The Worker writes high-volume events to the Workers Analytics
+Engine dataset bound as `ANALYTICS` (`gamez_events`, created on first write; nothing to set up).
+Reading them back needs the SQL API, which is not a binding:
+
+1. Dashboard → My Profile → API Tokens → Create token → custom, permission **Account → Account
+   Analytics → Read**, scoped to the gamez account.
+2. Set `ANALYTICS_API_TOKEN` (secret) and `ANALYTICS_ACCOUNT_ID` (the account id) on the Worker.
+3. Leave `ANALYTICS_LOCAL` unset. With both credentials present the local stub turns off and the
+   dashboard's source chips say "Analytics Engine" instead of "local stub".
+
+Without the credentials, a local `vp dev` (a dev build) also writes the points to the MetricsDO
+"local" stub (14 days, 200 000 rows) and the dashboard reads that. A production build never writes
+the stub by default (every write would be an RPC to one global DO); set `ANALYTICS_LOCAL = "1"` to
+force it, for example for a short test without AE credentials. Without credentials and without the
+stub, the dashboard's Analytics Engine sections read the (empty) stub. The SQL
+dialect the dashboard sends (`FORMAT JSON`, `quantileExactWeighted`, `intDiv(toUInt32(timestamp))`)
+is **unverified against the live API** until it runs with real credentials (ADR 0008).
+
+`VITE_BUILD_ID` is a build-time variable (Workers Builds → build variables, e.g. the commit SHA):
+it labels client telemetry so Tech health shows version adoption.
 
 ## Never
 

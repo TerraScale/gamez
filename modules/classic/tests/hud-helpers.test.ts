@@ -352,6 +352,7 @@ describe("slot table", () => {
       "classic.targetBar",
     ]);
     expect(slots.list(SLOT.left).map((e) => e.id)).toEqual([
+      "classic.partyFrames",
       "classic.questTracker",
       "classic.combatLog",
     ]);

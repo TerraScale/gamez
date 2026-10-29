@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Slot, SlotProvider, type ClientModeView, type ClientServices } from "@gamez/ui-host";
+import { reportRenderError } from "../telemetry/index.ts";
 import { uiSlots } from "./slots.ts";
 
 export interface ModeHostProps {
@@ -32,6 +33,7 @@ export function ModeHost({ view, services, onExit }: ModeHostProps) {
         },
         (err: unknown) => {
           console.error(`mode "${view.modeId}" failed to start`, err);
+          reportRenderError(err);
           if (!cancelled) setError(err instanceof Error ? err.message : String(err));
         },
       );

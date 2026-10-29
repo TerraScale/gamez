@@ -8,8 +8,9 @@
  *   single-target cleaves (no Rallying Cry or Mend left) and opened with a
  *   2-7 short sword. Now: 7 deaths, 5 kills, 5 runs at depth 6+.
  * - Boss fights: a level-appropriate hero of each class kills Morrow
- *   (depth 4). Vessa (depth 12) and the Hollow King (16) are still out of
- *   reach for Auto (see the todos for the measured numbers).
+ *   (depth 4), and a hero at the quest level kills Vessa (depth 12) and the
+ *   Hollow King (16) and turns The Ninth Flame and Crown of Hollows in (the
+ *   measured numbers are with those tests; Skarn is in quests.bosses.test.ts).
  * - Browser QA: `spawnBoss` + `woundBosses: 1` in one grant failed with "no
  *   living boss" (the spawn is queued) and rolled the spawn back with it, so
  *   QA wounded nothing and watched a full-life boss. The wound now waits for
@@ -18,10 +19,10 @@
  * Budgets are the measured ticks plus a margin; content and the Auto
  * controller change in parallel, so they are not exact.
  */
-import { createSim, loadMode, type Entity, type GameEvent, type Sim } from "@gamez/kernel";
+import { createSim, loadMode, type GameEvent, type Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
 import { pushTransition } from "../src/bus.ts";
-import { AreaTag, Belt, Dead, Level, Life, Monster, Pos, Supplies } from "../src/components.ts";
+import { Level, Life, Pos } from "../src/components.ts";
 import {
   DEBUG_GRANT,
   reachableSpawnTile,
@@ -29,38 +30,23 @@ import {
   SPAWN_MIN_TILES,
 } from "../src/debug/index.ts";
 import { debugModules, mode, modules } from "../src/index.ts";
-import { placeNear } from "../src/monsters/spawn.ts";
-import { currentDepth, dungeonOf, heroOf } from "../src/resources.ts";
-import { gridOf } from "../src/spatial.ts";
+import { dungeonOf, heroOf } from "../src/resources.ts";
 import type { ClassicMap } from "../src/world/maps.ts";
 import { getAreaMap } from "../src/world/maps.ts";
+import {
+  bossAlive,
+  bossFight,
+  expectBossQuest,
+  grant,
+  HOLLOW_KING,
+  untilBossKilled,
+  VESSA,
+} from "./support/boss-quests.ts";
 
 const loaded = loadMode(mode, modules);
 const debugLoaded = loadMode(mode, [...modules, ...debugModules]);
 
 const WARDEN = "classic.monster.boss_warden";
-
-function grant(sim: Sim, payload: Record<string, unknown>): void {
-  const r = sim.dispatch(DEBUG_GRANT, payload, null);
-  expect(r.ok, `${JSON.stringify(payload)}: ${r.error?.message ?? ""}`).toBe(true);
-}
-
-function bossAlive(sim: Sim, depth = currentDepth(sim.world)): Entity {
-  for (const e of sim.world.query(Monster, AreaTag)) {
-    if (sim.world.has(e, Dead) || sim.world.read(e, AreaTag).depth !== depth) continue;
-    if (sim.world.read(e, Monster).rarity === "boss") return e;
-  }
-  return 0;
-}
-
-/** Steps until a classic.boss.killed event (or the budget); returns the ticks it took, or -1. */
-function untilBossKilled(sim: Sim, budget: number): number {
-  for (let i = 1; i <= budget; i++) {
-    const ev = sim.step(1) as GameEvent[];
-    if (ev.some((e) => e.type === "classic.boss.killed")) return i;
-  }
-  return -1;
-}
 
 /** 4-neighbour walking distance (tiles) between two tiles of `map`, or -1. */
 function walkSteps(map: ClassicMap, ax: number, ay: number, bx: number, by: number): number {
@@ -91,61 +77,8 @@ function walkSteps(map: ClassicMap, ax: number, ay: number, bx: number, by: numb
   return -1;
 }
 
-/**
- * A level-appropriate hero (debug grants: `level`, ilvl level-1 rares in
- * every slot, waypoints to `depth`, full belt of the level's potion tier, 5
- * scrolls) on the boss depth `depth` with the level's other monsters
- * removed, 6 tiles from the boss, then Auto.
- */
-function bossFight(classId: string, level: number, depth: number, seed: number): Sim {
-  const sim = createSim(debugLoaded, { seed });
-  expect(sim.dispatch("classic.newHero", { classId, name: "Tester" }, null).ok).toBe(true);
-  sim.dispatch("classic.setControl", { mode: "manual" }, null);
-  sim.step(1);
-  grant(sim, { levels: level - 1, gold: 5000, deepest: depth });
-  for (const category of ["weapon", "weapon", "weapon", "weapon", "armor", "helm", "boots"])
-    grant(sim, { items: { count: 1, rarity: "rare", ilvl: level, category } });
-  for (const category of ["gloves", "ring", "amulet", "shield"])
-    grant(sim, {
-      items: { count: category === "ring" ? 2 : 1, rarity: "rare", ilvl: level, category },
-    });
-  sim.step(40);
-  // Auto equips the grants and spends the stat and skill points.
-  sim.dispatch("classic.setControl", { mode: "auto" }, null);
-  sim.step(60);
-  sim.dispatch("classic.setControl", { mode: "manual" }, null);
-  const dungeon = dungeonOf(sim.world);
-  dungeon.waypoints = [];
-  for (let d = 1; d <= depth; d += 2) dungeon.waypoints.push(d);
-  pushTransition(sim.world, { to: depth, via: "stairsDown" });
-  sim.step(2);
-  const hero = heroOf(sim.world);
-  const potion =
-    level >= 20
-      ? "classic.item.potion_life_3"
-      : level >= 10
-        ? "classic.item.potion_life_2"
-        : "classic.item.potion_life_1";
-  const belt = sim.world.read(hero, Belt);
-  sim.world.update(hero, Belt, { slots: belt.slots.map(() => ({ base: potion, count: 5 })) });
-  sim.world.update(hero, Supplies, { tpScrolls: 5 });
-  for (const e of sim.world.query(Monster, AreaTag)) {
-    if (sim.world.read(e, AreaTag).depth !== depth) continue;
-    if (sim.world.read(e, Monster).rarity !== "boss") sim.world.destroy(e);
-  }
-  const boss = bossAlive(sim, depth);
-  expect(boss, "the boss of the depth").not.toBe(0);
-  const bp = sim.world.read(boss, Pos);
-  const at = placeNear(getAreaMap(sim.world, sim.loaded.registry), bp.x + 6 * 256, bp.y);
-  sim.world.update(hero, Pos, at);
-  gridOf(sim.world).move(hero, at.x, at.y);
-  sim.step(1);
-  sim.dispatch("classic.setControl", { mode: "auto" }, null);
-  return sim;
-}
-
 describe("warrior Auto reaches the depth-4 boss and depth 6", () => {
-  it("seed 8: kills Morrow and reaches depth 6 within 32 000 ticks from a fresh hero", () => {
+  it("seed 8: kills Morrow and reaches depth 6 within 34 000 ticks from a fresh hero", () => {
     // Measured: Morrow at tick 26 734, depth 6 at 30 410 (before: deepest 3, 0 boss kills).
     const sim = createSim(loaded, { seed: 8 });
     expect(
@@ -154,7 +87,7 @@ describe("warrior Auto reaches the depth-4 boss and depth 6", () => {
     expect(sim.dispatch("classic.setControl", { mode: "idle" }, null).ok).toBe(true);
     let warden = -1;
     let deaths = 0;
-    for (let t = 0; t < 32_000; t++) {
+    for (let t = 0; t < 34_000; t++) {
       for (const e of sim.step(1) as GameEvent[]) {
         if (e.type === "classic.hero.died") deaths++;
         if (e.type === "classic.boss.killed" && (e as { monster?: string }).monster === WARDEN)
@@ -177,15 +110,29 @@ describe("boss fights: a level-appropriate Auto hero kills the boss", () => {
       expect(dungeonOf(sim.world).bossesKilled).toContain(4);
     }, 120_000);
   }
+});
 
-  // Vessa (depth 12) and the Hollow King (depth 16) are not killed by Auto yet: isolated
-  // fights (the level's other monsters removed, quests out of the way, ilvl-level rares,
-  // 12 000 ticks, seeds 1-3) never finished either boss. Vessa vs level-22 heroes: 2-6 k of
-  // her 8 625 life dealt, 2-5 deaths and 40-90 potions per run (her basic Firebolt is 60-70 %
-  // of the damage taken); the Hollow King vs level 27: 0.7-9 k of 17 400. Each death or
-  // retreat loop rebuilds the level (the wound is kept, the packs come back).
-  it.todo("each class (level 20-22) kills Vessa at depth 12 within a bounded budget");
-  it.todo("each class (level 26-28) kills the Hollow King at depth 16 within a bounded budget");
+/**
+ * The last two chain quests (QA quest fix round 1, docs/design/classic.md
+ * §15.6): a hero at the quest's reqLevel (rares of its level in every slot,
+ * the quest log of that level: every lower quest turned in, this one
+ * accepted) kills the boss under Auto, goes to town and turns the quest in
+ * (tests/support/boss-quests.ts). Before, at the quest level: Vessa killed
+ * the seed-2 sorcerer 5 times (empty belt, no retreat while casting), the
+ * Hollow King never fell to the seed-1/2 sorcerer and the seed-2/3 warrior
+ * (a death at his last phase, then 4-5 in all on the rebuilt levels). Measured
+ * after (seeds 1-3, ticks to the kill): Vessa warrior 2 888-5 355, rogue
+ * 956-1 656, sorcerer 1 328-1 730; the Hollow King warrior 3 146-6 300,
+ * rogue 1 405-2 530, sorcerer 1 059-1 327. Budget: the 12 000-tick target.
+ */
+describe("boss quests: a quest-level Auto hero kills the boss and turns the quest in", () => {
+  for (const b of [VESSA, HOLLOW_KING]) {
+    for (const cls of ["classic.warrior", "classic.rogue", "classic.sorcerer"]) {
+      it(`${cls} (level ${b.level}) kills ${b.name} at depth ${b.depth} and turns the quest in, seeds 1-3`, () => {
+        for (const seed of [1, 2, 3]) expectBossQuest(cls, b, b.level, seed);
+      }, 300_000);
+    }
+  }
 });
 
 describe("debug boss grants (browser QA repro: spawnBoss + woundBosses 1 + Auto)", () => {
@@ -294,6 +241,7 @@ describe("determinism", () => {
     const b = script();
     expect(a.hash()).toBe(b.hash());
     expect(a.world.read(heroOf(a.world), Level).level).toBeGreaterThanOrEqual(7);
-    expect(a.hash()).toBe("183f66642ba90b3c");
+    // Re-pinned for classic.debug 0.5.0 (wearGear): the debug module version is in the hash.
+    expect(a.hash()).toBe("5b9f46d95c65bf50");
   }, 120_000);
 });

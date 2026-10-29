@@ -3,7 +3,8 @@
  * drinkPotion, buy, sell, stashPut, stashTake; wave A: gamble, stashMove,
  * setLootFilter. parse() validates the payload
  * shape; apply() notes the manual command (auto pause) and runs the shared
- * execX operation, throwing ActionError when it fails (the kernel rolls back).
+ * execX operation for the CONTROLLED hero (heroOf; docs/design/party.md
+ * §4.1), throwing ActionError when it fails (the kernel rolls back).
  */
 import {
   ActionError,
@@ -71,7 +72,7 @@ export const equipAction: ActionDef<ActionPayloads["classic.equip"]> = {
     return { uid, slot };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execEquip(world, ctx, p.uid, p.slot));
+    commit(world, ctx, execEquip(world, ctx, heroOf(world), p.uid, p.slot));
   },
 };
 
@@ -83,7 +84,7 @@ export const unequipAction: ActionDef<ActionPayloads["classic.unequip"]> = {
     return { slot: slotOf(p.slot) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execUnequip(world, ctx, p.slot));
+    commit(world, ctx, execUnequip(world, ctx, heroOf(world), p.slot));
   },
 };
 
@@ -99,7 +100,7 @@ export const moveItemAction: ActionDef<ActionPayloads["classic.moveItem"]> = {
     };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execMoveItem(world, ctx, p.uid, p.x, p.y));
+    commit(world, ctx, execMoveItem(world, ctx, heroOf(world), p.uid, p.x, p.y));
   },
 };
 
@@ -111,7 +112,7 @@ export const dropItemAction: ActionDef<ActionPayloads["classic.dropItem"]> = {
     return { uid: int(p.uid, "uid", 1, MAX_ID) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execDrop(world, ctx, p.uid));
+    commit(world, ctx, execDrop(world, ctx, heroOf(world), p.uid));
   },
 };
 
@@ -123,7 +124,7 @@ export const drinkPotionAction: ActionDef<ActionPayloads["classic.drinkPotion"]>
     return { slot: int(p.slot, "slot", 0, 63) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execDrink(world, ctx, p.slot));
+    commit(world, ctx, execDrink(world, ctx, heroOf(world), p.slot));
   },
 };
 
@@ -149,7 +150,7 @@ export const buyAction: ActionDef<ActionPayloads["classic.buy"]> = {
     };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execBuy(world, ctx, p));
+    commit(world, ctx, execBuy(world, ctx, heroOf(world), p));
   },
 };
 
@@ -163,7 +164,7 @@ export const sellAction: ActionDef<ActionPayloads["classic.sell"]> = {
     return { npc, uid: int(p.uid, "uid", 1, MAX_ID) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execSell(world, ctx, p.npc, p.uid));
+    commit(world, ctx, execSell(world, ctx, heroOf(world), p.npc, p.uid));
   },
 };
 
@@ -177,7 +178,7 @@ export const stashPutAction: ActionDef<ActionPayloads["classic.stashPut"]> = {
     return { uid, tab: int(p.tab, "tab", 0, 63) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execStashPut(world, ctx, p.uid, p.tab));
+    commit(world, ctx, execStashPut(world, ctx, heroOf(world), p.uid, p.tab));
   },
 };
 
@@ -189,7 +190,7 @@ export const stashTakeAction: ActionDef<ActionPayloads["classic.stashTake"]> = {
     return { uid: int(p.uid, "uid", 1, MAX_ID) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execStashTake(world, ctx, p.uid));
+    commit(world, ctx, execStashTake(world, ctx, heroOf(world), p.uid));
   },
 };
 
@@ -212,7 +213,7 @@ export const gambleAction: ActionDef<ActionPayloads["classic.gamble"]> = {
     return { npc, category: categoryOf(p.category) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execGamble(world, ctx, p.npc, p.category));
+    commit(world, ctx, execGamble(world, ctx, heroOf(world), p.npc, p.category));
   },
 };
 
@@ -224,7 +225,7 @@ export const stashMoveAction: ActionDef<ActionPayloads["classic.stashMove"]> = {
     return { uid: int(p.uid, "uid", 1, MAX_ID), tab: int(p.tab, "tab", 0, 63) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execStashMove(world, ctx, p.uid, p.tab));
+    commit(world, ctx, execStashMove(world, ctx, heroOf(world), p.uid, p.tab));
   },
 };
 

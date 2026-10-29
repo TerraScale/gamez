@@ -25,6 +25,7 @@ import { busOf, takeCommands } from "../bus.ts";
 import { noteManual } from "../control.ts";
 import { emit } from "../events.ts";
 import { SYSTEM } from "../ids.ts";
+import { commandActor } from "../items/common.ts";
 import { heroOf } from "../resources.ts";
 import {
   execAddSocket,
@@ -48,23 +49,25 @@ export const CRAFTING_OPS = [
   "combineGems",
 ] as const;
 
-/** Runs one crafting command. */
+/** Runs one crafting command for the hero it names (HeroCommand.hero, else the controlled hero). */
 export function runCraftingCommand(world: World, ctx: SimContext, c: HeroCommand): OpResult {
+  const hero = commandActor(world, c);
+  if (typeof hero !== "number") return hero;
   switch (c.op) {
     case "repair":
-      return execRepair(world, ctx, c.npc, c.uid);
+      return execRepair(world, ctx, hero, c.npc, c.uid);
     case "upgrade":
-      return execUpgrade(world, ctx, c.npc, c.uid);
+      return execUpgrade(world, ctx, hero, c.npc, c.uid);
     case "reroll":
-      return execReroll(world, ctx, c.npc, c.uid);
+      return execReroll(world, ctx, hero, c.npc, c.uid);
     case "addSocket":
-      return execAddSocket(world, ctx, c.npc, c.uid);
+      return execAddSocket(world, ctx, hero, c.npc, c.uid);
     case "socketGem":
-      return execSocketGem(world, ctx, c.npc, c.uid, c.gem);
+      return execSocketGem(world, ctx, hero, c.npc, c.uid, c.gem);
     case "unsocket":
-      return execUnsocket(world, ctx, c.npc, c.uid);
+      return execUnsocket(world, ctx, hero, c.npc, c.uid);
     case "combineGems":
-      return execCombineGems(world, ctx, c.npc, c.base);
+      return execCombineGems(world, ctx, hero, c.npc, c.base);
     default:
       return fail(ERR.badPayload, "not a crafting command");
   }
@@ -77,7 +80,13 @@ export const craftingCommandsSystem: SystemDef = {
     for (const c of takeCommands(world, CRAFTING_OPS)) {
       const r = runCraftingCommand(world, ctx, c);
       if (!r.ok) {
-        emit(ctx, { type: "classic.command.failed", op: c.op, code: r.code, message: r.message });
+        emit(ctx, {
+          type: "classic.command.failed",
+          op: c.op,
+          code: r.code,
+          message: r.message,
+          ...(c.hero !== undefined ? { hero: c.hero } : {}),
+        });
       }
     }
   },
@@ -120,7 +129,7 @@ type UidPayload = { npc: Entity; uid: number };
 function uidAction(
   name: string,
   allowZero: boolean,
-  exec: (world: World, ctx: SimContext, npc: Entity, uid: number) => OpResult,
+  exec: (world: World, ctx: SimContext, hero: Entity, npc: Entity, uid: number) => OpResult,
 ): ActionDef<UidPayload> {
   return {
     name,
@@ -130,7 +139,7 @@ function uidAction(
       return { npc, uid: int(p.uid, "uid", allowZero ? 0 : 1, MAX_ID) };
     },
     apply(world, p, ctx) {
-      commit(world, ctx, exec(world, ctx, p.npc, p.uid));
+      commit(world, ctx, exec(world, ctx, heroOf(world), p.npc, p.uid));
     },
   };
 }
@@ -149,7 +158,7 @@ export const socketGemAction: ActionDef<ActionPayloads["classic.socketGem"]> = {
     return { npc, uid: int(p.uid, "uid", 1, MAX_ID), gem: int(p.gem, "gem", 1, MAX_ID) };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execSocketGem(world, ctx, p.npc, p.uid, p.gem));
+    commit(world, ctx, execSocketGem(world, ctx, heroOf(world), p.npc, p.uid, p.gem));
   },
 };
 
@@ -164,7 +173,7 @@ export const combineGemsAction: ActionDef<ActionPayloads["classic.combineGems"]>
     return { npc, base: p.base };
   },
   apply(world, p, ctx) {
-    commit(world, ctx, execCombineGems(world, ctx, p.npc, p.base));
+    commit(world, ctx, execCombineGems(world, ctx, heroOf(world), p.npc, p.base));
   },
 };
 

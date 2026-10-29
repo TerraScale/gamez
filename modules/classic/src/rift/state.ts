@@ -2,11 +2,11 @@
  * Rift state helpers (classic.rift, wave A). RES.rift is created lazily: old
  * saves and partial module sets never have it (docs/design/wave-A.md §7).
  */
-import type { World } from "@gamez/kernel";
+import type { Entity, World } from "@gamez/kernel";
 import { Hero, Level, Wallet } from "../components.ts";
+import { actingLeaderOf, partyMembers } from "../party/shared.ts";
 import {
   gameOf,
-  heroOf,
   RES,
   type RiftRecord,
   type RiftRun,
@@ -49,10 +49,11 @@ export function recordOf(
   endTick: number,
   o: { completed: boolean; score: number; reason: "" | "death" | "left"; deaths: number },
 ): RiftRecord {
-  const hero = heroOf(world);
-  const info = hero !== 0 ? world.get(hero, Hero) : undefined;
-  const lvl = hero !== 0 ? world.get(hero, Level) : undefined;
-  return {
+  // Party (docs/design/party.md §7.4): the hero fields describe the acting leader at the end.
+  const leader = actingLeaderOf(world);
+  const info = leader !== 0 ? world.get(leader, Hero) : undefined;
+  const lvl = leader !== 0 ? world.get(leader, Level) : undefined;
+  const record: RiftRecord = {
     level: run.level,
     ticks: Math.max(0, endTick - run.startTick),
     score: o.score,
@@ -66,12 +67,31 @@ export function recordOf(
     endTick,
     run: run.run,
   };
+  const members = partyMembers(world);
+  if (members.length > 1) record.party = members.map((e) => partyMemberSummary(world, e));
+  return record;
 }
 
-/** Spends gold from the hero wallet (caller checked the balance). Counts RunStats.goldSpent. */
-export function spendGold(world: World, hero: number, amount: number): void {
-  const wallet = world.get(hero, Wallet);
-  if (wallet) world.update(hero, Wallet, { gold: wallet.gold - amount });
+/** One party roster entry of a rift record (name, class, level). */
+function partyMemberSummary(
+  world: World,
+  e: Entity,
+): { name: string; classId: string; level: number } {
+  const info = world.get(e, Hero);
+  return {
+    name: info?.name ?? "",
+    classId: info?.classId ?? "",
+    level: world.get(e, Level)?.level ?? 1,
+  };
+}
+
+/**
+ * Spends gold from `payer` (the party purse, see purseOf; caller checked the
+ * balance). Counts RunStats.goldSpent.
+ */
+export function spendGold(world: World, payer: Entity, amount: number): void {
+  const wallet = world.get(payer, Wallet);
+  if (wallet) world.update(payer, Wallet, { gold: wallet.gold - amount });
   const rs = world.getResource<RunStats>(RES.stats);
   if (rs) rs.goldSpent = (rs.goldSpent ?? 0) + amount;
 }

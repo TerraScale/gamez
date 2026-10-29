@@ -246,6 +246,29 @@ export class ClassicBot {
     return result;
   }
 
+  /**
+   * Imports a local save into a fresh, importable instance (wave B: a local
+   * hero moves to the server), exactly like the browser's import, and adopts
+   * the server's answer. Returns the vstate.
+   */
+  async importSnapshot(snap: SimSnapshot): Promise<VState> {
+    this.sendRaw({ t: "import", snapshot: await packSnapshot(snap), savedAt: Date.now() });
+    const v = await this.waitFor(
+      "vstate after import",
+      (m): m is VState => m.t === "vstate" && m.imported === true,
+      20_000,
+    );
+    this.#vstate = v;
+    this.#epoch = v.epoch;
+    this.#verifiedTick = v.tick;
+    this.#verifiedHash = v.hash;
+    if (!v.snapshot) throw new Error("classic: import answered without a snapshot");
+    this.#sim = createSim(classicLoaded(), { seed: 0, from: await unpackSnapshot(v.snapshot) });
+    this.#rec = new SegmentRecorder(this.#sim.tick);
+    this.#setCredit(START_CREDIT_MS);
+    return v;
+  }
+
   /** Replaces the local sim with a resync's snapshot (what the browser does). */
   async adopt(r: Resync): Promise<void> {
     this.#epoch = r.epoch;

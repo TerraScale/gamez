@@ -7,6 +7,7 @@ import { Life, Level, Mana } from "../components.ts";
 import { emit } from "../events.ts";
 import { levelForXp } from "../rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../types.ts";
+import { heroTag } from "../items/common.ts";
 import { applyHeroStats } from "./stats.ts";
 
 /** Restores life and mana to the current maxima. */
@@ -22,9 +23,12 @@ export function healFull(world: World, hero: Entity): void {
 }
 
 /**
- * Adds `amount` XP (>= 0) to the hero, then runs the level-up loop: each new
- * level adds the per-level stat and skill points and emits classic.levelUp.
- * After any level up, stats are recomputed and life and mana are full.
+ * Adds `amount` XP (>= 0) to `hero` (any hero entity: the controlled hero,
+ * a follower, or a fresh recruit right after spawnHeroEntity), then runs the
+ * level-up loop: each new level adds the per-level stat and skill points and
+ * emits classic.levelUp. After any level up, stats are recomputed and life
+ * and mana are full. Events carry `hero` while a party exists. Talent points
+ * for the new levels come from classic.talents (Talents.levelSeen).
  * Returns the number of levels gained.
  */
 export function addXp(
@@ -39,7 +43,8 @@ export function addXp(
   const lvl = world.read(hero, Level);
   const total = lvl.xp + amount;
   world.update(hero, Level, { xp: total });
-  emit(ctx, { type: "classic.xp", amount, total, reason });
+  const tag = heroTag(world, hero);
+  emit(ctx, { type: "classic.xp", amount, total, reason, ...tag });
 
   const target = Math.min(bal.maxLevel, levelForXp(bal, total));
   let level = lvl.level;
@@ -49,7 +54,7 @@ export function addXp(
     level++;
     statPoints += bal.statPointsPerLevel;
     skillPoints += bal.skillPointsPerLevel;
-    emit(ctx, { type: "classic.levelUp", level, statPoints, skillPoints });
+    emit(ctx, { type: "classic.levelUp", level, statPoints, skillPoints, ...tag });
   }
   const gained = level - lvl.level;
   if (gained > 0) {

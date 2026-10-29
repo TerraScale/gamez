@@ -9,7 +9,7 @@ import { ERR, fail, OK, type OpResult } from "../actions.ts";
 import { Equipment, Inventory, Level } from "../components.ts";
 import { emit } from "../events.ts";
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, type ItemBaseProto } from "../types.ts";
-import { baseOf, liveHero, heroAttrs } from "./common.ts";
+import { baseOf, heroAttrs, heroTag, liveHero } from "./common.ts";
 import { placeItem, type GridBag } from "./inventory.ts";
 import { emitSetChanges, setSnapshot } from "./sets.ts";
 
@@ -36,16 +36,16 @@ export function requirementsFail(
   return null;
 }
 
-/** Equips a bag item. Replaced items (and the offhand of a two-handed weapon) go back to the bag. */
+/** `hero` equips one of its bag items. Replaced items (and the offhand of a two-handed weapon) go back to its bag. */
 export function execEquip(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   uid: number,
   slot: EquipSlot | null,
 ): OpResult {
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   const reg = ctx.registry;
   const bag = world.get(hero, Inventory);
   const eq = world.get(hero, Equipment);
@@ -104,18 +104,23 @@ export function execEquip(
   world.update(hero, Inventory, { items: grid.items });
   world.update(hero, Equipment, nextEq);
 
+  const tag = heroTag(world, hero);
   for (const d of displaced)
-    emit(ctx, { type: "classic.item.unequipped", uid: d.item.uid, slot: d.slot });
-  emit(ctx, { type: "classic.item.equipped", uid, slot: target, name: item.name });
+    emit(ctx, { type: "classic.item.unequipped", uid: d.item.uid, slot: d.slot, ...tag });
+  emit(ctx, { type: "classic.item.equipped", uid, slot: target, name: item.name, ...tag });
   emitSetChanges(world, ctx, hero, sets);
   return OK;
 }
 
-/** Moves the item of a slot into the bag. */
-export function execUnequip(world: World, ctx: SimContext, slot: EquipSlot): OpResult {
-  const h = liveHero(world);
+/** Moves the item of one of `hero`'s slots into its bag. */
+export function execUnequip(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  slot: EquipSlot,
+): OpResult {
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   const bag = world.get(hero, Inventory);
   const eq = world.get(hero, Equipment);
   if (!bag || !eq) return fail(ERR.noHero, "the hero has no inventory yet");
@@ -128,7 +133,7 @@ export function execUnequip(world: World, ctx: SimContext, slot: EquipSlot): OpR
   nextEq[slot] = null;
   world.update(hero, Inventory, { items: next.items });
   world.update(hero, Equipment, nextEq);
-  emit(ctx, { type: "classic.item.unequipped", uid: item.uid, slot });
+  emit(ctx, { type: "classic.item.unequipped", uid: item.uid, slot, ...heroTag(world, hero) });
   emitSetChanges(world, ctx, hero, sets);
   return OK;
 }

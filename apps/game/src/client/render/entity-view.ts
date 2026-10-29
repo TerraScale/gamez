@@ -9,7 +9,15 @@ import {
   type Texture,
 } from "pixi.js";
 import { depthOf, tileToScreen } from "@gamez/world";
-import type { ArpgRenderEntity, EntityAction, EntityKind, Facing, LabelKind } from "@gamez/ui-host";
+import type {
+  ArpgRenderEntity,
+  EntityAction,
+  EntityHighlight,
+  EntityKind,
+  Facing,
+  GraphicsQualityLevel,
+  LabelKind,
+} from "@gamez/ui-host";
 import {
   clampAnimRate,
   frameFromProgress,
@@ -28,6 +36,7 @@ import type { DebugTracker } from "./debug.ts";
 import { clamp01, entityTint, barFill, flashMatrix, flashMix, pulseAmount } from "./fx-math.ts";
 import {
   clampOffset,
+  labelOffView,
   deoverlapLabels,
   estimateLabelWidth,
   labelRank,
@@ -35,6 +44,32 @@ import {
   type LabelBox,
 } from "./label-layout.ts";
 import { labelColour } from "./palette.ts";
+import {
+  labelBacking,
+  PLATE_ALPHA,
+  PLATE_COLOUR,
+  readableLabelColour,
+  SUBTITLE_COLOUR,
+} from "./label-contrast.ts";
+import type { FloatBand } from "./float-layout.ts";
+import {
+  fadeToward,
+  outlineTarget,
+  localRadius,
+  OUTLINE_PX,
+  OUTLINE_TAPS,
+  outlineOffsets,
+  outlineRim,
+  outlineStyle,
+  outlineTaps,
+  resolveHighlight,
+  RIM_EXTRA_PX,
+  ringAlpha,
+  ringPulse,
+  ringScale,
+  solidMatrix,
+  tapShown,
+} from "./outline-math.ts";
 import type { Primitives } from "./primitives.ts";
 import type { ViewRect } from "./chunks.ts";
 import type { AnimVisual, SpriteVisual, Visuals } from "./visuals.ts";
@@ -52,11 +87,8 @@ const NAME_FONT_PX = 12;
 const SUB_FONT_PX = 10;
 const SUB_LINE = 12;
 const MARKER_LINE = 22;
-const SUBTITLE_COLOUR = 0xb3b9c6;
 const MARKER_COLOUR = 0xffd166;
-/** Name backing plate (labelPlate): colour, opacity, padding (px). */
-const PLATE_COLOUR = 0x05070b;
-const PLATE_ALPHA = 0.62;
+/** Name backing plate (labelPlate, and every NPC subtitle): padding (px). Colour in label-contrast.ts. */
 const PLATE_PAD_X = 3;
 /** Floats snap to a unit whose feet are this close (world px) to the float's tile centre. */
 const FLOAT_SNAP_X = 26;
@@ -73,6 +105,35 @@ const BOB_MS = 230;
 const GLOW_LIFT_PX = 3;
 /** Hit flash colour mix is quantised to this many steps (so the filter only changes a few times per flash). */
 const FLASH_STEPS = 16;
+
+/**
+ * Identity outline of one view (outline-math.ts explains the stamping). The
+ * stamps live in `root`, the first child of the body, so they follow the
+ * flip, squash, lift and knockback; the ground ring lives in the view root.
+ * Created on first use, then only re-pointed at the current frame texture.
+ */
+export interface OutlineView {
+  readonly root: Container;
+  /** Dark rim copies (multiply tint 0 = black), behind `fill`. */
+  readonly rim: Container;
+  /** Coloured copies, painted solid by `filter`. */
+  readonly fill: Container;
+  readonly rimStamps: Sprite[];
+  readonly fillStamps: Sprite[];
+  /** Solid-colour filter of `fill` (null without WebGL, e.g. tests: the copies are tinted instead). */
+  readonly filter: ColorMatrixFilter | null;
+  readonly ring: Graphics;
+  kind: EntityHighlight;
+  /** Frame texture the stamps show and its anchor. */
+  tex: Texture | null;
+  ax: number;
+  ay: number;
+  /** Stamp radius in body-local px. */
+  radius: number;
+  /** Opacity 0..1 (fades out on death) and where it is heading. */
+  fade: number;
+  target: number;
+}
 
 export type Resolved =
   | { kind: "anim"; anim: AnimVisual }
@@ -98,6 +159,10 @@ export interface EntityView {
   still: Sprite | null;
   anim: AnimatedSprite | null;
   ring: Graphics | null;
+  /** Identity outline (highlight "self" | "party" | "ally"), created on first use. */
+  outline: OutlineView | null;
+  /** Identity outline kind wanted this upsert (null = none). */
+  outlineKind: EntityHighlight | null;
   /** Label-layer container at the entity's feet (bar + texts). */
   tag: Container | null;
   /** Texts inside `tag`, shifted as one by de-overlap and the view clamp. */
@@ -192,12 +257,35 @@ export class EntityLayer {
   makeFlashFilter: () => ColorMatrixFilter | null = () => new ColorMatrixFilter();
   /** Entities with a status tint; their tint pulses every frame. */
   private readonly pulsing = new Set<EntityView>();
+  /** Entities with an identity outline: frame sync, ring pulse and death fade every frame. */
+  private readonly outlined = new Set<EntityView>();
+  /** Outline quality (taps and rim) and the camera zoom (constant on-screen width). */
+  private outlineQ: GraphicsQualityLevel = "high";
+  private zoom = 1;
+  private lastPulseMs = Number.NaN;
+  /** Ground ring shapes, one per outline kind, shared by every view. */
+  private readonly ringShapes = new Map<EntityHighlight, GraphicsContext>();
+  /** Reused stamp offsets (x, y pairs). */
+  private readonly offsets = new Float32Array(OUTLINE_TAPS * 2);
+  /**
+   * Makes the solid-colour filter of an outline. A seam for tests like
+   * makeFlashFilter; a null result tints the copies with the colour instead.
+   */
+  makeOutlineFilter: () => ColorMatrixFilter | null = () => {
+    try {
+      return new ColorMatrixFilter();
+    } catch {
+      return null;
+    }
+  };
   /** Entities with a quest marker; it bobs every frame. */
   private readonly bobbing = new Set<EntityView>();
   /** Entities with any visible text (name, subtitle, marker); kept inside the view. */
   private readonly labelled = new Set<EntityView>();
   /** Reused list of label boxes for the de-overlap pass. */
   private readonly boxes: LabelBox[] = [];
+  /** Reused box for the hero's nameplate (selfLabelBand). */
+  private readonly selfBand: FloatBand = { x: 0, top: 0, w: 0 };
   /**
    * A labelled entity was shown, hidden, moved or changed its stack: re-run
    * the de-overlap pass. Every visible label takes part; the hero's own name
@@ -242,6 +330,7 @@ export class EntityLayer {
     this.views.delete(id);
     this.forget(v);
     v.flashFilter?.destroy();
+    v.outline?.filter?.destroy();
     v.root.destroy({ children: true });
     v.tag?.destroy({ children: true });
   }
@@ -249,6 +338,7 @@ export class EntityLayer {
   clear(): void {
     for (const v of this.views.values()) {
       v.flashFilter?.destroy();
+      v.outline?.filter?.destroy();
       v.root.destroy({ children: true });
       v.tag?.destroy({ children: true });
     }
@@ -256,12 +346,42 @@ export class EntityLayer {
     this.pulsing.clear();
     this.bobbing.clear();
     this.labelled.clear();
+    this.outlined.clear();
     this.boxes.length = 0;
     this.layoutDirty = false;
   }
 
-  /** Per-frame work for visible entities: status tint pulse and quest marker bob. */
+  /**
+   * Outline quality: 8 stamp directions and a dark rim on medium/high, the 4
+   * cardinal stamps and no rim on low. Cheap; re-lays existing outlines.
+   */
+  setOutlineQuality(q: GraphicsQualityLevel): void {
+    if (q === this.outlineQ) return;
+    this.outlineQ = q;
+    for (const v of this.outlined) if (v.outline) this.layoutStamps(v.outline, true);
+  }
+
+  /** Camera zoom, so the outline keeps its on-screen width (applied on the next frame). */
+  setOutlineZoom(z: number): void {
+    if (Number.isFinite(z) && z > 0) this.zoom = z;
+  }
+
+  /** QA: identity outlines drawn right now (in view and not faded out), by kind. */
+  outlineCensus(): Record<EntityHighlight, number> {
+    const out: Record<EntityHighlight, number> = { self: 0, party: 0, ally: 0 };
+    for (const v of this.outlined) {
+      const o = v.outline;
+      if (!o || !v.root.visible || o.fade <= 0) continue;
+      out[o.kind]++;
+    }
+    return out;
+  }
+
+  /** Per-frame work for visible entities: outlines, status tint pulse and quest marker bob. */
   tickPulse(timeMs: number): void {
+    const dt = Number.isFinite(this.lastPulseMs) ? Math.max(0, timeMs - this.lastPulseMs) : 0;
+    this.lastPulseMs = timeMs;
+    if (this.outlined.size > 0) this.tickOutlines(timeMs, dt);
     if (this.pulsing.size > 0) {
       const k = pulseAmount(timeMs);
       for (const v of this.pulsing) {
@@ -281,6 +401,81 @@ export class EntityLayer {
     }
   }
 
+  /**
+   * Outlines, once per frame after the clips advanced: point the stamps at the
+   * current frame (only when it changed), keep the on-screen width, fade on
+   * death and pulse the ground ring. No allocation.
+   */
+  private tickOutlines(timeMs: number, dt: number): void {
+    const pulse = ringPulse(timeMs);
+    const ringK = ringScale(pulse);
+    for (const v of this.outlined) {
+      const o = v.outline;
+      if (!o) continue;
+      if (o.fade !== o.target) o.fade = fadeToward(o.fade, o.target, dt);
+      const on = o.fade > 0;
+      if (!on) {
+        if (o.root.visible) o.root.visible = false;
+        if (o.ring.visible) o.ring.visible = false;
+        continue;
+      }
+      if (!v.root.visible) continue;
+      this.syncStamps(v, o);
+      if (o.root.alpha !== o.fade) o.root.alpha = o.fade;
+      if (!o.ring.visible) o.ring.visible = true;
+      o.ring.alpha = ringAlpha(outlineStyle(o.kind), pulse) * o.fade;
+      o.ring.scale.set(ringK * v.scale);
+    }
+  }
+
+  /** Points the stamps at the body's current frame and keeps their radius. */
+  private syncStamps(v: EntityView, o: OutlineView): void {
+    const src = v.resolved === "anim" ? v.anim : v.resolved === "still" ? v.still : null;
+    if (!src) {
+      // Primitive bodies keep only the ground ring.
+      if (o.root.visible) o.root.visible = false;
+      return;
+    }
+    if (!o.root.visible) o.root.visible = true;
+    const tex = src.texture;
+    if (o.tex !== tex) {
+      o.tex = tex;
+      for (const s of o.fillStamps) s.texture = tex;
+      for (const s of o.rimStamps) s.texture = tex;
+    }
+    const ax = src.anchor.x;
+    const ay = src.anchor.y;
+    if (o.ax !== ax || o.ay !== ay) {
+      o.ax = ax;
+      o.ay = ay;
+      for (const s of o.fillStamps) s.anchor.set(ax, ay);
+      for (const s of o.rimStamps) s.anchor.set(ax, ay);
+    }
+    const r = localRadius(OUTLINE_PX, this.zoom, v.scale);
+    if (o.radius !== r) {
+      o.radius = r;
+      this.layoutStamps(o, false);
+    }
+  }
+
+  /** Stamp positions (from the radius) and, with `quality`, which stamps and rim show. */
+  private layoutStamps(o: OutlineView, quality: boolean): void {
+    const off = this.offsets;
+    outlineOffsets(o.radius, off);
+    for (let i = 0; i < o.fillStamps.length; i++) {
+      o.fillStamps[i]!.position.set(off[i * 2]!, off[i * 2 + 1]!);
+    }
+    // Same zoom and unit scale as the fill radius, RIM_EXTRA_PX further out.
+    outlineOffsets((o.radius * (OUTLINE_PX + RIM_EXTRA_PX)) / OUTLINE_PX, off);
+    for (let i = 0; i < o.rimStamps.length; i++) {
+      o.rimStamps[i]!.position.set(off[i * 2]!, off[i * 2 + 1]!);
+    }
+    if (!quality) return;
+    const taps = outlineTaps(this.outlineQ);
+    for (let i = 0; i < o.fillStamps.length; i++) o.fillStamps[i]!.visible = tapShown(i, taps);
+    o.rim.visible = outlineRim(this.outlineQ);
+  }
+
   /** Culling of the label layer: a tag shows only when its entity is in view and has content. */
   syncTag(v: EntityView): void {
     const tag = v.tag;
@@ -293,12 +488,43 @@ export class EntityLayer {
     }
   }
 
+  /** The label of `v` at its natural place lies wholly outside the view (label-layout labelOffView). */
+  private offView(v: EntityView, rect: ViewRect): boolean {
+    const w = Math.max(v.labelW, v.markerOn ? 12 : 0);
+    return labelOffView(
+      v.sx,
+      w,
+      v.sy + v.stackTop + v.labelDy,
+      v.sy + v.nameBottom + v.labelDy,
+      rect,
+    );
+  }
+
+  /**
+   * The hero's visible nameplate stack this frame (screen-clamped position,
+   * de-overlap shift included), for the float guard; null when it is hidden.
+   * Reuses one box, no allocation.
+   */
+  selfLabelBand(): FloatBand | null {
+    for (const v of this.labelled) {
+      if (!v.isSelf || !v.root.visible || !v.labelOn) continue;
+      if (v.texts?.visible === false || !v.tag?.visible) continue;
+      const b = this.selfBand;
+      b.x = v.sx + v.clampX;
+      b.top = v.sy + v.stackTop + v.labelDy + v.clampY;
+      b.w = v.labelW;
+      return b;
+    }
+    return null;
+  }
+
   /**
    * Label layout, run once per frame after culling. De-overlaps every visible
    * label (when a labelled entity changed or moved), then keeps each label
    * inside `inner` (the view minus the HUD insets; only when the camera or a
    * labelled entity moved). Labels whose entity stands under HUD chrome
-   * (outside `inner` on an inset edge) and duplicate names are hidden.
+   * (outside `inner` on an inset edge), labels wholly outside the view (an
+   * off-screen entity) and duplicate names are hidden.
    */
   layoutLabels(rect: ViewRect, inner: ViewRect = rect): void {
     const r = this.lastRect;
@@ -335,7 +561,7 @@ export class EntityLayer {
         b.dy = 0;
         b.hidden = false;
         if (!v.root.visible) continue;
-        if (!v.isSelf && underChrome(v.sx, v.sy, rect, inner)) continue;
+        if (!v.isSelf && (underChrome(v.sx, v.sy, rect, inner) || this.offView(v, rect))) continue;
         b.x = v.sx + v.clampX;
         b.bottom = v.sy + v.textBottom;
         b.w = Math.max(v.labelW, v.markerOn ? 12 : 0);
@@ -362,7 +588,9 @@ export class EntityLayer {
       const texts = v.texts;
       if (!texts) continue;
       if (!v.root.visible) continue;
-      const hide = v.dupHidden || (!v.isSelf && underChrome(v.sx, v.sy, rect, inner));
+      const hide =
+        v.dupHidden ||
+        (!v.isSelf && (underChrome(v.sx, v.sy, rect, inner) || this.offView(v, rect)));
       if (texts.visible === hide) texts.visible = !hide;
       if (hide) continue;
       const w = Math.max(v.labelW, v.markerOn ? 12 : 0);
@@ -442,6 +670,7 @@ export class EntityLayer {
   }
 
   private forget(v: EntityView): void {
+    this.outlined.delete(v);
     this.pulsing.delete(v);
     this.bobbing.delete(v);
     if (this.labelled.delete(v)) this.layoutDirty = true;
@@ -466,6 +695,8 @@ export class EntityLayer {
       still: null,
       anim: null,
       ring: null,
+      outline: null,
+      outlineKind: null,
       tag: null,
       texts: null,
       bar: null,
@@ -614,7 +845,8 @@ export class EntityLayer {
     }
 
     const tint = e.tint ?? 0xffffff;
-    const highlight = !!e.highlight;
+    // `true` is the hover channel; identity kinds ("self" ...) are the outline below.
+    const highlight = e.highlight === true;
     const statusTint = e.statusTint ?? 0;
     v.tint = tint;
     v.highlight = highlight;
@@ -625,6 +857,8 @@ export class EntityLayer {
     if (want !== v.paintedTint) paint(v, want);
 
     this.updateRing(v, highlight);
+    const outlineKind = kind === "unit" ? resolveHighlight(e.highlight, e.isSelf) : null;
+    this.updateOutline(v, outlineKind, action === "death" || !!e.dead);
     const topChanged = this.updateLayout(v);
     this.updateBar(v, projectile ? null : (e.bar ?? null), e.barColor ?? 0x4caf50);
     this.updateTexts(v, e, projectile, topChanged || textChanged, moved);
@@ -847,6 +1081,117 @@ export class EntityLayer {
     v.ring.visible = true;
   }
 
+  /**
+   * Identity outline on or off, its kind (colour) and whether it is fading
+   * (death: self and party dim to DOWNED_OUTLINE_ALPHA, ally fades out). The
+   * per-frame part (frame sync, pulse, fade) is tickOutlines.
+   */
+  private updateOutline(v: EntityView, kind: EntityHighlight | null, dead: boolean): void {
+    if (kind === null) {
+      if (v.outlineKind !== null) {
+        v.outlineKind = null;
+        this.outlined.delete(v);
+        const o = v.outline;
+        if (o) {
+          o.root.visible = false;
+          o.ring.visible = false;
+        }
+      }
+      return;
+    }
+    const target = outlineTarget(kind, dead);
+    let o = v.outline;
+    const fresh = v.outlineKind === null;
+    if (!o) {
+      o = this.createOutline(v, kind);
+      v.outline = o;
+      this.paintOutline(o, kind);
+    } else if (o.kind !== kind) {
+      this.paintOutline(o, kind);
+    }
+    v.outlineKind = kind;
+    // Appearing (spawn, setting turned on) is instant; only death and revive fade.
+    if (fresh) o.fade = target;
+    o.target = target;
+    this.outlined.add(v);
+    this.syncStamps(v, o);
+    const on = o.fade > 0;
+    if (o.ring.visible !== on) o.ring.visible = on;
+    if (!on && o.root.visible) o.root.visible = false;
+    o.root.alpha = o.fade;
+  }
+
+  private createOutline(v: EntityView, kind: EntityHighlight): OutlineView {
+    const root = new Container();
+    const rim = new Container();
+    const fill = new Container();
+    const rimStamps: Sprite[] = [];
+    const fillStamps: Sprite[] = [];
+    for (let i = 0; i < OUTLINE_TAPS; i++) {
+      const r = new Sprite();
+      r.tint = 0x000000;
+      rim.addChild(r);
+      rimStamps.push(r);
+      const f = new Sprite();
+      fill.addChild(f);
+      fillStamps.push(f);
+    }
+    const filter = this.makeOutlineFilter();
+    if (filter) fill.filters = [filter];
+    root.addChild(rim, fill);
+    // Behind every body part (prim, still, anim).
+    v.body.addChildAt(root, 0);
+    const ring = new Graphics(this.ringShape(kind));
+    // Above the shadow, below the body.
+    v.root.addChildAt(ring, 1);
+    const o: OutlineView = {
+      root,
+      rim,
+      fill,
+      rimStamps,
+      fillStamps,
+      filter,
+      ring,
+      kind,
+      tex: null,
+      ax: Number.NaN,
+      ay: Number.NaN,
+      radius: localRadius(OUTLINE_PX, this.zoom, v.scale),
+      fade: 1,
+      target: 1,
+    };
+    this.layoutStamps(o, true);
+    return o;
+  }
+
+  /** Colours an outline for its kind (filter matrix or tint, rim opacity, ring shape). */
+  private paintOutline(o: OutlineView, kind: EntityHighlight): void {
+    o.kind = kind;
+    const st = outlineStyle(kind);
+    if (o.filter) o.filter.matrix = solidMatrix(st.colour, st.alpha);
+    else for (const s of o.fillStamps) s.tint = st.colour;
+    for (const s of o.rimStamps) s.alpha = st.rimAlpha;
+    const shape = this.ringShape(kind);
+    if (o.ring.context !== shape) o.ring.context = shape;
+  }
+
+  /** The soft ground ellipse of an outline kind (built once per kind). */
+  private ringShape(kind: EntityHighlight): GraphicsContext {
+    let g = this.ringShapes.get(kind);
+    if (!g) {
+      const c = outlineStyle(kind).ringColour;
+      g = new GraphicsContext()
+        .ellipse(0, 0, 19, 9.5)
+        .fill({ color: c, alpha: 0.16 })
+        .ellipse(0, 0, 19, 9.5)
+        .stroke({ width: 2, color: c, alpha: 0.95 })
+        .ellipse(0, 0, 13, 6.5)
+        .stroke({ width: 1, color: c, alpha: 0.45 });
+      this.ringShapes.set(kind, g);
+    }
+    return g;
+  }
+
   /** Sets the feet-to-head offset used by the bar and the labels. True when it changed. */
   private updateLayout(v: EntityView): boolean {
     const top = -(v.height * v.scale * (v.corpse ? CORPSE_SQUASH : 1) + v.lift) - 4;
@@ -907,7 +1252,8 @@ export class EntityLayer {
     const subtitleOn = subtitle !== "";
     const markerText = !projectile && e.marker ? e.marker : "";
     const markerOn = markerText !== "";
-    const plateOn = labelOn && !!e.labelPlate;
+    // NPC role subtitles get the plate too: grey text on bright grass is unreadable without it.
+    const plateOn = labelOn && (!!e.labelPlate || subtitleOn);
     let changed = relayout;
     if (plateOn !== v.plateOn) {
       v.plateOn = plateOn;
@@ -939,7 +1285,11 @@ export class EntityLayer {
         v.labelColour = -1;
         changed = true;
       }
-      const colour = e.labelColor ?? labelColour(e.isSelf);
+      // Read against the backing the label really sits on (plate or stroke): dark tints are lifted.
+      const colour = readableLabelColour(
+        e.labelColor ?? labelColour(e.isSelf),
+        labelBacking(plateOn),
+      );
       if (v.labelColour !== colour) {
         v.labelColour = colour;
         v.label.style.fill = colour;
@@ -1033,8 +1383,9 @@ export class EntityLayer {
       }
       // Estimated widths: measuring Pixi text here would force a canvas layout per change.
       const nameW = labelOn ? estimateLabelWidth(v.name, NAME_FONT_PX) : 0;
-      v.labelW = subtitleOn ? Math.max(nameW, estimateLabelWidth(subtitle, SUB_FONT_PX)) : nameW;
-      this.updatePlate(v, nameW);
+      const subW = subtitleOn ? estimateLabelWidth(subtitle, SUB_FONT_PX) : 0;
+      v.labelW = Math.max(nameW, subW);
+      this.updatePlate(v, Math.max(nameW, subW));
     }
 
     const visible = labelOn || markerOn;
@@ -1069,8 +1420,12 @@ export class EntityLayer {
     }
   }
 
-  /** The dark plate behind the name (labelPlate), drawn only when the layout changes. */
-  private updatePlate(v: EntityView, nameW: number): void {
+  /**
+   * The dark plate behind the name (labelPlate) and the role subtitle, drawn
+   * only when the layout changes. It covers the whole stack: name line, plus
+   * the subtitle line below it when there is one.
+   */
+  private updatePlate(v: EntityView, textW: number): void {
     if (!v.plateOn) {
       if (v.plate) v.plate.visible = false;
       return;
@@ -1081,10 +1436,12 @@ export class EntityLayer {
       // Behind the texts of the stack.
       v.texts!.addChildAt(v.plate, 0);
     }
-    const w = Math.max(8, nameW - 4) + PLATE_PAD_X * 2;
+    const w = Math.max(8, textW - 4) + PLATE_PAD_X * 2;
+    const top = v.nameBottom - NAME_LINE;
+    const h = v.subtitleOn ? v.textBottom - top : NAME_LINE;
     v.plate
       .clear()
-      .roundRect(-w / 2, v.nameBottom - NAME_LINE, w, NAME_LINE, 3)
+      .roundRect(-w / 2, top, w, h, 3)
       .fill({ color: PLATE_COLOUR, alpha: PLATE_ALPHA });
     v.plate.visible = true;
   }

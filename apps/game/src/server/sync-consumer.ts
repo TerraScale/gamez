@@ -4,6 +4,7 @@ import {
   type ProjectionMap,
   type ReplicationBatch,
 } from "@gamez/sync";
+import type { SyncMessageSample } from "./analytics/sync.ts";
 import type { Env } from "./contracts.ts";
 import { projections } from "./projections.ts";
 
@@ -23,6 +24,11 @@ export const SYNC_RETRY_BASE_SECONDS = 10;
 export const SYNC_RETRY_CAP_SECONDS = 900;
 /** Retry delay for a failed DLQ re-apply. */
 export const SYNC_DLQ_RETRY_SECONDS = 900;
+/**
+ * Delivery attempts after which a failing sync message is "dead" (sent to the
+ * DLQ). Mirrors maxRetries of the gamez-sync consumer in cloudflare.config.ts.
+ */
+export const SYNC_MAX_RETRIES = 10;
 
 export interface SyncConsumerDeps {
   applyBatch: (
@@ -31,9 +37,16 @@ export interface SyncConsumerDeps {
     projections: ProjectionMap,
   ) => Promise<ApplyResult>;
   projections: ProjectionMap;
+  /**
+   * Admin instrumentation (analytics/sync.ts), called once per applied or
+   * failed message of the main queue, before it is acked or retried. Never
+   * called for budget-skipped messages or DLQ re-applies (the dashboard shows
+   * DLQ inflow as outcome "dead" on the main queue). Must not throw.
+   */
+  record?: (sample: SyncMessageSample) => void;
 }
 
-const defaultDeps: SyncConsumerDeps = { applyBatch, projections };
+export const defaultSyncDeps: SyncConsumerDeps = { applyBatch, projections };
 
 /** Exponential backoff for a message on its `attempts`th delivery (1-based). */
 export function retryDelaySeconds(attempts: number): number {
@@ -53,7 +66,7 @@ export function retryDelaySeconds(attempts: number): number {
 export async function consumeSyncBatch(
   batch: MessageBatch<ReplicationBatch>,
   env: Pick<Env, "DB">,
-  deps: SyncConsumerDeps = defaultDeps,
+  deps: SyncConsumerDeps = defaultSyncDeps,
 ): Promise<void> {
   const isDlq = batch.queue === SYNC_DLQ_QUEUE;
   let spent = 0;
@@ -66,11 +79,29 @@ export async function consumeSyncBatch(
       continue;
     }
     spent += cost;
+    const started = Date.now();
+    const sample = (ok: boolean, rows: number): void => {
+      if (isDlq || !deps.record) return;
+      const now = Date.now();
+      deps.record({
+        source: typeof msg.body.source === "string" ? msg.body.source : "",
+        records: msg.body.records.length,
+        enqueuedAt: msg.timestamp instanceof Date ? msg.timestamp.getTime() : started,
+        now,
+        applyMs: now - started,
+        attempts: msg.attempts,
+        rows,
+        ok,
+        maxRetries: SYNC_MAX_RETRIES,
+      });
+    };
     try {
       const res = await deps.applyBatch(env.DB, msg.body, deps.projections);
       if (res.unknown > 0) console.warn("sync: records without projection", msg.body.source, res);
+      sample(true, res.applied);
       msg.ack();
     } catch (err) {
+      sample(false, 0);
       if (isDlq) {
         console.error("sync: DLQ apply failed", {
           source: msg.body.source,

@@ -1,7 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import type { ArenaBuild } from "@gamez/protocol";
-import { featureEnabled } from "../config/flags.ts";
+import { analyticsFor, type Analytics } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
+import { WS_ABNORMAL_CLOSE, wsClosed, wsOpened } from "../analytics/ws.ts";
+import { currentConfig, featureEnabled } from "../config/flags.ts";
 import { INSTANCE_HEADERS, sqlStoreOf, type Env, type InstancePlatformApi } from "../contracts.ts";
 import { accountGateway } from "../economy/gateway.ts";
 import { SqlBankStore } from "../instance/bank-store.ts";
@@ -35,9 +38,32 @@ export class InstanceDO extends DurableObject<Env> implements InstancePlatformAp
   #store: SqlInstanceStore | null = null;
   #outbox: Outbox | null = null;
   readonly #wrappers = new WeakMap<WebSocket, InstanceSocket>();
+  #analyticsSink: Analytics | null = null;
 
   get #name(): string {
     return this.ctx.id.name ?? this.ctx.storage.kv.get<string>("name") ?? this.ctx.id.toString();
+  }
+
+  /** Admin dashboard points (docs/design/admin-dashboard.md §11.1); never throws. */
+  get #analytics(): Analytics {
+    this.#analyticsSink ??= analyticsFor(this.env, (p) => this.ctx.waitUntil(p));
+    return this.#analyticsSink;
+  }
+
+  #markActive(): void {
+    markDoActive(this.#analytics, "InstanceDO", this.#name, Date.now());
+  }
+
+  /** "ws.close" for an instance socket (mode from its attachment). */
+  #wsClosed(ws: WebSocket, code: number): void {
+    let info: SocketInfo | null = null;
+    try {
+      info = ws.deserializeAttachment() as SocketInfo | null;
+    } catch {
+      info = null;
+    }
+    if (!info) return;
+    wsClosed(this.#analytics, "instance", info.mode, code, info.openedAt, Date.now());
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -48,6 +74,7 @@ export class InstanceDO extends DurableObject<Env> implements InstancePlatformAp
     const name = request.headers.get(INSTANCE_HEADERS.name);
     const mode = request.headers.get(INSTANCE_HEADERS.mode);
     if (!accountId || !name || !mode) return new Response("missing identity", { status: 400 });
+    this.#markActive();
 
     const kv = this.ctx.storage.kv;
     const storedMode = kv.get<string>("mode");
@@ -63,12 +90,14 @@ export class InstanceDO extends DurableObject<Env> implements InstancePlatformAp
 
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
-    const info: SocketInfo = { accountId, name, mode, joined: false };
+    const info: SocketInfo = { accountId, name, mode, joined: false, openedAt: Date.now() };
     server.serializeAttachment(info);
+    wsOpened(this.#analytics, "instance", mode);
     return new Response(null, { status: 101, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    this.#markActive();
     if (!ws.deserializeAttachment()) return;
     const host = this.#getHost();
     if (!host) {
@@ -82,6 +111,7 @@ export class InstanceDO extends DurableObject<Env> implements InstancePlatformAp
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.#wsClosed(ws, code);
     try {
       ws.close(code, reason);
     } catch {
@@ -91,6 +121,7 @@ export class InstanceDO extends DurableObject<Env> implements InstancePlatformAp
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
+    this.#wsClosed(ws, WS_ABNORMAL_CLOSE);
     await this.#getHost()?.handleClose(this.#wrap(ws));
   }
 
@@ -190,6 +221,9 @@ export class InstanceDO extends DurableObject<Env> implements InstancePlatformAp
           });
         },
         platform: policy.platform ? this.#platformDeps() : null,
+        // Offline XP factor and friends (docs/design/offline-idle.md §5.4).
+        offlineTunables: async () => (await currentConfig(this.env))?.tunables ?? {},
+        analytics: this.#analytics,
       });
       return this.#host;
     }

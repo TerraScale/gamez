@@ -4,11 +4,22 @@
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, OK, PICKUP_RANGE, type OpResult } from "../actions.ts";
-import { AreaTag, Belt, Inventory, Loot, Pos, Wallet } from "../components.ts";
+import { AreaTag, Belt, Inventory, Loot, Pos } from "../components.ts";
 import { emit } from "../events.ts";
 import { pct, within } from "../fixed.ts";
-import { currentDepth } from "../resources.ts";
-import { addRunStat, anyHero, balanceOf, baseOf, heroFind, liveHero, noteFound } from "./common.ts";
+import { currentDepth, noteLootGold } from "../resources.ts";
+import {
+  addRunStat,
+  anyHero,
+  balanceOf,
+  baseOf,
+  heroFind,
+  heroTag,
+  liveHero,
+  noteFound,
+  purseWallet,
+  setPurseGold,
+} from "./common.ts";
 import { beltAccept } from "./belt.ts";
 import { fitsAt, placeItem, removeItem, sortEntries, type GridBag } from "./inventory.ts";
 import { rollItem } from "./generate.ts";
@@ -19,11 +30,13 @@ function bagOf(world: World, hero: Entity): GridBag | undefined {
   return world.get(hero, Inventory);
 }
 
-/** Picks up a Loot entity of the current area within PICKUP_RANGE. */
-export function execPickup(world: World, ctx: SimContext, target: Entity): OpResult {
-  const h = liveHero(world);
+/**
+ * `hero` picks up a Loot entity of the current area within PICKUP_RANGE:
+ * items into its bag, potions into its belt, gold into the party purse.
+ */
+export function execPickup(world: World, ctx: SimContext, hero: Entity, target: Entity): OpResult {
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   if (!world.has(target, Loot) || !world.has(target, Pos) || !world.has(target, AreaTag)) {
     return fail(ERR.badTarget, "there is nothing to pick up");
   }
@@ -36,19 +49,22 @@ export function execPickup(world: World, ctx: SimContext, target: Entity): OpRes
 
   const loot = world.read(target, Loot);
   const reg = ctx.registry;
+  const tag = heroTag(world, hero);
   if (loot.kind === "gold") {
-    const wallet = world.get(hero, Wallet);
+    const wallet = purseWallet(world);
     if (!wallet) return fail(ERR.noHero, "the hero has no wallet yet");
     const total = wallet.gold + loot.gold;
-    world.update(hero, Wallet, { gold: total });
+    setPurseGold(world, wallet.purse, total);
     addRunStat(world, "goldEarned", loot.gold);
-    emit(ctx, { type: "classic.gold", amount: loot.gold, total, reason: "pickup" });
+    noteLootGold(world, loot.gold);
+    emit(ctx, { type: "classic.gold", amount: loot.gold, total, reason: "pickup", ...tag });
     emit(ctx, {
       type: "classic.loot.picked",
       kind: "gold",
       name: `${loot.gold} gold`,
       rarity: "normal",
       gold: loot.gold,
+      ...tag,
     });
     world.destroy(target);
     return OK;
@@ -68,6 +84,7 @@ export function execPickup(world: World, ctx: SimContext, target: Entity): OpRes
       name: base.name,
       rarity: "normal",
       gold: 0,
+      ...tag,
     });
     world.destroy(target);
     return OK;
@@ -78,7 +95,7 @@ export function execPickup(world: World, ctx: SimContext, target: Entity): OpRes
   if (!item || !bag) return fail(ERR.badTarget, "that loot is empty");
   const next = placeItem(reg, bag, item);
   if (!next) {
-    emit(ctx, { type: "classic.bag.full" });
+    emit(ctx, { type: "classic.bag.full", ...tag });
     return fail(ERR.bagFull, "the bag is full");
   }
   world.update(hero, Inventory, { items: next.items });
@@ -90,16 +107,16 @@ export function execPickup(world: World, ctx: SimContext, target: Entity): OpRes
     name: item.name,
     rarity: item.rarity,
     gold: 0,
+    ...tag,
   });
   world.destroy(target);
   return OK;
 }
 
-/** Drops a bag item on the ground at the hero's feet. */
-export function execDrop(world: World, ctx: SimContext, uid: number): OpResult {
-  const h = liveHero(world);
+/** `hero` drops one of its bag items on the ground at its feet. */
+export function execDrop(world: World, ctx: SimContext, hero: Entity, uid: number): OpResult {
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   const bag = bagOf(world, hero);
   if (!bag) return fail(ERR.noHero, "the hero has no inventory yet");
   const removed = removeItem(bag, uid);
@@ -125,19 +142,21 @@ export function execDrop(world: World, ctx: SimContext, uid: number): OpResult {
     rarity: removed.item.rarity,
     x: p.x,
     y: p.y,
+    ...heroTag(world, hero),
   });
   return OK;
 }
 
-/** Moves a bag item to a free cell of the grid. */
+/** Moves one of `hero`'s bag items to a free cell of its grid. */
 export function execMoveItem(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   uid: number,
   x: number,
   y: number,
 ): OpResult {
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
   const bag = bagOf(world, h.hero);
   if (!bag) return fail(ERR.noHero, "the hero has no inventory yet");
@@ -151,23 +170,29 @@ export function execMoveItem(
   return OK;
 }
 
-/** Adds gold (may be negative; the wallet never goes below 0). */
+/**
+ * Adds gold to the party purse (may be negative; the purse never goes below
+ * 0). `hero` is the hero it is credited to (events); it must exist.
+ */
 export function execGrantGold(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   amount: number,
   reason: string,
 ): OpResult {
   if (!Number.isSafeInteger(amount)) return fail(ERR.badPayload, "gold must be an integer");
-  const h = anyHero(world);
+  const h = anyHero(world, hero);
   if (!("hero" in h)) return h;
-  const wallet = world.get(h.hero, Wallet);
+  const wallet = purseWallet(world);
   if (!wallet) return fail(ERR.noHero, "the hero has no wallet yet");
   const total = Math.max(0, wallet.gold + amount);
   const applied = total - wallet.gold;
-  world.update(h.hero, Wallet, { gold: total });
+  setPurseGold(world, wallet.purse, total);
   if (applied > 0) addRunStat(world, "goldEarned", applied);
-  if (applied !== 0) emit(ctx, { type: "classic.gold", amount: applied, total, reason });
+  if (applied !== 0) {
+    emit(ctx, { type: "classic.gold", amount: applied, total, reason, ...heroTag(world, hero) });
+  }
   return OK;
 }
 
@@ -197,12 +222,13 @@ function placeGranted(
 
 /**
  * Rolls `count` items (rarity at least minRarity, optionally one category)
- * into the stash (first tab with room) or the bag. Items that do not fit are
- * sold at 10% of their value.
+ * into the stash (first tab with room) or `hero`'s bag (rolled with its magic
+ * find). Items that do not fit are sold at 10% of their value into the purse.
  */
 export function execGrantItems(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   o: {
     count: number;
     ilvl: number;
@@ -216,9 +242,10 @@ export function execGrantItems(
   if (!Number.isSafeInteger(o.count) || o.count < 0 || o.count > 200) {
     return fail(ERR.badPayload, "count must be 0..200");
   }
-  const h = anyHero(world);
-  const hero = "hero" in h ? h.hero : 0;
-  const { magicFind } = heroFind(world);
+  const h = anyHero(world, hero);
+  const actor = "hero" in h ? h.hero : 0;
+  const { magicFind } = heroFind(world, actor);
+  const tag = heroTag(world, actor);
   for (let i = 0; i < o.count; i++) {
     const item: ItemInstance | null = rollItem(world, ctx, {
       ilvl: o.ilvl,
@@ -230,7 +257,7 @@ export function execGrantItems(
     });
     if (!item) continue;
     // Quest rewards fall back to the stash when the bag is full (docs/design/classic.md §16).
-    if (placeGranted(world, ctx, hero, item, o.toStash, o.reason === "quest")) {
+    if (placeGranted(world, ctx, actor, item, o.toStash, o.reason === "quest")) {
       noteFound(world, item);
       emit(ctx, {
         type: "classic.loot.picked",
@@ -238,20 +265,22 @@ export function execGrantItems(
         name: item.name,
         rarity: item.rarity,
         gold: 0,
+        ...tag,
       });
       continue;
     }
-    // No room: sell the overflow at 10% of its value.
+    // No room: sell the overflow at 10% of its value (into the purse).
     const price = Math.max(1, pct(item.value, 10));
-    const wallet = hero !== 0 ? world.get(hero, Wallet) : undefined;
+    const wallet = actor !== 0 ? purseWallet(world) : undefined;
     if (wallet) {
       const total = wallet.gold + price;
-      world.update(hero, Wallet, { gold: total });
+      setPurseGold(world, wallet.purse, total);
       emit(ctx, {
         type: "classic.gold",
         amount: price,
         total,
         reason: `${o.reason}: overflow sold`,
+        ...tag,
       });
     }
   }

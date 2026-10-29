@@ -5,6 +5,8 @@
  */
 import type { Party } from "@gamez/protocol";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { sqlStoreOf, type EscrowApi, type Env } from "../contracts.ts";
 import { accountGateway } from "../economy/gateway.ts";
 import { TradeEscrow, type TradeAccounts } from "../trade/escrow.ts";
@@ -14,6 +16,12 @@ export class EscrowDO extends DurableObject<Env> implements EscrowApi {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "EscrowDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const accounts: TradeAccounts = {
       ...accountGateway(env),
       linkTrade: (accountId, tradeId, open) =>
@@ -32,6 +40,12 @@ export class EscrowDO extends DurableObject<Env> implements EscrowApi {
   }
 
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "EscrowDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     await this.#escrow.alarm();
   }
 

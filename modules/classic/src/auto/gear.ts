@@ -3,7 +3,11 @@
  * (itemScore with a margin, requirements, two-handed rules, weapon style),
  * and which bag item to equip next.
  */
-import { Equipment, HeroStats, Inventory, Level } from "../components.ts";
+import type { Entity, SimContext, World } from "@gamez/kernel";
+import { Dead, Equipment, HeroStats, Inventory, Level, Pos } from "../components.ts";
+import { controlMode } from "../control.ts";
+import { partyMembers } from "../party/shared.ts";
+import { heroOf } from "../resources.ts";
 import {
   KIND,
   type Attr,
@@ -12,7 +16,7 @@ import {
   type ItemInstance,
 } from "../types.ts";
 import { itemScore } from "./score.ts";
-import { bagFits, itemSize, type AutoCtx } from "./util.ts";
+import { bagFits, configOf, itemSize, makeAutoCtx, pushCmd, type AutoCtx } from "./util.ts";
 
 export interface Upgrade {
   slot: EquipSlot;
@@ -108,6 +112,8 @@ export function pickEquip(c: AutoCtx): { uid: number; slot: EquipSlot } | null {
   for (const en of inv.items) {
     const up = upgradeFor(c, en.item, 5, true);
     if (!up || (best && up.gain <= best.gain)) continue;
+    // Party: an item another member gains more from goes to that member (distributeGear).
+    if (c.party && claimedByOther(c, en.item, up.gain)) continue;
     // What comes off must fit back into the bag (in the freed space).
     const off: ItemInstance[] = [];
     const cur = eq?.[up.slot];
@@ -125,7 +131,101 @@ function fitsBack(c: AutoCtx, item: ItemInstance, freedUid: number): boolean {
   return bagFits(c, s.w, s.h, [freedUid]);
 }
 
-/** True when `item` is worth keeping as a (possibly soon usable) upgrade. */
+/** True when `item` is worth keeping as a (possibly soon usable) upgrade (party: for any gear member). */
 export function isKeeper(c: AutoCtx, item: ItemInstance): boolean {
-  return upgradeFor(c, item, 5, false) !== null;
+  if (upgradeFor(c, item, 5, false) !== null) return true;
+  if (!c.party) return false;
+  for (const e of gearMembers(c.world)) {
+    if (e === c.hero) continue;
+    if (upgradeFor(makeAutoCtx(c.world, c.ctx, e), item, 5, false) !== null) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Party gear distribution (docs/design/party.md §6.8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Members taking part in gear distribution (slot order): standing members
+ * with a bag; the controlled hero only outside Manual (the player manages
+ * its own bag then).
+ */
+export function gearMembers(world: World): Entity[] {
+  const manual = controlMode(world) === "manual";
+  const hero = heroOf(world);
+  return partyMembers(world).filter(
+    (e) =>
+      !world.has(e, Dead) &&
+      world.has(e, Inventory) &&
+      world.has(e, Pos) &&
+      !(manual && e === hero),
+  );
+}
+
+/** Upgrade gain of `item` for the context's hero (0 = none; strict requirements, 5 % margin). */
+export function gainFor(c: AutoCtx, item: ItemInstance): number {
+  return upgradeFor(c, item, 5, true)?.gain ?? 0;
+}
+
+/**
+ * The member (of `ctxs`, slot order) `item` upgrades most, with its gain;
+ * ties go to the lower slot. Null when it upgrades nobody.
+ */
+export function bestMemberFor(
+  ctxs: readonly AutoCtx[],
+  item: ItemInstance,
+): { c: AutoCtx; gain: number } | null {
+  let best: { c: AutoCtx; gain: number } | null = null;
+  for (const m of ctxs) {
+    const g = gainFor(m, item);
+    if (g > 0 && (!best || g > best.gain)) best = { c: m, gain: g };
+  }
+  return best;
+}
+
+/**
+ * True when another gear member with bag room gains more than `gain` from
+ * `item` (or as much from a lower slot): the holder leaves it to them.
+ */
+function claimedByOther(c: AutoCtx, item: ItemInstance, gain: number): boolean {
+  const members = gearMembers(c.world);
+  const mine = members.indexOf(c.hero);
+  const s = itemSize(c.reg, item);
+  for (let i = 0; i < members.length; i++) {
+    const e = members[i]!;
+    if (e === c.hero) continue;
+    const m = makeAutoCtx(c.world, c.ctx, e);
+    const g = gainFor(m, item);
+    if (g > gain || (g === gain && g > 0 && mine >= 0 && i < mine)) {
+      if (bagFits(m, s.w, s.h)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Hands one bag item to the member it upgrades most (party, AutoConfig.
+ * autoEquip): for every gear member's bag (slot order), every item whose
+ * best member is not its holder and has room gets a `give` op from the
+ * holder. One give per call; the recipient equips it on its next equip
+ * check (equip runs at update 50, before classic.party's give at 56).
+ */
+export function distributeGear(world: World, ctx: SimContext): void {
+  if (!configOf(world).autoEquip) return;
+  const members = gearMembers(world);
+  if (members.length < 2) return;
+  const ctxs = members.map((e) => makeAutoCtx(world, ctx, e));
+  for (const h of ctxs) {
+    for (const en of world.get(h.hero, Inventory)?.items ?? []) {
+      const best = bestMemberFor(ctxs, en.item);
+      if (!best || best.c.hero === h.hero) continue;
+      // The holder keeps what it gains as much from (no hand-over for a tie with itself).
+      if (gainFor(h, en.item) >= best.gain) continue;
+      const s = itemSize(h.reg, en.item);
+      if (!bagFits(best.c, s.w, s.h)) continue;
+      pushCmd(h, { op: "give", uid: en.item.uid, to: best.c.hero });
+      return;
+    }
+  }
 }

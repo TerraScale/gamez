@@ -21,6 +21,7 @@ node tools/qa/src/run.ts classic-create rogue          # new-hero screen through
 node tools/qa/src/run.ts classic-idle warrior 1 8      # Idle mode x8 for 1 minute: samples + screenshots, data.descents
 node tools/qa/src/run.ts classic-features warrior      # wave A systems with cheats: talents, smith, gambler, stash, filter, sets, rift
 node tools/qa/src/run.ts classic-boss warrior          # cheats: a boss beside the hero, each telegraph shape, both phases, the shake
+node tools/qa/src/run.ts classic-repair warrior        # cheats: gear broken in the dungeon (wearGear), Idle's repair trip to the smith
 node tools/qa/src/run.ts panels [class]                # every HUD panel, every NPC/station panel
 node tools/qa/src/run.ts gallery [--all-facings]       # ?qa=gallery: every appearance/item/effect/tile/prop
 node tools/qa/src/run.ts steps | duel | plaza          # the other modes: load, a few inputs, screenshots
@@ -71,6 +72,71 @@ kills a cheat hero in seconds). The run polls `sim.lastEvents` for `classic.tele
 Hard checks: the boss spawns, phase 1 starts, its toast names Morrow, and
 `render.shakes` counts up. Each telegraph shape is a warning (the line only comes
 with the phase 2 rush). `data.boss` holds the shapes seen and the shake counts.
+
+### classic-repair (cheats)
+
+Natural wear (1 durability per 8 kills, 10 % per death) never breaks gear in a
+short Idle run, so repairs need a cheat (`src/repair.ts`). The hero gets 5000 gold
+and plays Idle x8 until it is in the dungeon past the voluntary trip cooldown
+(`sim.autoState.tripAt`: repair trips wait 60 sim seconds after a town visit, like
+every voluntary trip). `wearGear: 0` then breaks every equipped item through the
+real wear path while Idle explores. Hard checks: Idle plans `toTown` (event ring; the note
+must be `repair`, or a warning when a fight right after the cheat ended in a `retreat`
+first, whose visit repairs too),
+`classic.repaired` counts up, every broken item is whole again (`sim.gear`:
+`{slot, cur, max}` per equipped item), and Idle goes back down. Shots:
+`in-dungeon`, `gear-broken`, `repaired`, `back-down`; `data.repair` holds the gear
+before and after and the trip notes.
+
+### party
+
+The party UI without the party cheat (`src/party.ts`). `party <class> [--viewport phone]`:
+
+1. Manual mode, a gold cheat, then the Party panel (key P): buys slots 2 and 3 with the panel button,
+   picks the Rogue and Sorcerer class cards, types the names Wren and Ilsa and presses Recruit
+   (`party-panel`, `party-panel-recruited`).
+2. Checks three members in `window.__gamez.sim.party`, three `[data-party-frame]` HUD frames and the
+   outline census (one gold `self`, cyan `party` for the others) (`party-frames`).
+3. Takes control by clicking portrait 2, then F3, F1 and Tab. After each switch the controlled member
+   and the HUD hero must be the expected one, the camera target (`window.__gamez.render.camera`, tiles)
+   must be on that hero and the centre within 2.5 tiles, and there must still be exactly one `self`
+   outline (`control-portrait`, `control-f3`, `control-f1`, `control-tab`).
+4. Party: Auto (Idle x8) for 30 s. The party must stay within the leash (24 tiles; 12 is a warning),
+   and the camera target must stay on the controlled hero in 80 % of the samples (`party-idle`).
+
+### classic-party (cheats)
+
+A party of four in the real browser (`src/party.ts`, owner T-party-render). `classic-party <class>`
+opens `?debug=1&cheats=1` (`--url` picks the server; `--viewport phone` works too) and:
+
+1. Grants the party with `controls.cheat {party: ["classic.rogue", "classic.sorcerer", "classic.warrior"]}`.
+   When the cheat is not there yet, the run falls back to `{bossesKilled: [4, 8, 12], gold: 100000}` and
+   recruits the same three through `controls.act("classic.party.recruit")`. `data.party.grant` says which path ran
+   (`party-cheat` or `fallback`). The cheat names its recruits `<Class> <n>` (Rogue 1, Sorcerer 2,
+   Warrior 3); only the fallback recruits as Brannoc, Celene and Oren. The frame-name check accepts both.
+2. Takes `town-party` (outlines, name plates, party frames). The HUD's `window.__gamez.render.outlines`
+   census must show one gold `self` and cyan `party` outlines. Frame names are read from the page text.
+   The `ally` count is informational only: in town it includes the presence avatars (and their
+   companions) of every other live session on the shared dev server. Downed party members keep a
+   dimmed `self` / `party` outline, so they stay in the census.
+3. Presses F2, then Tab (`control-f2`, `control-tab`). The controlled hero's name (`sim.hero.name`) must change each time.
+4. Idles at x8 for 60 s, sampling every 2 s. Takes `downed` and `revived` shots the first time each happens, and
+   `idle-party` at the end.
+
+`data.party` holds the grant path, the outline census, the frame names, the control names, one sample per
+2 s (depth, controlled hero, downs, revives, heroDeaths and, when exposed, every member), the largest
+follower distance (`maxFollowerDistance`, tiles), `depthMax`, `downs`, `revives` and `final`.
+Member positions are read from `window.__gamez.sim.party.members` (`{name, x, y, dead, level}`, tiles)
+when the debug summary publishes it. Without it, the together check is a warning and only the controlled
+hero is sampled.
+
+Hard checks: three recruits joined, one self outline and party outlines, F2 and Tab switch control.
+Warnings: the frame names, the outline after the switch, the together check when positions are missing,
+and the descent (depth 1 or deeper).
+
+Gallery: the `party` section (`?qa=gallery`) lists the controlled hero (`self`), a follower (`party`), a
+downed follower (the dead pose, `party`), another player (`ally`, green) and a summon of a party member (the
+Spark Sentry in the party ink), every action, on the town grass.
 
 ### Auto mode and manual steps
 
@@ -173,6 +239,126 @@ Every run prints one JSON report to stdout:
 The exit code is 0 when `ok`, 1 otherwise, and 2 for bad usage. A useful
 pattern: `node tools/qa/src/run.ts gallery > /tmp/g.json; node -e 'console.log(require("/tmp/g.json").data.summary)'`.
 
+### Offline and away (`classic-offline`, permanent)
+
+```sh
+node tools/qa/src/run.ts classic-offline warrior --out /tmp/gamez-qa/classic-offline-warrior
+```
+
+Proves that classic Idle keeps farming while the player is away, in server-synced play
+(docs/design/offline-idle.md §2, §5, §6, §7). Source: `src/offline.ts`. About 13 minutes:
+Idle 150 s, absence 75 s, and the same again in each phase. It uses the live dev server (default
+`http://127.0.0.1:5173`); the scenario never starts, stops or restarts it.
+
+| Phase | What the player does                                                    | Hard checks                                                                                                                                            |
+| ----- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A     | Idle 150 s, close the tab, wait 75 s, reopen                            | card "While you were away"; away at least 1 min; XP since close at least the card's XP; card says "% offline rate"; Idle preserved; sync server online |
+| B     | Close the card, reload at once                                          | no second card; no `classic.offline.summary`; Idle preserved. Warn: XP jump within 2x the measured Idle rate                                           |
+| C     | HUD "Modes" to the picker, wait 75 s, return via the Classic card       | the same checks as A                                                                                                                                   |
+| D     | Hidden tab (see below), 70 s, visible again                             | the same checks as A                                                                                                                                   |
+| E     | Optional, warn only: local play (`?cheats=1`), close, wait 75 s, reopen | the same checks, as warnings                                                                                                                           |
+
+What counts as a pass: every hard check of a phase. A phase that throws is a hard failure of that
+phase only; the later phases still run. Timing-sensitive values (the exact XP, the XP jump, whether
+the summary is still in the event ring, the rate source) are warnings.
+
+- **Absence waits.** The wait ends at `leaveWall + 75 s` on the page clock, where `leaveWall` is the
+  moment the tab navigated to about:blank (or the picker was entered). The server measures its own
+  clock from the last verified progress, which is never later than the close, so the absence it
+  credits is at least 75 s (the grant floor is 60 s).
+- **Hidden tab (phase D).** Headless Chrome does not hide a tab on its own. The scenario redefines
+  `document.visibilityState` and `document.hidden` (the getters return `'hidden'`), holds
+  `requestAnimationFrame` callbacks (a background tab runs no frames; Pixi's Ticker looks the
+  global up every frame, so the game loop stands still while timers keep running) and dispatches
+  `visibilitychange`. After 70 s (over `HIDDEN_RECONNECT_MS` = 60 s and the 60 s grant floor) it
+  removes the override, dispatches `visibilitychange` and only then releases the held frames,
+  the order a real browser uses. The client rejoins and the card shows the grant. A warn-only
+  check confirms that the sim tick stood still while hidden. Rejected stand-ins:
+  - The override alone: the loop keeps playing, so the client plays the absence live and the
+    server rightly grants nothing (granting would pay twice).
+  - `Debugger.pause`: on resume the queued frames and the 2 s segment timer run before the
+    visible event, so a non-empty segment reaches the server on the old socket first, and the
+    absence is spent (it moves `lastActiveAt` to now).
+  - `Page.setWebLifecycleState` "frozen": in chrome-headless-shell rAF does not restart after
+    "active".
+- **Stale cards.** A card still open from an earlier return is closed before phases C and D
+  leave. Phase D stays on the same page, so it only accepts a card that came with a new
+  `classic.offline.summary` (the event counter rose; a hard check). Sync is read as online
+  after up to 15 s of settling, because the card can show before the rejoin's status flips.
+- **Rate source.** The measured rate replaces the fallback model only after 5 min of online Idle
+  (`AUTO_RATE_MIN_TICKS` = 6000 ticks at x1). The scenario has about 3 min, so every card is
+  expected to say "Estimated: not enough Idle history yet" (`source: "model"`). The warn-only
+  check compares the card with the online Idle the run accumulated (`data.onlineIdleMs`).
+- **Reopens never use autostart.** Only the first open of a run creates the hero, because autostart
+  replaces the saved one. A reopen uses the same URL without autostart. A dev-server reload during
+  the run (HMR) is recovered the same way, counted in `data.reloads`.
+- **Output.** `data.phases.{A,B,C,D,E}` holds each verdict and its numbers (card, pre and post XP,
+  sync, quests); `data.idleXpPerMs` is the Idle rate measured in phase A. Screenshots are numbered
+  in order (`01-A-idle-before-close.png`, `03-A-reopen-card.png`, ...), and `error.png` is written
+  when the run throws.
+- **Parsing.** `parseCard(text, quests)` reads the card (away span, credited span, kills, XP and
+  rate, gold and rate, items, levels, quest rows, the upkeep note, the measured or estimated hint).
+  It is pure, so a unit test can cover it without a browser.
+
+## Harness rules: toasts, reloads, the dev server
+
+These rules hold for every scenario (round-1 QA fixes):
+
+- **Toast checks are read right after the action.** A toast lasts 4 s, and a
+  loaded machine can be slower than that between a click and a read. So the
+  `quests` scenario polls the toasts for up to 3.5 s from the press
+  (`expectToast` in `quests.ts`; `pollToastTexts` for the classic-boss phase toast).
+  The first read is immediate.
+- **Toast fallback.** A dev-server reload wipes the toasts (the page reloads and
+  the UI state is gone). When a reload happened between the action and the check
+  (`data.reloads` changed), or the page could not be read, the quest log line
+  decides instead: `Accepted: <name>`, `Complete: <name>`, `Reward: <gold> gold,
+  <xp> XP`. Such a check is **warn-only** and its detail says why (`via: "log"`,
+  `reason`). On an unreloaded page, a toast that was not seen while its log line
+  is there is also warn-only (`reason: toast not observed ...`): an HMR update or
+  a stalled frame can drop a 4 s toast, and the event itself is confirmed. Only
+  when **neither** the toast nor the log line is seen does the check fail
+  (warn-only where Idle made the turn-in, which has no press to time from). The
+  quest state, tracker and gold/XP checks next to it stay hard checks, so a real
+  quest bug still fails the run.
+- **Dialog presses are timed by their effect.** A phone tap's click is synthesised
+  by Chrome after `touchend`, on the renderer's time: on a loaded machine with a
+  busy game (right after an Idle x8 run) it was measured landing 3.5 s after the
+  tap. The `... responds to the tap/click` check therefore watches the quest row
+  for up to 6 s (`RESPOND_MS`, `detail.waitedMs`), and the toast is polled from the
+  moment the row changed. Only a row unchanged after 6 s fails (then a DOM click
+  carries the run on).
+- **Reloads in `panels`.** The game returns to the picker after a reload.
+  `panels` runs every step through `recoverFromReload`: it starts the same class
+  again (same seed) and redoes the failed step, up to 4 attempts. `data.reloads` counts them.
+- **The dev server restarting.** `openPicker` (every reacquire) waits for the
+  server (`waitForServer`, 90 s) before it opens the page. A navigation that fails
+  with a connection error is retried by the caller, not reported as a game error.
+  `recoverFromReload` retries a failed recovery up to 3 times, waiting for the
+  server (120 s) in between, instead of giving up on the first refused connection.
+- **Reloads in `classic-boss`.** A boss fight cannot be resumed after a reload
+  (the page returns to the picker and the boss is gone), so the whole attempt is
+  restarted (up to 3 attempts, after `waitForServer`). The interrupted attempt's
+  checks are dropped and listed in `data.bossRestarts` (`attempt`, `error`,
+  `droppedChecks`); `data.reloads` counts the restarts. The phase-2 window is
+  100 s (`PHASE2_WATCH_MS`) so Morrow's rush (the line telegraph) can come round.
+- **`progress.log`.** Every check (`ok`/`WARN`/`FAIL`), screenshot, reload and
+  recovery attempt is appended with a timestamp to `<out>/progress.log` while the
+  run goes (the JSON report is only printed at the end). Read it to see how far a
+  long or stalled run got.
+  Connection errors (`ERR_CONNECTION_REFUSED`, `ERR_CONNECTION_RESET`,
+  `ERR_EMPTY_RESPONSE`) are kept out of the `no console errors` check and listed
+  in a separate warn check, `dev-server connection errors during the run (not the game)`.
+- **Console error details** are objects: `{ text, url, source }`, so a failure
+  names the URL it came from (`url` is null when the browser gave none).
+- **`quests <class> phone`.** The word `phone` may come before or after the class:
+  `quests phone` runs the warrior on the phone layout (before this fix the word
+  became the class name).
+- **classic-boss phase 2** waits up to 100 s for the cone, circle and line
+  telegraphs (the line rush follows the other skills' cooldowns).
+- **Chat (`social`).** The chat dock is only usable once its status reads `Live`
+  (ChatWindow sends only when online). `openChat` waits for that before typing.
+
 ## Quests (`quests` scenario and the quest sim suite)
 
 Quest coverage has two halves: a sim suite (fast, no browser, runs on every
@@ -200,6 +386,42 @@ ten completed quests, a retroactive boss kill (accepted after its depth is in
 `bossesKilled`), the stash fallback for a full bag, Idle and Auto per class
 (warrior, rogue, sorcerer), and determinism (same script, same hash).
 
+Round 2 added, all data-driven over the registry:
+
+- **Turn-in location.** Every quest, finished and then turned in from depth 1
+  (`classic.completeQuest` in the dungeon): `not_in_town`, hash unchanged, the
+  quest still done and not completed. Every `classic.quest.completed` event the
+  Idle and Auto tests see is recorded with the depth the hero stood on at that
+  tick (`Driver.completions`); each one must be depth 0. This is the check for the
+  QA question "turn-in location not observed".
+- **Pinned rewards.** A table of the gold, XP and minimum reward rarity of all ten
+  quests (`REWARDS`). Each quest's data must equal it, and its turn-in grants
+  exactly that gold and XP; the item (or no item) follows the rarity. Into the
+  Ninth is pinned as `reachDepth` 12, after Deeper Still, level 16, and is done
+  once the deepest depth is 12.
+- **Auto and Idle play a quest on their own, per class.** From a fresh hero with
+  no accept or turn-in dispatched by the test, Auto and Idle (at speed 4, set with
+  `classic.setSpeed`) each accept Rats in the Cellar, progress it
+  (`classic.quest.progress`), turn it in in town and are paid its gold and XP.
+  `setSpeed` is refused outside Idle. The sim has no speed effect (the host steps
+  `speed` ticks per 50 ms), so speed 4 plays the same ticks as speed 1 here.
+- **One town visit accepts every eligible quest.** A level 10 hero starts in the
+  dungeon. Auto and Idle go to town for the quests (the trip reason, design §15.2
+  step 8) and accept all six quests with no chain and reqLevel ≤ 10 (Rats, Deeper
+  Still, The Warden's Rest, Ash and Ember, Clear the Crypt, Cull the Flames), with
+  no trip to the dungeon between the first and the last accept.
+
+Round 2 guards (name, then the code it covers):
+
+- `not_in_town` turn-in from the dungeon (per quest): `progression/ops.ts`
+  execCompleteQuest, the town check before the reward.
+- `pinned reward is granted exactly` (per quest): `content/quests.ts` values and
+  the reward grants in execCompleteQuest.
+- `Auto and Idle play a quest on their own` (per class): the controller's accept,
+  progress and turn-in (`auto/`), with Idle at speed 4.
+- `one town visit accepts every eligible quest` (per class and mode):
+  `auto/town.ts` questOps and the quest trip reason in `auto/think.ts`.
+
 The suite is the target behaviour of the quest fix and is never skipped or
 weakened to pass. Tests that guard a quest fix (name, then the code it covers):
 
@@ -217,8 +439,10 @@ weakened to pass. Tests that guard a quest fix (name, then the code it covers):
 - `the whole chain`: ten quests completed and `Trusted by the Town` unlocked
   (achievements are checked every 20 ticks, so the test steps one interval).
 
-On the current tree all 85 tests pass in about 75 s. The per-class tests take
-8 to 14 s each.
+On the current tree all 119 tests pass in 96 s on a quiet machine and 136 s with
+other suites running (round 1's 85 took 55 s on their own). The per-class Auto and
+Idle tests take 2 to 15 s each (the sorcerer Idle run is the slowest), and the
+one-visit tests about 2 to 3 s each.
 
 ### `quests` (browser)
 
@@ -250,12 +474,29 @@ A fresh classic hero (`?debug=1&cheats=1&class=…&autostart=1`, manual control)
    accept is skipped and `data.deeperAcceptedBy` is `idle`), `deepest` 6 by
    cheat, done, turned in. Into the Ninth stays locked below level 16 and becomes
    available at it (by cheat).
-   Final reload.
+8. Into the Ninth (round 2), at level 16: accepted from Hale's dialog (the real
+   Accept button), the `Quest accepted` toast, the tracker with `/ 12`. Deepest 12
+   by cheat: the tracker row says `Ready` and the log (L) says `Ready to turn in`.
+   Turned in from the dialog (a town portal, or Auto back to town, when the hero
+   is deep): `Reward` toast `+1200 gold, +1400 XP` (read from the quest data),
+   gold and XP up. Reload: completed survives.
+9. Ash and Ember (round 2, a killMonsters reward): accepted from the dialog
+   unless Idle already took it (`data.ashAcceptedBy`), Idle x8 until 15 ash seers
+   are killed (budget 420 s; a failed finish is a hard check), turned in from the
+   dialog (`data.ashTurnedInBy` when Idle turned it in itself), and the `Reward`
+   toast reads `+300 gold, +500 XP`.
+
+For every Reward toast the run records the depth at the toast in
+`data.rewardToasts` (`{quest, label, toast, depth, isTown}`), and a turn-in out
+of town is a warn check (`Reward toast raised in town`).
+
+Final reload.
 
 Screenshots (in the run's output directory, `/tmp/gamez-qa/quests-<class>[-phone]`
 by default, numbered in order): `01-hale-marker`, `02-log-far-from-hale`,
 `03-dialog-open`, `04-accepted-tracker`, `05-log-progress`, `06-quest-ready`,
-`07-turned-in`, `08-deeper-done`, `09-into-the-ninth`. Failures get `error.png`.
+`07-turned-in`, `08-deeper-done`, `09-into-the-ninth`, `10-into-the-ninth-accepted`,
+`11-into-the-ninth-turned-in`, `12-killmonsters-reward`. Failures get `error.png`.
 
 Every dialog button press also records what `document.elementFromPoint` hits at
 the button's centre (`hit`: `button`, or the covering element) and checks that
@@ -275,12 +516,39 @@ Known limits:
   that times out becomes a `screenshot <name>` warn check.
 - Turning in from the dungeon needs a town portal scroll. Without one the run
   switches to Auto until the hero is in town (`data.toTown` says which path).
+- Accept and Turn in are disabled out of reach of Hale. A dialog opened before
+  the hero has walked to him (a town portal arrival did this in round 2) shows
+  `Go to Captain Hale`; the scenario presses that button (the player's own way) and
+  waits up to 30 s for `questGiver.inReach` before pressing the disabled button.
+  `data["walkedTo <label> <quest>"]` records each time this happened.
+- The quest list scrolls inside the dialog. A row below the fold (Into the Ninth
+  on the 1366x768 desktop) is scrolled into view before its button is pressed.
+  Before this, the press hit nothing (`hit: none`), and the DOM click carried on.
 - The renderer exposes a count of visible marker labels
   (`render.labelsVisible.marker`), not the glyph. The `!` and `?` checks are
   therefore made with the hero next to Hale (his sprite on screen, via
   `controls.npcScreenPos`) and the quest state known: `!` at the accept, `?`
   right before the turn-in. The count at the spawn is a warn check, because
   Hale can be off screen there (always on phone).
+- Idle at speed 1 duplicates Auto in the sim: only `ControlState.mode` differs.
+  Idle-only QA must run Idle at speed 2, 4 or 8 (the sim keeps the setting; the
+  browser host applies it), or be done in the browser (the scenario uses Idle x8).
+- Idle and Auto accept every eligible quest in one town visit, at once. This is
+  by design (§15.2 step 8: the quest step accepts every quest the hero may take).
+  A check that expects one accept per visit is wrong.
+- Hale's `!` label is off screen at the spawn on phone. The count of visible `!`
+  labels there is a warn check, and that result is expected, not a bug.
+- Chain QA beyond The Tunnel Mother needs about a 2-hour sim run. Its reqLevel
+  is 14, which a 30-minute Auto run does not reach. The sim suite covers the chain
+  by setting the level and the chain state, so only the browser run is affected.
+- Offline progress for killMonsters quests (§15.4, §16 rule d): `*` (Cull the
+  Flames) gets every offline kill. A named target gets `floor(kills / n)` when it
+  is one of the `n` monsters of the offline depth's tier, and 0 otherwise.
+  Progress is capped at the count. Depth, boss and clear quests never progress
+  offline. Covered by `modules/classic/tests/auto.offline.quests.test.ts`.
+- The boss kill regression (`modules/classic/tests/auto.bosses.test.ts`) belongs
+  to another task. It was added to the tree while round 2 ran (untracked then).
+  The quest suites do not depend on it.
 
 ## The driver (`src/cdp.ts`)
 
@@ -339,7 +607,9 @@ URL parameters (classic, independent of `?debug`):
   `spawnBoss: "<boss or guardian id>"` (awake beside the hero; `in_town` in town) and
   `woundBosses: 1..99` (every living boss of the area to that % of its life, so phases
   start on demand; `bad_target` with no boss; it may be sent in the same grant as
-  `spawnBoss`, and then applies right after the boss spawns). Unknown or out-of-range fields are
+  `spawnBoss`, and then applies right after the boss spawns), `party: [class ids]` and
+  `wearGear: 0..99` (the hero's equipped gear down to that % of its max durability,
+  0 = broken, through the real wear path; `bad_target` when nothing can wear). Unknown or out-of-range fields are
   rejected (`bad_payload`) and change nothing.
 - `?fresh=1` skips the save carry-over. A save of another content version whose
   modules all still exist is restored under the new hash, stepped 20 ticks as a
@@ -356,6 +626,11 @@ kind (NPCs only play idle: attack, cast, hit, death and walk are `n/a`).
 `icons` (`ids`, `missing`) is informational: HUD icons are inline SVG, so a
 missing `icon.*` sprite is not an art gap and is kept out of `missingArtIds`.
 The `every action has its own animation` check uses `actionFallbacks` only.
+
+**Glyph icons (planned):** the gallery report may gain a separate `glyph` list for
+icon ids that are drawn as glyphs (not sprites). Another agent is changing
+`modules/classic/src/client/gallery.ts` so glyph-backed `icon.*` ids are not counted
+as missing. Until that lands, `icons.missing` can still list them; read it with that in mind.
 
 Area effects are drawn at most one tile wide in their cell (the game uses the
 real radius), so every effect stays inside its fixed-size cell and its caption
@@ -401,6 +676,7 @@ not reachable from the normal UI. Its sections:
 - every loot sprite with its rarity label, the uniques, the gems (tinted by kind)
   and a set-rarity sample
 - every skill effect and projectile, plus weapon projectiles
+- the `party` page: self, party, downed, ally and a party summon, every action
 - float texts and event effects, played through the real `effects.ts` planner
 - every tile and prop that the generated maps, themes and manifest use, and
   the station signs

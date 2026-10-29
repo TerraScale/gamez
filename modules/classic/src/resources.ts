@@ -34,7 +34,80 @@ export const RES = {
   rift: "classic.riftState",
   /** Owner classic.achievements. */
   achievements: "classic.achievements",
+  // ---- offline/idle (docs/design/offline-idle.md §4)
+  /**
+   * Owner classic.auto (created lazily by classic.auto.rate on the first
+   * Auto/Idle tick; absent in manual-only games). classic.items adds picked-up
+   * gold to `loot` through noteLootGold when it exists.
+   */
+  autoRate: "classic.autoRate",
+  // ---- party (docs/design/party.md)
+  /** Owner classic.party. Created lazily by the first party action (absent = a party of one: GameState.hero). */
+  party: "classic.party",
 } as const;
+
+/**
+ * The hero's measured online Auto/Idle rate (offline-idle.md §4). Integers
+ * only. `ticks`, `kills`, `xp`, `gold` cover sim ticks with control.mode !==
+ * "manual" and phase "play" (town trips, deaths and fights included). When
+ * `ticks` exceeds AUTO_RATE_WINDOW_TICKS those four and `upkeep` are halved (floor), so the
+ * rate follows the hero's current power (a ~30 minute decaying window).
+ */
+export interface AutoRate {
+  ticks: number;
+  /** Hero-credited kills (Bus.deaths: creditTeam hero, not the hero, not summons). */
+  kills: number;
+  /**
+   * XP those kills granted the controlled hero (xpForKill at its level; in a
+   * party its partyKillXp share, docs/design/party.md §6.8), never
+   * quest/offline/debug XP.
+   */
+  xp: number;
+  /**
+   * The raw XP of those kills (DeathRecord.xp: before the over-level penalty
+   * and the party share), so it does not depend on which hero was controlled
+   * (docs/design/party.md §6.8: partyOfflineGrant pays each member from it).
+   * Halved with the window. Optional: rates from before this field read as
+   * unmeasured.
+   */
+  pool?: number;
+  /** Gold picked up from the ground (no grants, sales, bank or quest gold). */
+  gold: number;
+  /** Gold picked up since the last classic.auto.rate run (folded into `gold` on an active tick, else dropped). */
+  loot: number;
+  /**
+   * Upkeep gold paid on eligible ticks (offline-idle.md §3): potions and town
+   * portal scrolls bought from the alchemist, and smith repairs. Halved with
+   * the window like `gold`. Gambling, smith item purchases, crafting
+   * upgrades/rerolls/sockets, talent resets and rift fees are discretionary
+   * and never count. Optional: rates from before this field read 0.
+   */
+  upkeep?: number;
+  /** Upkeep paid since the last classic.auto.rate run (folded into `upkeep` on an eligible tick, else dropped). */
+  spent?: number;
+}
+
+/**
+ * Called by the upkeep spenders (classic.items alchemist potions/scrolls,
+ * classic.crafting repair) with the gold paid: counts it toward the rate's
+ * upkeep, if a rate exists. Same pattern as noteLootGold.
+ */
+export function noteUpkeepGold(world: World, amount: number): void {
+  if (amount <= 0) return;
+  const r = world.getResource<AutoRate>(RES.autoRate);
+  if (!r) return;
+  r.spent = (r.spent ?? 0) + amount;
+  world.setResource(RES.autoRate, r);
+}
+
+/** Called by the ground-gold pickup (classic.items): counts it toward the rate, if one exists. */
+export function noteLootGold(world: World, amount: number): void {
+  if (amount <= 0) return;
+  const r = world.getResource<AutoRate>(RES.autoRate);
+  if (!r) return;
+  r.loot += amount;
+  world.setResource(RES.autoRate, r);
+}
 
 export interface GameState {
   /** "choose" until classic.newHero creates the hero. */
@@ -43,14 +116,20 @@ export interface GameState {
   worldSeed: number;
   /** Next ItemInstance uid. */
   nextUid: number;
-  /** The hero entity (0 before classic.newHero). */
+  /**
+   * The CONTROLLED hero (0 before classic.newHero). Every manual action, the
+   * HUD, the camera and ControlState.mode apply to this hero. With a party
+   * (docs/design/party.md §2) it is always one of PartyState.members and
+   * changes only through classic.party.control (or the party's auto-switch
+   * on death); the other members are always driven by the party AI.
+   */
   hero: Entity;
   /** Pack ids for monster population, monotonic. */
   nextPack: number;
 }
 
 export interface AreaState {
-  /** 0 = town, >= 1 dungeon depth. The hero's AreaTag always equals this. */
+  /** 0 = town, >= 1 dungeon depth. The AreaTag of the hero (every party member) always equals this. */
   depth: number;
   /** ThemeProto id ("classic.theme.town" for the town). */
   theme: string;
@@ -184,6 +263,14 @@ export interface RunStats {
   potionsUsed: number;
   ticksPlayed: number;
   offlineMs: number;
+  /**
+   * Sim tick of the last classic.offlineProgress grant (offline-idle.md §5.5).
+   * A second grant on the same tick is rejected (ERR.offlineTwice), so a
+   * double local dispatch can never pay twice. The verified server (actor
+   * "server") is exempt: it only pays measured absences, and two may follow
+   * each other with no tick in between. Optional (old saves).
+   */
+  offlineAt?: number;
   // ---- wave A counters (optional; writers increment `(rs.x ?? 0) + n`) ----
   /** Gold paid to any sink (vendors, repair, crafting, gambling, resets, rift fees). Every spender adds. */
   goldSpent?: number;
@@ -258,6 +345,11 @@ export interface RiftRecord {
   endTick: number;
   /** Run id (RiftState.nextRun at open time). */
   run: number;
+  /**
+   * Party (docs/design/party.md §7.4): every member at the end of the run, in
+   * slot order (hero fields above = the acting leader). Absent for solo runs.
+   */
+  party?: { name: string; classId: string; level: number }[];
 }
 
 export interface RiftRun {
@@ -311,7 +403,11 @@ export const controlOf = (w: World): ControlState => need<ControlState>(w, RES.c
 export const vendorsOf = (w: World): VendorState => need<VendorState>(w, RES.vendors);
 export const stashOf = (w: World): StashState => need<StashState>(w, RES.stash);
 
-/** The hero entity, or 0 when none exists yet (phase "choose") or the game resource is missing. */
+/**
+ * The CONTROLLED hero entity, or 0 when none exists yet (phase "choose") or
+ * the game resource is missing. Party code that must act on every member
+ * uses party/shared.ts partyMembers() instead.
+ */
 export function heroOf(w: World): Entity {
   const g = w.getResource<GameState>(RES.game);
   if (!g || g.hero === 0 || !w.exists(g.hero)) return 0;
@@ -344,6 +440,57 @@ export function exploredPct(area: ExploreArea): number {
 
 export function exploreAreaOf(w: World, depth: number): ExploreArea | undefined {
   return w.getResource<ExploreState>(RES.explore)?.areas.find((a) => a.depth === depth);
+}
+
+// ---------------------------------------------------------------------------
+// Party (docs/design/party.md §2). Owner classic.party.
+// ---------------------------------------------------------------------------
+
+export type PartyFormation = "wedge" | "line" | "ring";
+
+/** Party AI options (classic.party.config). */
+export interface PartyConfig {
+  /** Formation shape of the followers around the leader (§6.2). */
+  formation: PartyFormation;
+  /** Follow distance from the leader in tiles, 1..4. */
+  spread: number;
+  /** Followers prefer the leader's target (focus fire) over their own pick. */
+  focusFire: boolean;
+  /** Followers walk to downed allies and revive them when no foe is near. */
+  revive: boolean;
+  /** Auto/Idle: when the controlled hero goes down, control moves to the acting leader. */
+  autoSwitch: boolean;
+}
+
+export const DEFAULT_PARTY_CONFIG: PartyConfig = {
+  formation: "wedge",
+  spread: 2,
+  focusFire: true,
+  revive: true,
+  autoSwitch: true,
+};
+
+/**
+ * The party (resource RES.party). ABSENT until the first party action
+ * (recruit, buySlot, config...): a world without it is a party of one made
+ * of GameState.hero, which keeps old saves and every solo game bit-identical.
+ * Read it only through party/shared.ts helpers.
+ */
+export interface PartyState {
+  /** Hero entities in slot order (party frames, F1..F4). 1..PartyProto.maxMembers; always contains GameState.hero and `founder`. */
+  members: Entity[];
+  /** The first hero of the save: never dismissed, holds the shared Wallet and Supplies (the purse), owns the "hero" leaderboard row. */
+  founder: Entity;
+  /** Slots bought with gold (0..3); unlocked slots = 1 + max(bosses unlocked, slotsBought). */
+  slotsBought: number;
+  /** Next PartyMember.uid (the founder has 0). Monotonic. */
+  nextUid: number;
+  config: PartyConfig;
+}
+
+/** The party resource or null (a party of one). */
+export function partyStateOf(w: World): PartyState | null {
+  return w.getResource<PartyState>(RES.party) ?? null;
 }
 
 export const DEFAULT_LOOT_FILTER: LootFilter = {

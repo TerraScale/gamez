@@ -6,6 +6,8 @@
 import type { Party, PlotView } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import { sqlStoreOf, type EconResult, type Env, type PlotAuctionApi } from "../contracts.ts";
 import { accountGateway } from "../economy/gateway.ts";
 import { presenceWorld } from "../../shared/worlds.ts";
@@ -21,6 +23,12 @@ export class PlotAuctionDO extends DurableObject<Env> implements PlotAuctionApi 
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "PlotAuctionDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     const world = ctx.id.name ?? "classic-town";
     const presence = presenceWorld(world);
     this.#outbox = new Outbox(ctx.storage.sql, `plots:${world}`);
@@ -40,6 +48,12 @@ export class PlotAuctionDO extends DurableObject<Env> implements PlotAuctionApi 
   }
 
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "PlotAuctionDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     await this.#book.drive();
     await this.#outbox.flush(
       {

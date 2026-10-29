@@ -25,7 +25,7 @@ import { monstersWakeSystem } from "./wake.ts";
 
 export const classicMonsters = defineModule({
   id: MODULE.monsters,
-  version: "0.3.0",
+  version: "0.4.1",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content, MODULE.combat],
   setup(world) {

@@ -285,6 +285,28 @@ describe("population planning", () => {
     expect(reqs.length).toBeLessThanOrEqual(7);
   });
 
+  it("party density (densityPct) grows the packs, 100 is the solo plan", () => {
+    const m = generateArea(REG, 4242, 3);
+    const size = (pct: number | undefined, seed: number): number =>
+      (pct === undefined
+        ? planPopulation(ctxFor(seed), REG, m, 3, gameState())
+        : planPopulation(ctxFor(seed), REG, m, 3, gameState(), pct)
+      ).length;
+    let solo = 0;
+    let four = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      expect(size(100, seed), "100 % is the default plan").toBe(size(undefined, seed));
+      solo += size(100, seed);
+      // Party of 4 (PartyProto densityPct 130): every pack grows to floor(n x 1.3).
+      four += size(130, seed);
+    }
+    console.log(`DENSITY solo=${solo} four=${four} ratio=${(four / solo).toFixed(3)}`);
+    // Each pack is drawn independently (placement shifts the rng), so the
+    // growth shows over many levels, not on every single one.
+    expect(four / solo).toBeGreaterThan(1.08);
+    expect(four / solo).toBeLessThan(1.35);
+  });
+
   it("plans nothing in town", () => {
     const town = generateArea(REG, 4242, 0);
     expect(planPopulation(ctxFor(1), REG, town, 0, gameState())).toEqual([]);

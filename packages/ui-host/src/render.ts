@@ -48,6 +48,13 @@ export interface RenderEntity {
 // ---------------------------------------------------------------------------
 
 export type EntityKind = "unit" | "npc" | "loot" | "projectile" | "prop";
+
+/**
+ * Identity outline of a unit (docs: "ink" around who is who). "self" is the
+ * hero the player controls (bright gold-white); "party" (cyan) and "ally"
+ * (soft green) are dimmer, for party members and other players.
+ */
+export type EntityHighlight = "self" | "party" | "ally";
 export type EntityAction = "idle" | "walk" | "attack" | "cast" | "hit" | "death";
 
 /** RenderEntity plus ARPG presentation. Every extra field is optional; omitted = default. */
@@ -113,8 +120,16 @@ export interface ArpgRenderEntity extends RenderEntity {
    * readable on dark, fogged or light floors. Default false.
    */
   labelPlate?: boolean;
-  /** Hover/target highlight outline. */
-  highlight?: boolean;
+  /**
+   * Two channels share this field:
+   * - `true`: hover/target highlight (brightened body and a thin gold ring), as before.
+   * - "self" | "party" | "ally": identity outline that follows the sprite's
+   *   silhouette on every frame, plus a soft pulsing ground ring (see EntityHighlight).
+   * - `false` / `null`: neither.
+   * - omitted: "self" when `isSelf`, else nothing (so plain isSelf avatars keep their outline).
+   * Identity kinds also show the name label, like `true`.
+   */
+  highlight?: boolean | EntityHighlight | null;
   /** Dead units fade and squash (used when no death animation resolves). */
   dead?: boolean;
   /** Pixel lift above the ground (projectiles ~24). */
@@ -363,6 +378,13 @@ export interface RendererDebugInfo {
   floatsShown: number;
   /** Camera shake requests since enable() (counted even when the quality setting turns shake off). */
   shakes?: number;
+  /** Identity outlines drawn right now (visible, not faded out), by kind. */
+  outlines?: Record<EntityHighlight, number>;
+  /**
+   * Camera centre and its follow target, in tile coordinates (the values passed to
+   * follow()). QA uses it to check that the camera follows the controlled hero.
+   */
+  camera?: { x: number; y: number; targetX: number; targetY: number };
   activeEffects: number;
 }
 

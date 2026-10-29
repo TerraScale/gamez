@@ -31,6 +31,7 @@ const clockCore = defineModule({
         const c = world.getResource<Clock>("rclock.clock")!;
         c.ticks += 1;
         c.sum += ctx.rng.int(0, 9);
+        if (c.ticks % 10 === 0) ctx.emit({ type: "rclock.ten", ticks: c.ticks });
       },
     },
   ],
@@ -43,10 +44,11 @@ const clockCore = defineModule({
           throw new ActionError("bad_payload", "by");
         return by;
       },
-      apply(world, by: number) {
+      apply(world, by: number, ctx) {
         const c = world.getResource<Clock>("rclock.clock")!;
         c.sum += by;
         if (c.sum > 10_000) throw new ActionError("too_big", "too big");
+        ctx.emit({ type: "rclock.added", by });
       },
     },
     {
@@ -164,6 +166,41 @@ describe("replaySegment", () => {
     expect(
       code({ fromTick: 0, toTick: 5, inputs: [{ tick: 1, name: "nope", payload: null }] }),
     ).toBe("input_rejected");
+  });
+
+  it("hands every step and dispatch event to onEvents, in order", () => {
+    const client = createSim(loaded, { seed: 11 });
+    const server = createSim(loaded, { seed: 11 });
+    const [a, b] = play(client);
+    const seen: string[] = [];
+    const onEvents = (events: readonly { type: string; [k: string]: unknown }[]) => {
+      for (const e of events) seen.push(`${e.type}:${String(e.by ?? e.ticks)}`);
+    };
+    expect(replaySegment(server, a!, { ...opts, onEvents }).ok).toBe(true);
+    expect(seen).toEqual(["rclock.added:5", "rclock.added:7", "rclock.ten:10"]);
+    seen.length = 0;
+    expect(replaySegment(server, b!, { ...opts, onEvents }).ok).toBe(true);
+    expect(seen).toEqual([
+      "rclock.ten:20",
+      "rclock.ten:30",
+      "rclock.ten:40",
+      "rclock.ten:50",
+      "rclock.added:1",
+    ]);
+  });
+
+  it("ignores an onEvents observer that throws", () => {
+    const client = createSim(loaded, { seed: 12 });
+    const server = createSim(loaded, { seed: 12 });
+    const [a] = play(client);
+    const r = replaySegment(server, a!, {
+      ...opts,
+      expectHash: a!.hash,
+      onEvents: () => {
+        throw new Error("observer bug");
+      },
+    });
+    expect(r.ok).toBe(true);
   });
 
   it("clamps speed to maxSpeed", () => {

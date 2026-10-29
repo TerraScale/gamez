@@ -130,7 +130,7 @@ function readProjectile(world: World, e: Entity) {
 }
 
 function critFor(world: World, ctx: SimContext, owner: Entity): boolean {
-  return world.exists(owner) && rollCrit(ctx.rng, world.get(owner, CombatStats));
+  return world.exists(owner) && rollCrit(ctx.rng, world.peek(owner, CombatStats));
 }
 
 function explode(
@@ -177,7 +177,7 @@ export const projectilesSystem: SystemDef = {
     const map = getAreaMap(world, ctx.registry);
     const grid = gridOf(world);
     for (const e of list) {
-      if (world.read(e, AreaTag).depth !== depth) continue;
+      if (world.peek(e, AreaTag)!.depth !== depth) continue;
       const pr = world.read(e, Projectile);
       const p = world.read(e, Pos);
       if (pr.home !== 0) steer(world, ctx, pr, p, depth);
@@ -261,7 +261,7 @@ function collide(
     return false;
   }
   const dist = (t: Entity): number => {
-    const tp = world.read(t, Pos);
+    const tp = world.peek(t, Pos)!;
     return (tp.x - x) * (tp.x - x) + (tp.y - y) * (tp.y - y);
   };
   cands.sort((a, b) => dist(a) - dist(b) || a - b);

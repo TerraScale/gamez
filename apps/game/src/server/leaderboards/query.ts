@@ -68,7 +68,8 @@ export interface SqlQuery {
 }
 
 /**
- * SQL for one board. Rows are never deleted (_deleted = 0). Ties break on id
+ * SQL for one board. Tombstoned rows (_deleted = 1) and imported rows are skipped,
+ * and each board ranks one row per account. Ties break on id
  * so the order is stable across requests. Heroes imported from a local save
  * are never ranked (ADR 0007 R1: the server cannot verify their history); their
  * rows stay in D1 with imported = 1 for audit and admin.
@@ -78,21 +79,27 @@ export function buildLeaderboardSql(q: LeaderboardParams): SqlQuery {
   const classParams: (string | number)[] = q.classId === null ? [] : [q.classId];
   switch (q.board) {
     case "level":
+      // Best hero per account (a party reports one row per member, party.md §7.4).
       return {
         sql:
-          "SELECT id, account_id, display_name, hero_name, class_id, level, xp, imported, _updated_at" +
+          "SELECT * FROM (" +
+          "SELECT id, account_id, display_name, hero_name, class_id, level, xp, imported, _updated_at," +
+          " ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY level DESC, xp DESC, id ASC) AS rn" +
           ` FROM classic_hero WHERE ${RANKED} AND mode = ?` +
           classClause +
-          " ORDER BY level DESC, xp DESC, id ASC LIMIT ?",
+          ") WHERE rn = 1 ORDER BY level DESC, xp DESC, id ASC LIMIT ?",
         params: [q.mode, ...classParams, q.limit],
       };
     case "depth":
+      // Best hero per account: depth is party-wide, so members would repeat it.
       return {
         sql:
-          "SELECT id, account_id, display_name, hero_name, class_id, level, xp, deepest_depth, imported, _updated_at" +
+          "SELECT * FROM (" +
+          "SELECT id, account_id, display_name, hero_name, class_id, level, xp, deepest_depth, imported, _updated_at," +
+          " ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY deepest_depth DESC, level DESC, id ASC) AS rn" +
           ` FROM classic_hero WHERE ${RANKED} AND mode = ?` +
           classClause +
-          " ORDER BY deepest_depth DESC, level DESC, id ASC LIMIT ?",
+          ") WHERE rn = 1 ORDER BY deepest_depth DESC, level DESC, id ASC LIMIT ?",
         params: [q.mode, ...classParams, q.limit],
       };
     case "rift":

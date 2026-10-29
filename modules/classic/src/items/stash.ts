@@ -5,14 +5,14 @@
  * of BalanceProto.stashSize items each. Put / take / move need the town and
  * the stash chest within INTERACT_RANGE.
  */
-import type { FrozenRegistry, SimContext, World } from "@gamez/kernel";
+import type { Entity, FrozenRegistry, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, OK, type OpResult } from "../actions.ts";
 import { Inventory } from "../components.ts";
 import { emit } from "../events.ts";
 import { RES, stashOf, type StashState } from "../resources.ts";
 import { stashTabCount } from "../rules.ts";
 import type { ItemInstance } from "../types.ts";
-import { balanceOf, liveHero } from "./common.ts";
+import { balanceOf, heroTag, liveHero } from "./common.ts";
 import { placeItem, removeItem, type GridBag } from "./inventory.ts";
 import { stashInReach, townOnly } from "./vendor.ts";
 
@@ -76,13 +76,18 @@ export function stashAdd(world: World, reg: FrozenRegistry, item: ItemInstance):
   return true;
 }
 
-/** Stores a bag item in the town stash: in `tab`, or the first tab with room when absent. */
-export function execStashPut(world: World, ctx: SimContext, uid: number, tab?: number): OpResult {
+/** `hero` stores one of its bag items in the shared stash: in `tab`, or the first tab with room when absent. */
+export function execStashPut(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  uid: number,
+  tab?: number,
+): OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   if (stashInReach(world, hero) === 0) return fail(ERR.tooFar, "stand next to the stash");
   const bag = world.get(hero, Inventory);
   if (!bag) return fail(ERR.noHero, "the hero has no inventory yet");
@@ -96,13 +101,12 @@ export function execStashPut(world: World, ctx: SimContext, uid: number, tab?: n
   return OK;
 }
 
-/** Takes an item out of the town stash into the bag (its `tab` field is cleared). */
-export function execStashTake(world: World, ctx: SimContext, uid: number): OpResult {
+/** `hero` takes an item out of the shared stash into its bag (its `tab` field is cleared). */
+export function execStashTake(world: World, ctx: SimContext, hero: Entity, uid: number): OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   if (stashInReach(world, hero) === 0) return fail(ERR.tooFar, "stand next to the stash");
   const bag: GridBag | undefined = world.get(hero, Inventory);
   if (!bag) return fail(ERR.noHero, "the hero has no inventory yet");
@@ -117,11 +121,17 @@ export function execStashTake(world: World, ctx: SimContext, uid: number): OpRes
   return OK;
 }
 
-/** Moves a stash item to another tab (ERR.badTab for a bad or the same tab, ERR.stashFull). */
-export function execStashMove(world: World, ctx: SimContext, uid: number, tab: number): OpResult {
+/** Moves a stash item to another tab (ERR.badTab for a bad or the same tab, ERR.stashFull); `hero` must stand at the stash. */
+export function execStashMove(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  uid: number,
+  tab: number,
+): OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
   if (stashInReach(world, h.hero) === 0) return fail(ERR.tooFar, "stand next to the stash");
   const stash = stashOf(world);
@@ -138,6 +148,6 @@ export function execStashMove(world: World, ctx: SimContext, uid: number, tab: n
     ...stash,
     items: stash.items.map((it, i) => (i === at ? withTab(it, t) : it)),
   });
-  emit(ctx, { type: "classic.stash.moved", uid, tab: t });
+  emit(ctx, { type: "classic.stash.moved", uid, tab: t, ...heroTag(world, hero) });
   return OK;
 }

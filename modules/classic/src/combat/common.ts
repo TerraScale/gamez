@@ -23,7 +23,7 @@ import {
   type CombatStatsValue,
 } from "../components.ts";
 import { pct } from "../fixed.ts";
-import { heroOf } from "../resources.ts";
+import { heroOf, partyStateOf } from "../resources.ts";
 import { effectiveRank, rollSkillDamage, type SkillModTotals } from "../rules.ts";
 import type { SpatialGrid } from "../spatial.ts";
 import {
@@ -57,17 +57,17 @@ export function isBasic(skill: Readonly<SkillProto>): boolean {
 
 /** SkillBook rank of a skill (0 = unknown). */
 export function baseRank(world: World, e: Entity, skill: string): number {
-  return world.get(e, SkillBook)?.ranks.find((r) => r.skill === skill)?.rank ?? 0;
+  return world.peek(e, SkillBook)?.ranks.find((r) => r.skill === skill)?.rank ?? 0;
 }
 
 /** Rank used for numbers: SkillBook rank + HeroStats.allSkills (rules.effectiveRank). */
 export function rankFor(world: World, e: Entity, proto: Readonly<SkillProto>, id: string): number {
   const r = baseRank(world, e, id);
-  return effectiveRank(proto, r, world.get(e, HeroStats)?.allSkills ?? 0);
+  return effectiveRank(proto, r, world.peek(e, HeroStats)?.allSkills ?? 0);
 }
 
 export function cooldownReadyAt(world: World, e: Entity, skill: string): number {
-  return world.get(e, SkillBook)?.cooldowns.find((c) => c.skill === skill)?.readyAt ?? 0;
+  return world.peek(e, SkillBook)?.cooldowns.find((c) => c.skill === skill)?.readyAt ?? 0;
 }
 
 /** Sets a cooldown (list kept sorted by skill id; expired entries dropped). */
@@ -87,7 +87,7 @@ export function setCooldown(
 }
 
 export function teamOf(world: World, e: Entity): Team | null {
-  return world.get(e, Faction)?.team ?? null;
+  return world.peek(e, Faction)?.team ?? null;
 }
 
 /** A unit that can be hit: exists, has Life + Pos + Faction, alive, in area `depth`. */
@@ -104,11 +104,11 @@ export function isLiveUnit(world: World, e: Entity, depth: number): boolean {
 }
 
 export function isEnemyOf(world: World, e: Entity, team: Team, depth: number): boolean {
-  return isLiveUnit(world, e, depth) && world.read(e, Faction).team !== team;
+  return isLiveUnit(world, e, depth) && world.peek(e, Faction)!.team !== team;
 }
 
 export function bodyRadius(world: World, e: Entity): number {
-  return world.get(e, Body)?.radius ?? 0;
+  return world.peek(e, Body)?.radius ?? 0;
 }
 
 /**
@@ -128,7 +128,7 @@ export function enemiesInRadius(
   const out: Entity[] = [];
   for (const e of grid.query(x, y, r + MAX_BODY_RADIUS)) {
     if (exclude.includes(e) || !isEnemyOf(world, e, team, depth)) continue;
-    const p = world.read(e, Pos);
+    const p = world.peek(e, Pos)!;
     const reach = r + bodyRadius(world, e);
     const dx = p.x - x;
     const dy = p.y - y;
@@ -157,12 +157,34 @@ export function alliesInRadius(
   return out;
 }
 
-/** The hero or one of the hero's summons. */
+/**
+ * The hero or one of the hero's summons. Party (docs/design/party.md §7.1):
+ * any party member or a summon owned by any member. Solo (no party
+ * resource): exactly the single-hero rule.
+ */
 export function isHeroSide(world: World, e: Entity): boolean {
-  const hero = heroOf(world);
-  if (hero === 0 || e === 0) return false;
-  if (e === hero) return true;
-  return world.exists(e) && world.get(e, Summoned)?.owner === hero;
+  if (e === 0) return false;
+  const party = partyStateOf(world);
+  if (party === null) {
+    const hero = heroOf(world);
+    if (hero === 0) return false;
+    if (e === hero) return true;
+    return world.exists(e) && world.get(e, Summoned)?.owner === hero;
+  }
+  if (!world.exists(e)) return false;
+  const members = party.members;
+  if (members.includes(e)) return true;
+  const owner = world.get(e, Summoned)?.owner ?? 0;
+  return owner !== 0 && members.includes(owner) && world.exists(owner);
+}
+
+/** Party size when it is above one (a real party), else 0: gates every party-only rule. */
+export function bigPartySize(world: World): number {
+  const party = partyStateOf(world);
+  if (party === null || party.members.length < 2) return 0;
+  let n = 0;
+  for (const m of party.members) if (m !== 0 && world.exists(m)) n++;
+  return n > 1 ? n : 0;
 }
 
 /** Integer roll in percent: true with probability p/100. */
@@ -237,9 +259,9 @@ export function rollDamage(
   rank: number,
   damagePct = 0,
 ): Damage {
-  const stats = world.get(caster, CombatStats);
+  const stats = world.peek(caster, CombatStats);
   if (!stats) return { phys: 0, fire: 0, cold: 0, lightning: 0, poison: 0 };
-  const sheet = world.get(caster, HeroStats);
+  const sheet = world.peek(caster, HeroStats);
   let d = rollSkillDamage(skill as SkillProto, rank, stats, sheet ? sheet.attrs : null, ctx.rng);
   if (!sheet) {
     const buff = buffStat(world, ctx.registry, caster, "dmgPct", ctx.tick);
@@ -277,7 +299,7 @@ export function hitStatuses(
       power: s.power + s.powerPerRank * Math.max(0, rank - 1),
     });
   }
-  const mods = world.exists(caster) ? (world.get(caster, Monster)?.mods ?? []) : [];
+  const mods = world.exists(caster) ? (world.peek(caster, Monster)?.mods ?? []) : [];
   for (const id of mods) {
     const m = registry.get<MonsterModProto>(KIND.monsterMod, id);
     if (m?.onHitStatus) out.push({ ...m.onHitStatus });

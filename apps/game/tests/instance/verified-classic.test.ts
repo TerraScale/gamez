@@ -145,7 +145,8 @@ describe("VerifiedHost with classic", () => {
       expect(await play(env, sock, c, 960, 320)).toBe(3);
       expect(env.host.sim!.hash()).toBe(c.sim.hash());
 
-      // Leave and come back after a restart: same verified state, no offline grant (pending).
+      // Leave and come back right away after a restart: same verified state, no offline grant
+      // (no absence: lastActiveAt is the last verified segment).
       sock.open = false;
       await env.host.handleClose(sock);
       env.restart();
@@ -198,7 +199,8 @@ describe("VerifiedHost with classic", () => {
       })
     )[0] as VState;
     expect(v.continued).toBe(false);
-    expect(v.offline?.elapsedMs).toBe(10 * 60_000);
+    // Absence = since the last verified progress (the refused cheat segment is not progress).
+    expect(v.offline?.elapsedMs).toBe(10 * 60_000 + 1000);
     expect(v.offline?.events.some((e) => e.type.startsWith("classic.offline"))).toBe(true);
     const c2 = new Client();
     await c2.adopt(v);

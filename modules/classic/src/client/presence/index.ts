@@ -16,9 +16,17 @@
  *   sim entity is under the tap.
  * - Wave B carry-over: a remote player is not drawn until its first pose has
  *   arrived (the server sets its tag only from a pose report).
+ * - Party (docs/design/party.md §11.3): a remote avatar's companions are drawn
+ *   as renderer entities "p:<id>:c<i>" (kind "unit", highlight "ally", name
+ *   label) at the avatar's interpolated position plus their tile offset, every
+ *   frame. They go when the avatar leaves, when the list shrinks, or on leaving
+ *   town. A tap on a companion opens its owner's trade bubble.
+ * - The local report carries companions (the party minus the controlled hero)
+ *   only while there are some, or once to clear the server's list (pose.ts).
  * - Reads the sim only; never mutates it. update() never throws.
  */
 import type { FrozenRegistry, Sim } from "@gamez/kernel";
+import { MAX_COMPANIONS } from "@gamez/protocol";
 import type {
   ArpgRenderEntity,
   ArpgWorldRenderer,
@@ -70,6 +78,13 @@ export interface TownPresenceDeps {
 
 type Other = PresenceView["others"][number];
 
+/** A companion of a remote avatar: its reused render object and tile offset. */
+interface CompanionDraw {
+  dx: number;
+  dy: number;
+  entity: ArpgRenderEntity;
+}
+
 /** Plot id of a shopkeeper fixture id ("shops:p1" -> "p1"). */
 export function plotIdOf(fixtureId: string): string {
   return fixtureId.startsWith(SHOP_FIXTURE_PREFIX)
@@ -97,6 +112,8 @@ interface Avatar {
   facing: Facing;
   /** Reused render object (never re-allocated after creation). */
   entity: ArpgRenderEntity;
+  /** Party companions, in report order (party.md §11.3). */
+  companions: CompanionDraw[];
 }
 
 /** Facing a stationary avatar shows: the last segment of its path, or south. */
@@ -140,12 +157,16 @@ export class TownPresence {
     let best: Avatar | null = null;
     let bestD = TAP_RADIUS * TAP_RADIUS;
     for (const a of this.shown.values()) {
-      const dx = a.entity.x - p.x;
-      const dy = a.entity.y - p.y;
-      const d = dx * dx + dy * dy;
-      if (d <= bestD) {
-        best = a;
-        bestD = d;
+      // A companion counts as its owner (its tap opens the owner's bubble).
+      for (let i = -1; i < a.companions.length; i++) {
+        const e = i < 0 ? a.entity : a.companions[i]!.entity;
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        const d = dx * dx + dy * dy;
+        if (d <= bestD) {
+          best = a;
+          bestD = d;
+        }
       }
     }
     const open = this.deps.services.openScreen;
@@ -354,7 +375,8 @@ export class TownPresence {
     )
       return;
     if (nowMs - this.lastSendMs < POSE_INTERVAL_MS) return;
-    conn.setPose(toPoseUpdate(this.cur));
+    // Companions travel only while there are some; the server's list is cleared once.
+    conn.setPose(toPoseUpdate(this.cur, this.cur.cn > 0 || this.sent.cn > 0));
     copyPose(this.cur, this.sent);
     this.sentValid = true;
     this.lastSendMs = nowMs;
@@ -381,6 +403,7 @@ export class TownPresence {
           gen: this.gen,
           moving: false,
           facing: restFacing(o),
+          companions: [],
           entity: {
             id: AVATAR_PREFIX + key,
             name: o.name,
@@ -393,6 +416,8 @@ export class TownPresence {
             moving: false,
             isSelf: false,
             showLabel: true,
+            // Other players get the soft green identity outline; shop ghosts none.
+            highlight: o.kind === "player" ? "ally" : null,
             ...(ghost ? { alpha: GHOST_ALPHA, tint: GHOST_TINT } : {}),
           },
         };
@@ -406,13 +431,64 @@ export class TownPresence {
       if (e.appearance !== o.appearance) e.appearance = o.appearance;
       if (o.tag !== undefined) e.subtitle = o.tag;
       else delete e.subtitle;
+      this.syncCompanions(a, o.companions ?? []);
       this.draw(a, now);
     }
     for (const [key, a] of this.shown) {
       if (a.gen === this.gen) continue;
-      this.deps.renderer.removeEntity(a.entity.id);
+      this.dropAvatar(a);
       this.shown.delete(key);
     }
+  }
+
+  /**
+   * Makes the avatar's companion render objects match the reported list: reuses
+   * the object in each slot (its name and look follow the report), creates the
+   * missing slots, and removes the ones past the end of the list.
+   */
+  private syncCompanions(a: Avatar, list: NonNullable<Other["companions"]>): void {
+    const n = Math.min(list.length, MAX_COMPANIONS);
+    while (a.companions.length > n) {
+      const c = a.companions.pop()!;
+      this.deps.renderer.removeEntity(c.entity.id);
+    }
+    for (let i = 0; i < n; i++) {
+      const src = list[i]!;
+      let c = a.companions[i];
+      if (!c) {
+        c = {
+          dx: src.dx,
+          dy: src.dy,
+          entity: {
+            id: `${AVATAR_PREFIX}${a.other.id}:c${i}`,
+            name: src.name,
+            appearance: src.appearance,
+            fallbackAppearance: "unit.hero",
+            kind: "unit",
+            x: a.entity.x,
+            y: a.entity.y,
+            facing: a.facing,
+            moving: a.moving,
+            isSelf: false,
+            showLabel: true,
+            highlight: "ally",
+          },
+        };
+        a.companions.push(c);
+      }
+      c.dx = src.dx;
+      c.dy = src.dy;
+      const ce = c.entity;
+      if (ce.name !== src.name) ce.name = src.name;
+      if (ce.appearance !== src.appearance) ce.appearance = src.appearance;
+    }
+  }
+
+  /** Removes an avatar's render objects, its companions included. */
+  private dropAvatar(a: Avatar): void {
+    this.deps.renderer.removeEntity(a.entity.id);
+    for (const c of a.companions) this.deps.renderer.removeEntity(c.entity.id);
+    a.companions.length = 0;
   }
 
   /** Per-frame interpolation of avatars that are still walking. */
@@ -441,12 +517,21 @@ export class TownPresence {
     e.facing = a.facing;
     e.moving = a.moving;
     this.deps.renderer.upsertEntity(e);
+    // Companions follow the avatar's interpolated tile plus their offset.
+    for (const c of a.companions) {
+      const ce = c.entity;
+      ce.x = e.x + c.dx;
+      ce.y = e.y + c.dy;
+      ce.facing = a.facing;
+      ce.moving = a.moving;
+      this.deps.renderer.upsertEntity(ce);
+    }
   }
 
   private clearAvatars(): void {
     clearTradeBubble();
     if (this.shown.size === 0) return;
-    for (const a of this.shown.values()) this.deps.renderer.removeEntity(a.entity.id);
+    for (const a of this.shown.values()) this.dropAvatar(a);
     this.shown.clear();
   }
 }

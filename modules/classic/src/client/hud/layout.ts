@@ -48,8 +48,15 @@ export const PANEL_IDS: readonly PanelId[] = [
  */
 export const WAVE_C_PANEL_IDS: readonly PanelId[] = ["bank"];
 
-/** Every panel the HUD renders: PANEL_IDS, then the wave C panels. */
-export const ALL_PANEL_IDS: readonly PanelId[] = [...PANEL_IDS, ...WAVE_C_PANEL_IDS];
+/** Party panel id (docs/design/party.md §10.3). Kept apart from PANEL_IDS for the same reason. */
+export const PARTY_PANEL_IDS: readonly PanelId[] = ["party"];
+
+/** Every panel the HUD renders: PANEL_IDS, then the wave C and party panels. */
+export const ALL_PANEL_IDS: readonly PanelId[] = [
+  ...PANEL_IDS,
+  ...WAVE_C_PANEL_IDS,
+  ...PARTY_PANEL_IDS,
+];
 
 export function panelSlot(id: PanelId): string {
   return `classic.panel.${id}`;
@@ -293,34 +300,66 @@ export function errorFlashStyle(
   return { bottom: bottomBarInset("short", insets.bottom) + 30 };
 }
 
+/** Desktop tip card width (its right edge sits HUD_EDGE from the viewport edge). */
+export const TIP_WIDTH = { desktop: 300, short: 240 } as const;
+
 /**
- * Onboarding tip card (overlay). Above the measured bottom bar, never over a panel (hidden while
- * any panel is open), never over the phone toast column (hidden while toasts show), and clear of
- * the phone's left column. Null = hidden.
+ * Top of the party's slim "<Name> is down" banner (DeathScreen): under the measured top region
+ * (the control bar), never over the Manual / Party: Auto / Idle buttons.
+ */
+export function deathBannerTop(insets: HudInsets): number {
+  return insets.top + HUD_EDGE * 2;
+}
+
+/**
+ * Onboarding tip card (overlay). It never sits over the centre of the playfield: desktop puts it in
+ * the bottom-right corner above the bottom bar; phone portrait under the top region, clear of the
+ * minimap column (full width when the top region is taller than that column); phone landscape in the bottom-right corner above the bar. Hidden while any panel
+ * is open, and on phones while toasts show (they take that space). Null = hidden.
  */
 export function tipLayout(
   layout: HudLayout,
-  measuredBottom: number,
+  insets: HudInsets,
   panelOpen: boolean,
   toastsShown: boolean,
 ): CSSProperties | null {
   if (panelOpen) return null;
-  const bottom = bottomBarInset(layout, measuredBottom) + HUD_EDGE + 4;
   if (layout === "desktop") {
     return {
       position: "absolute",
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: 360,
-      maxWidth: `calc(100% - ${HUD_EDGE * 4}px)`,
-      bottom,
+      right: HUD_EDGE,
+      bottom: bottomBarInset(layout, insets.bottom) + HUD_EDGE + 4,
+      width: TIP_WIDTH.desktop,
+      maxWidth: `calc(100% - ${HUD_EDGE * 2}px)`,
     };
   }
   if (toastsShown) return null;
+  if (layout === "compact") {
+    return {
+      position: "absolute",
+      top: insets.top + HUD_EDGE,
+      left: HUD_EDGE,
+      // The minimap column sits at the top right: the card ends before it while the column reaches
+      // below the top region, and spans the width (fewer lines, a shorter card) once it does not.
+      right:
+        insets.top >= minimapBlockHeight("compact") + HUD_EDGE
+          ? HUD_EDGE
+          : topRightInset("compact"),
+    };
+  }
   return {
     position: "absolute",
-    left: LEFT_WIDTH[layout] + HUD_EDGE * 2,
     right: HUD_EDGE,
-    bottom,
+    bottom: bottomBarInset("short", insets.bottom) + HUD_EDGE + 4,
+    width: TIP_WIDTH.short,
+    maxWidth: `calc(100% - ${HUD_EDGE * 2}px)`,
   };
+}
+
+/**
+ * Px from the viewport bottom where the phone "More" list ends: just above the whole bottom bar
+ * (orbs row included), so an open list never covers the orbs.
+ */
+export function moreMenuAnchor(layout: HudLayout, measuredBottom: number): number {
+  return bottomBarInset(layout, measuredBottom) + HUD_EDGE;
 }

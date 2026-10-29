@@ -30,16 +30,21 @@ import { emit } from "../events.ts";
 import { within } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { isRiftDepth, RIFT_MAX_LEVEL, riftDepth, riftFee } from "../rules.ts";
-import { currentDepth, heroOf, type RiftRun } from "../resources.ts";
+import { actingLeaderOf, purseOf } from "../party/shared.ts";
+import { currentDepth, type RiftRun } from "../resources.ts";
 import { RIFT_ID } from "../types.ts";
 import { riftProtoOf } from "../world/riftMap.ts";
 import { recordOf, pushHistory, riftStateOf, spendGold } from "./state.ts";
 
 export const TOWN = 0;
 
-/** Common precondition: a hero exists and is alive. */
+/**
+ * Common precondition: a hero exists and a standing member acts for the party
+ * (the acting leader, docs/design/party.md §4.3: travel is issued by any
+ * standing member in reach; solo it is the hero).
+ */
 function heroReady(world: World): OpResult {
-  const hero = heroOf(world);
+  const hero = actingLeaderOf(world);
   if (hero === 0) return fail(ERR.noHero, "there is no hero yet");
   if (world.has(hero, Dead)) return fail(ERR.dead, "the hero is dead");
   return OK;
@@ -54,7 +59,7 @@ export function execOpenRift(
 ): OpResult {
   const ready = heroReady(world);
   if (!ready.ok) return ready;
-  const hero = heroOf(world);
+  const hero = actingLeaderOf(world);
   const depth = currentDepth(world);
   if (depth !== TOWN) {
     return fail(isRiftDepth(depth) ? ERR.inRift : ERR.notInTown, "rifts open from the town");
@@ -84,10 +89,12 @@ export function execOpenRift(
   const rift = riftProtoOf(ctx.registry);
   if (!rift) return fail(ERR.unknownId, `no ${RIFT_ID} content`);
   const fee = riftFee(rift, level);
-  const wallet = world.get(hero, Wallet);
+  // The fee comes from the shared purse (the founder's Wallet, docs/design/party.md §2.2).
+  const purse = purseOf(world);
+  const wallet = world.get(purse, Wallet);
   if (!wallet || wallet.gold < fee) return fail(ERR.noGold, `need ${fee} gold`);
 
-  spendGold(world, hero, fee);
+  spendGold(world, purse, fee);
   const run = state.nextRun;
   state.nextRun = run + 1;
   const depthOf = riftDepth(level, run);

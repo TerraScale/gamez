@@ -20,6 +20,24 @@ export interface TilePos {
  */
 export type EntityKind = "player" | "ghost" | "shopkeeper";
 
+/**
+ * Party (classic, docs/design/party.md §11.3): a companion hero walking with
+ * a player's avatar. Drawn by other clients at the avatar's (interpolated)
+ * position plus (dx, dy); it has no id, path or presence of its own.
+ */
+export interface CompanionPose {
+  /** "unit.hero" or "unit.hero.<x>", at most 64 chars (same rule as PoseUpdate.appearance). */
+  appearance: string;
+  /** Display name, at most 24 chars. */
+  name: string;
+  /** Integer tile offset from the avatar, each in -4..4. */
+  dx: number;
+  dy: number;
+}
+
+/** At most this many companions per avatar (a party of four = the player + 3). */
+export const MAX_COMPANIONS = 3;
+
 export interface EntityState {
   id: EntityId;
   kind: EntityKind;
@@ -39,6 +57,8 @@ export interface EntityState {
    * at most 40 chars. Client-reported in pose worlds; optional everywhere.
    */
   tag?: string;
+  /** Party companions (pose worlds only; the last reported list, sanitised by the server). Absent = none. */
+  companions?: CompanionPose[];
 }
 
 /**
@@ -54,6 +74,12 @@ export interface PoseUpdate {
   /** "unit.hero" or "unit.hero.<x>", at most 64 chars. */
   appearance?: string;
   tag?: string;
+  /**
+   * Party companions (at most MAX_COMPANIONS). Absent = unchanged since the
+   * last pose; [] = none. The server drops invalid entries (bad appearance,
+   * names too long, offsets outside -4..4) and caps the list.
+   */
+  companions?: CompanionPose[];
 }
 
 export type ClientMessage =

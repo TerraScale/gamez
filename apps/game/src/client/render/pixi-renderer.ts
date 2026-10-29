@@ -40,6 +40,7 @@ import { loadVisuals, type Visuals } from "./visuals.ts";
 import { EntityLayer } from "./entity-view.ts";
 import { FxLayer, type EffectArt } from "./fx.ts";
 import { floatOrigin } from "./fx-plan.ts";
+import { isPickupFloat, PICKUP_LIFT } from "./float-layout.ts";
 import { burstKeyIn, frameDeltaMs, shakeOffset } from "./fx-math.ts";
 import { glowEnabled, lightTextureSize, qualityResolution, shakeEnabled } from "./quality.ts";
 import { insetRect } from "./label-layout.ts";
@@ -182,6 +183,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.prims = prims;
     this.entities = new EntityLayer(this.world, visuals, prims, this.labels);
     this.entities.debug = this.tracker;
+    this.entities.setOutlineZoom(this.zoom);
     // Exact ids only: an effect without art is drawn procedurally, never as the "missing" sprite.
     this.fx = new FxLayer(
       (id) => visuals.spriteExact(id)?.texture ?? null,
@@ -245,6 +247,14 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.hasTarget = true;
   }
 
+  /** Camera centre and target in tile coordinates (debug info; the inverse of follow()). */
+  private cameraTiles(): { x: number; y: number; targetX: number; targetY: number } {
+    const c = screenToTile(this.camX, this.camY);
+    const t = screenToTile(this.targetX, this.targetY);
+    const r = (v: number): number => Math.round((v - 0.5) * 100) / 100;
+    return { x: r(c.x), y: r(c.y), targetX: r(t.x), targetY: r(t.y) };
+  }
+
   snapCamera(x: number, y: number): void {
     this.follow(x, y);
     // updateCamera places the camera on the target at the next frame.
@@ -282,6 +292,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     const s = tileToScreen(spec.x + 0.5, spec.y + 0.5);
     const layer = this.entities;
     const origin = floatOrigin(spec, layer ? layer.headTopNear(s.sx, s.sy) : Number.NaN);
+    // Pickup texts ("+10 gold") rise from above the sprites of their tile.
+    if (isPickupFloat(spec.text)) origin.sy -= PICKUP_LIFT;
     if (layer) origin.sy = layer.clearOfLabels(origin.sx, origin.sy);
     fx.float(spec, origin);
   }
@@ -328,6 +340,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     if (next === this.zoom) return;
     this.zoom = next;
     this.view.scale.set(next);
+    this.entities?.setOutlineZoom(next);
     this.chunkDirty = true;
   }
 
@@ -449,6 +462,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
       effectsPlayed: t?.effectsPlayed ?? 0,
       floatsShown: t?.floatsShown ?? 0,
       shakes: t?.shakes ?? 0,
+      outlines: this.entities?.outlineCensus() ?? { self: 0, party: 0, ally: 0 },
+      camera: this.cameraTiles(),
       activeEffects: this.fx?.activeEffects ?? 0,
     };
   }
@@ -527,7 +542,10 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
   private applyQuality(): void {
     const q = this.quality;
     this.fx?.setQuality(q);
-    if (this.entities) this.entities.glowOn = glowEnabled(q);
+    if (this.entities) {
+      this.entities.glowOn = glowEnabled(q);
+      this.entities.setOutlineQuality(q);
+    }
     this.lighting?.setTextureSize(lightTextureSize(q));
     const app = this.app;
     if (!app) return;
@@ -554,7 +572,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.updateCamera(dt);
     this.updateChunks();
     this.updateEntities();
-    this.fx?.update(dt);
+    // The hero's nameplate is read after this frame's label layout, before the floats move.
+    this.fx?.update(dt, this.entities?.selfLabelBand() ?? null);
     this.updateLighting();
     if (this.markerMs > 0) {
       this.markerMs -= dt;

@@ -3,6 +3,10 @@
  * classic.useSkill, classic.stop, classic.pickup, classic.interact. Each one
  * validates strictly, writes the hero Intent with source "manual" and
  * at = ctx.tick, drops the current walk, and calls noteManual().
+ *
+ * Party (docs/design/party.md §4): every action acts for the CONTROLLED hero
+ * (heroOf). classic.interact also accepts a downed party member (not the
+ * controlled hero itself) of this area: the intent walks there and revives.
  */
 import {
   ActionError,
@@ -30,6 +34,7 @@ import { noteManual } from "../control.ts";
 import { currentDepth, heroOf } from "../resources.ts";
 import { KIND, type SkillProto } from "../types.ts";
 import { getAreaMap, walkableAt } from "../world/maps.ts";
+import { isDownedAlly } from "./intent.ts";
 import { inArea } from "./units.ts";
 
 function bad(message: string): never {
@@ -204,10 +209,14 @@ const interact: ActionDef<ActionPayloads["classic.interact"]> = {
   parse(world, payload) {
     const o = obj(payload);
     const target = entityArg(o.target, "target");
-    requireLiveHero(world);
+    const hero = requireLiveHero(world);
     if (
       !areaEntity(world, target) ||
-      !(world.has(target, Npc) || world.has(target, Interactable))
+      !(
+        world.has(target, Npc) ||
+        world.has(target, Interactable) ||
+        isDownedAlly(world, hero, target)
+      )
     ) {
       throw new ActionError(ERR.badTarget, "nothing to interact with there");
     }

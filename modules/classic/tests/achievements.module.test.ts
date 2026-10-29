@@ -380,6 +380,6 @@ describe("classic.achievements determinism", () => {
   it("the hash after the fixed script is pinned", () => {
     const sim = makeSim({ seed: 77 });
     script(sim);
-    expect(sim.hash()).toBe("9b2ee8025a16f7a8");
+    expect(sim.hash()).toBe("713575209759989f");
   });
 });

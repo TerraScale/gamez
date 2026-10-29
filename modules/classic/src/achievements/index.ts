@@ -18,7 +18,7 @@ export { metricValue, TICKS_PER_MINUTE } from "./metrics.ts";
 
 export const classicAchievements = defineModule({
   id: MODULE.achievements,
-  version: "0.1.0",
+  version: "0.2.0",
   deps: [MODULE.core],
   optionalDeps: [
     MODULE.content,

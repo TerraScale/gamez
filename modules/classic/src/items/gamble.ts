@@ -9,11 +9,19 @@
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, OK, type OpResult } from "../actions.ts";
-import { Inventory, Level, Wallet } from "../components.ts";
+import { Inventory, Level } from "../components.ts";
 import { emit } from "../events.ts";
 import { gamblePrice } from "../rules.ts";
 import type { ItemCategory, ItemInstance } from "../types.ts";
-import { addRunStat, economyOf, liveHero, noteFound } from "./common.ts";
+import {
+  addRunStat,
+  economyOf,
+  heroTag,
+  liveHero,
+  noteFound,
+  purseWallet,
+  setPurseGold,
+} from "./common.ts";
 import { baseCandidates, rollItem } from "./generate.ts";
 import { findSpace, placeItem } from "./inventory.ts";
 import { npcInReach, townOnly } from "./vendor.ts";
@@ -21,17 +29,18 @@ import { npcInReach, townOnly } from "./vendor.ts";
 /** Base ilvl allowance above the hero level for gambled items. */
 export const GAMBLE_BASE_ILVL_BONUS = 2;
 
+/** `hero` gambles an item of `category` into its bag (its level), paid from the party purse. */
 export function execGamble(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   npcEntity: Entity,
   category: ItemCategory,
 ): OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   const npc = npcInReach(world, ctx, hero, npcEntity);
   if (!("proto" in npc)) return npc;
   if (npc.proto.role !== "gambler" || !npc.proto.gamble) {
@@ -46,7 +55,7 @@ export function execGamble(
   const level = world.get(hero, Level)?.level ?? 1;
   const price = gamblePrice(econ, category, level);
   if (price === null) return fail(ERR.notGambler, `this npc does not offer ${category}`);
-  const wallet = world.get(hero, Wallet);
+  const wallet = purseWallet(world);
   const bag = world.get(hero, Inventory);
   if (!wallet || !bag) return fail(ERR.noHero, "the hero has no inventory yet");
   if (wallet.gold < price) return fail(ERR.noGold, `need ${price} gold`);
@@ -84,7 +93,7 @@ export function execGamble(
   if (!item) return fail(ERR.notGambler, `nothing to gamble in ${category}`);
   const next = placeItem(reg, bag, item);
   if (!next) return fail(ERR.bagFull, "there is no room in the bag");
-  world.update(hero, Wallet, { gold: wallet.gold - price });
+  setPurseGold(world, wallet.purse, wallet.gold - price);
   world.update(hero, Inventory, { items: next.items });
   addRunStat(world, "goldSpent", price);
   addRunStat(world, "gambles", 1);
@@ -96,6 +105,7 @@ export function execGamble(
     name: item.name,
     rarity: item.rarity,
     price,
+    ...heroTag(world, hero),
   });
   return OK;
 }

@@ -1,7 +1,8 @@
 /** ConfigDO logic (admin/flags-store.ts) on node:sqlite: defaults, audit, dev admins. */
 import { describe, expect, it } from "vite-plus/test";
-import { FlagsStore, AUDIT_KEEP } from "../../src/server/admin/flags-store.ts";
+import { AUDIT_KEEP, FlagsStore, normalizeTunable } from "../../src/server/admin/flags-store.ts";
 import { DEFAULT_FLAGS } from "../../src/server/config/flags.ts";
+import { TUNABLES, type TunableSpec } from "@gamez/protocol";
 import { FakeSqlStorage } from "../support/fake-sql.ts";
 
 function store(now = () => 1_000) {
@@ -75,5 +76,93 @@ describe("FlagsStore", () => {
     s.setFlags({ arena: false }, "admin:x");
     s.migrate();
     expect(s.flags().arena).toBe(false);
+  });
+});
+
+const OFFLINE = "classic.offlineXpPct";
+
+describe("FlagsStore tunables", () => {
+  it("answers every tunable at its spec default when none was written", () => {
+    const { s } = store();
+    expect(s.tunables()).toEqual({ [OFFLINE]: 20 });
+    expect(TUNABLES.find((t) => t.key === OFFLINE)?.default).toBe(20);
+  });
+
+  it("clamps to [min, max] on write", () => {
+    const { s } = store();
+    expect(s.setTunables({ [OFFLINE]: 250 }, "admin:a")[OFFLINE]).toBe(100);
+    expect(s.setTunables({ [OFFLINE]: -5 }, "admin:a")[OFFLINE]).toBe(0);
+    expect(s.tunables()[OFFLINE]).toBe(0);
+  });
+
+  it("rounds to the step, counted from min", () => {
+    const spec: TunableSpec = {
+      key: "t.frac",
+      label: "t",
+      description: "t",
+      min: 0,
+      max: 10,
+      step: 0.5,
+      default: 0,
+      unit: "",
+    };
+    expect(normalizeTunable(spec, 2.3)).toBe(2.5);
+    expect(normalizeTunable(spec, 2.1)).toBe(2);
+    expect(normalizeTunable(spec, 99)).toBe(10);
+    const offset: TunableSpec = { ...spec, min: 1, max: 10, step: 3 };
+    expect(normalizeTunable(offset, 5)).toBe(4);
+    // Offline XP is a whole percent.
+    const { s } = store();
+    expect(s.setTunables({ [OFFLINE]: 37.6 }, "admin:a")[OFFLINE]).toBe(38);
+  });
+
+  it("ignores unknown keys and non-finite values", () => {
+    const { s } = store();
+    const bad = {
+      nope: 5,
+      [OFFLINE]: Number.NaN,
+    } as Record<string, number>;
+    expect(s.setTunables(bad, "admin:x")).toEqual({ [OFFLINE]: 20 });
+    expect(s.setTunables({ [OFFLINE]: Number.POSITIVE_INFINITY }, "admin:x")[OFFLINE]).toBe(20);
+    expect(s.tunableAudit()).toEqual([]);
+  });
+
+  it("audits each change of an effective value, newest first", () => {
+    let t = 1_000;
+    const { s } = store(() => t);
+    s.setTunables({ [OFFLINE]: 30 }, "admin:a");
+    t = 2_000;
+    s.setTunables({ [OFFLINE]: 30 }, "admin:b"); // no change: no audit row
+    t = 3_000;
+    s.setTunables({ [OFFLINE]: 40 }, "admin:c");
+    expect(s.tunableAudit(10)).toEqual([
+      { key: OFFLINE, value: 40, by: "admin:c", at: 3_000 },
+      { key: OFFLINE, value: 30, by: "admin:a", at: 1_000 },
+    ]);
+    expect(s.tunables()[OFFLINE]).toBe(40);
+  });
+
+  it("keeps the tunable audit trail bounded", () => {
+    const { s, fake } = store();
+    for (let i = 0; i < AUDIT_KEEP + 25; i++) {
+      s.setTunables({ [OFFLINE]: i % 2 === 0 ? 0 : 100 }, "admin:x");
+    }
+    const count = fake.db.prepare("SELECT COUNT(*) AS n FROM config_tunable_audit").get() as {
+      n: number;
+    };
+    expect(count.n).toBe(AUDIT_KEEP);
+  });
+
+  it("includes the tunables in the public config", () => {
+    const { s } = store(() => 1_234);
+    s.setTunables({ [OFFLINE]: 15 }, "admin:x");
+    expect(s.config().tunables).toEqual({ [OFFLINE]: 15 });
+  });
+
+  it("keeps stored tunables across a second migrate", () => {
+    const { s } = store();
+    s.setTunables({ [OFFLINE]: 60 }, "admin:x");
+    s.migrate();
+    expect(s.tunables()[OFFLINE]).toBe(60);
   });
 });

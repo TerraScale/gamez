@@ -17,6 +17,13 @@
  * blocked "local". While ServerHooks.paused() (a bank op is out) the sim does
  * not step; dispatches are refused by ServerHooks.refuse.
  *
+ * Offline grants (docs/design/offline-idle.md §6): the classic.offlineProgress
+ * action only queues its grantXp / grantGold / grantItems commands, which land
+ * on the next sim step. A batch carrying classic.offline.summary (a local
+ * dispatch, or a server grant adopted through emit) is therefore held until
+ * the next step and fanned out right after it, with a fresh HUD: the "While
+ * you were away" card never shows next to the pre-grant XP, level or gold.
+ *
  * Errors inside the frame loop never escape: they are shown in ui.error.
  */
 import {
@@ -36,12 +43,14 @@ import type {
   PointerInfo,
 } from "@gamez/ui-host";
 import { ACTION } from "../actions.ts";
+import type { ClassicEvent } from "../events.ts";
 import {
   Ai,
   AreaTag,
   CombatStats,
   Dead,
   Faction,
+  Hero,
   Intent,
   Monster,
   Pos,
@@ -67,13 +76,14 @@ import {
   type UiState,
 } from "./contract.ts";
 import {
+  LOG_COLOR,
   floatPolicy,
   planEvent,
   type EffectEnv,
   type FloatPolicy,
   type Visual,
 } from "./effects.ts";
-import { buildHud, heroOfWorld, minimapData } from "./hudModel.ts";
+import { awayStore, buildHud, heroOfWorld, minimapData } from "./hudModel.ts";
 import { FixedLoop, PerfWindow } from "./loop.ts";
 import { PointerInput, type PointerCommand } from "./input.ts";
 import { SceneSync } from "./scene.ts";
@@ -174,6 +184,8 @@ const TOWN_CLOSE_RANGE = 4;
 const TOAST_LONG_MS = 7000;
 /** Colour of system log lines (server sync notices). */
 const SYSTEM_LOG_COLOR = 0x9fb3c8;
+/** Party toasts (docs/design/party.md §10.5): short, so a busy party does not bury the screen. */
+export const PARTY_TOAST_MS = 4000;
 
 interface Cell<T> {
   store: Store<T>;
@@ -260,6 +272,149 @@ function engagedTarget(world: World): Entity {
   return 0;
 }
 
+/** What the feedback filter knows: the controlled hero and how to name a member. */
+export interface FeedbackEnv {
+  controlled: Entity;
+  nameOf(e: Entity): string;
+}
+
+/** Name of a hero entity for feedback text ("Hero" when it is gone). */
+export function heroNameIn(world: World, e: Entity): string {
+  if (e === 0 || !world.exists(e)) return "Hero";
+  return world.get(e, Hero)?.name ?? "Hero";
+}
+
+function partyLines(ev: GameEvent, env: FeedbackEnv): Visual[] {
+  const e = ev as unknown as ClassicEvent;
+  const log = (text: string, color: number): Visual => ({
+    kind: "log",
+    logKind: "system",
+    text,
+    color,
+  });
+  const toast = (title: string, body: string, kind: Toast["kind"] = "info"): Visual => ({
+    kind: "toast",
+    toastKind: kind,
+    title,
+    body,
+    ms: PARTY_TOAST_MS,
+  });
+  const nameOf = (h: Entity | undefined): string => env.nameOf(h ?? 0);
+  switch (e.type) {
+    case "classic.party.recruited":
+      return [
+        log(`${e.name} joins the party (level ${e.level})`, LOG_COLOR.system),
+        toast("Party", `${e.name} joined the party`),
+      ];
+    case "classic.party.dismissed": {
+      const items =
+        e.stashed > 0 ? `; ${e.stashed} item${e.stashed === 1 ? "" : "s"} to the stash` : "";
+      return [
+        log(`${e.name} leaves the party${items}`, LOG_COLOR.system),
+        toast("Party", `${e.name} left the party`),
+      ];
+    }
+    case "classic.party.renamed":
+      return [log(`Renamed to ${e.name}`, LOG_COLOR.system)];
+    case "classic.party.control": {
+      const name = nameOf(e.hero);
+      if (e.reason === "death") {
+        return [
+          log(`Control passes to ${name}`, LOG_COLOR.system),
+          toast("Control", `${name} takes control`),
+        ];
+      }
+      return [log(`Control: ${name}`, LOG_COLOR.system)];
+    }
+    case "classic.party.config":
+      return [log("Party AI options changed", LOG_COLOR.system)];
+    case "classic.party.slots":
+      return [
+        log(
+          e.via === "gold"
+            ? `Party slot ${e.slots} bought for ${e.cost} gold`
+            : `Party slot ${e.slots} unlocked`,
+          LOG_COLOR.level,
+        ),
+        toast("Party slots", `${e.slots} of 4 slots unlocked`),
+      ];
+    case "classic.party.downed":
+      return [
+        log(`${e.name} is down`, LOG_COLOR.death),
+        toast("Party", `${e.name} is down. Click them to revive.`, "death"),
+      ];
+    case "classic.party.reviving":
+      return [log(`${nameOf(e.by)} starts reviving ${nameOf(e.hero)}`, LOG_COLOR.system)];
+    case "classic.party.reviveCancelled":
+      return [log(`Revive of ${nameOf(e.hero)} cancelled`, LOG_COLOR.system)];
+    case "classic.party.revived": {
+      const name = nameOf(e.hero);
+      const text =
+        e.via === "ally"
+          ? `${name} is back on their feet`
+          : e.via === "town"
+            ? `${name} returns to the party in town`
+            : `${name} is revived`;
+      return [log(text, LOG_COLOR.quest), toast("Party", text)];
+    }
+    case "classic.party.wiped":
+      return [
+        log("Your party has fallen", LOG_COLOR.death),
+        toast("Party", "Your party has fallen", "death"),
+      ];
+    case "classic.party.itemGiven":
+      return [log(`${nameOf(e.from)} gives ${e.name} to ${nameOf(e.to)}`, LOG_COLOR.system)];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Feedback of one event (docs/design/party.md §10.5). Events about the controlled hero (no `hero`
+ * field, or the controlled entity) keep every visual. A follower's event keeps only compact feedback:
+ * its log lines, named ("Brannoc: Learned Strike"), and a small toast when it levels up. Floating
+ * numbers, effects on the controlled hero, panels, vendors and shakes stay with the controlled hero.
+ * Party events (classic.party.*) drop the planned log and toast and get the lines above instead.
+ */
+export function feedbackFor(ev: GameEvent, visuals: Visual[], env: FeedbackEnv): Visual[] {
+  const e = ev as unknown as { type: string; hero?: Entity; level?: number };
+  if (e.type.startsWith("classic.party.")) {
+    return [
+      ...visuals.filter((v) => v.kind !== "log" && v.kind !== "toast"),
+      ...partyLines(ev, env),
+    ];
+  }
+  const hero = e.hero ?? 0;
+  if (hero === 0 || hero === env.controlled) return visuals;
+  const name = env.nameOf(hero);
+  if (e.type === "classic.levelUp") {
+    return [
+      {
+        kind: "log",
+        logKind: "level",
+        text: `${name} reached level ${e.level ?? 0}`,
+        color: LOG_COLOR.level,
+      },
+      {
+        kind: "toast",
+        toastKind: "info",
+        title: name,
+        body: `Reached level ${e.level ?? 0}`,
+        ms: PARTY_TOAST_MS,
+      },
+    ];
+  }
+  // The hero's own death and respawn lines do not fit another member; the party events say it.
+  if (e.type === "classic.hero.died" || e.type === "classic.hero.respawned") return [];
+  const out: Visual[] = [];
+  for (const v of visuals) {
+    if (v.kind === "log") out.push({ ...v, text: `${name}: ${v.text}` });
+    else if (v.kind === "effect" && v.spec.kind !== "levelup") out.push(v);
+    else if (v.kind === "error") out.push(v);
+  }
+  return out;
+}
+
 export function createClassicGame(deps: GameDeps): ClassicGame {
   const { loaded, renderer } = deps;
   const registry = loaded.registry;
@@ -296,6 +451,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   let backoffUntil = Number.NEGATIVE_INFINITY;
   let appliedZoom = Number.NaN;
   let alpha = 0;
+  /** An offline-grant batch waiting for the step that applies its commands (see the header). */
+  let heldGrant: GameEvent[] | null = null;
   // Wave A: procedural audio (audio/index.ts) and renderer quality.
   const audio = createAudio({ registry, settings });
   let appliedQuality: GraphicsQuality | null = null;
@@ -394,6 +551,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       case "toast":
         pushToast(v.toastKind, v.title, v.body, v.ms);
         return;
+      case "away":
+        awayStore.set(v.view);
+        return;
       case "panel":
         openPanel(v.panel);
         return;
@@ -418,10 +578,24 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     }
   }
 
+  /**
+   * fanOut, except for a batch with an offline summary: that one waits for the
+   * next step (the grant's commands apply on it). A second batch before that
+   * step joins the first.
+   */
+  function fanOutOrHold(events: readonly GameEvent[]): void {
+    if (!events.some((e) => e.type === "classic.offline.summary")) {
+      fanOut(events);
+      return;
+    }
+    if (heldGrant === null) heldGrant = [...events];
+    else for (const e of events) heldGrant.push(e);
+  }
+
   function fanOut(events: readonly GameEvent[]): void {
     if (events.length === 0) return;
     deps.onEvents?.(events);
-    const env = effectEnv(sim.world);
+    const env = { ...effectEnv(sim.world), batch: events };
     const control = sim.world.getResource<ControlState>(RES.control);
     floats = floatPolicy(control && control.mode === "idle" ? control.speed : 1);
     floatsLeft = floats.perBatch;
@@ -444,7 +618,10 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       }
       let visuals: Visual[];
       try {
-        visuals = planEvent(ev, env);
+        visuals = feedbackFor(ev, planEvent(ev, env), {
+          controlled: env.hero,
+          nameOf: (e) => heroNameIn(sim.world, e),
+        });
       } catch (err) {
         reportError(err);
         continue;
@@ -503,7 +680,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
         return res;
       }
       deps.server?.dispatched(tick, name, payload);
-      fanOut(res.events);
+      fanOutOrHold(res.events);
       refreshHud();
       return res;
     } catch (err) {
@@ -664,6 +841,13 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     // Feeds the per-frame sim budget (loop.ts FRAME_BUDGET_MS).
     loop.observe(adv.ticks, spent);
     fanOut(events);
+    if (heldGrant !== null) {
+      // The step applied the grant's queued commands: show the card with the new HUD.
+      const held = heldGrant;
+      heldGrant = null;
+      fanOut(held);
+      refreshHud();
+    }
   }
 
   function renderFrame(): void {
@@ -680,6 +864,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       targeted: engagedTarget(world),
       showLootLabels: settings.showLootLabels,
       lighting: settings.lighting,
+      outlineHero: settings.outlineHero,
       tick: sim.tick,
       touch: coarsePointer,
     });
@@ -757,6 +942,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     }
     vendorNpc = 0;
     gamblerNpc = 0;
+    // A new game drops a grant that has not shown yet; a resync keeps it (the
+    // server's state already contains it, and its commands run on the next step).
+    if (clearMessages) heldGrant = null;
     if (clearMessages) {
       setUi({ panels: [], toasts: [], error: null, hover: null });
       log.set([]);
@@ -889,7 +1077,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     emit(events) {
       if (destroyed) return;
       try {
-        fanOut(events);
+        fanOutOrHold(events);
         refreshHud();
       } catch (err) {
         reportError(err);

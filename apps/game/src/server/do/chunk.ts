@@ -1,6 +1,8 @@
 import type { EntityId, EntityState, PoseUpdate, TilePos } from "@gamez/protocol";
 import { isWalkable, pathDuration, type TileMap } from "@gamez/world";
 import { DurableObject } from "cloudflare:workers";
+import { analyticsFor } from "../analytics/index.ts";
+import { markDoActive } from "../analytics/do-active.ts";
 import {
   WALK_SPEED,
   type CharacterRecord,
@@ -14,7 +16,7 @@ import { planWalk, walkAt, walkEnd } from "../../shared/walk.ts";
 import { worldOfChunk, type PresenceWorldSpec } from "../../shared/worlds.ts";
 import { RelayFanout } from "../presence/fanout.ts";
 import { FixtureError, FixtureStore, validateFixtures } from "../presence/fixtures.ts";
-import { continueWalk, sameStanding, sanitisePose } from "../presence/pose.ts";
+import { poseState, sameStanding, sanitisePose } from "../presence/pose.ts";
 import { defaultWorld } from "../presence/world.ts";
 
 /** Min interval between delta flushes; changes inside the window are coalesced. */
@@ -94,6 +96,12 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChunkDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     this.#world = worldOfChunk(this.chunkId) ?? defaultWorld();
     void ctx.blockConcurrencyWhile(async () => {
       this.#sql.exec(
@@ -229,15 +237,9 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
     this.#stats.poses++;
     const check = sanitisePose(pose, this.#world);
     if (!check.ok) return { ok: false, reason: check.reason };
-    const { appearance, tag } = check.pose;
     const now = Date.now();
-    const state: EntityState = {
-      ...avatar.state,
-      ...continueWalk(avatar.state, check.pose, now),
-      appearance,
-    };
-    delete state.tag;
-    if (tag !== undefined) state.tag = tag;
+    // Companions (party, §11.3) replace the list only when the report carries one.
+    const state = poseState(avatar.state, check.pose, now);
     // A keepalive of a hero standing still: nothing to broadcast.
     if (sameStanding(avatar.state, state, now)) return { ok: true };
     // Pose worlds keep poses in memory only (the row stays as of the join): a
@@ -261,6 +263,12 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
 
   /** Settles every finished walk and persists its final tile to the CharacterDO (server-path worlds). */
   async alarm(): Promise<void> {
+    markDoActive(
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "ChunkDO",
+      this.ctx.id.name ?? this.ctx.id.toString(),
+      Date.now(),
+    );
     if (this.#world.movement !== "server-path") return;
     const now = Date.now();
     for (const avatar of this.#avatars.values()) {

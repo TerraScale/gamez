@@ -6,12 +6,18 @@
  * old live level, resetting exploration, queuing population and the level's
  * Interactables), unlocks waypoints, places the hero and emits
  * classic.area.changed.
+ *
+ * Party (docs/design/party.md §2.3 I2, §6.6): every transition moves EVERY
+ * member. The acting leader (party/shared.ts actingLeaderOf; the controlled
+ * hero when everyone is down) lands on the arrival point exactly like the
+ * solo hero; followers land on their formation spots around it (./party.ts),
+ * each on a free walkable tile. Downed members come along and stay down.
+ * Leaving an area destroys the summons of every member.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { busOf, pushSpawn, type SpawnRequest, type TransitionRequest } from "../bus.ts";
 import {
   AreaTag,
-  Body,
   CastOrder,
   Casting,
   Dash,
@@ -31,11 +37,13 @@ import { emit } from "../events.ts";
 import { tileCenter, type TilePos } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { isRiftDepth, isWaypointDepth } from "../rules.ts";
-import { areaOf, currentDepth, dungeonOf, gameOf, heroOf } from "../resources.ts";
-import { findFreeNear, tileKey } from "./common.ts";
+import { actingLeaderOf, partyMembers, partyScaleOf, partySize } from "../party/shared.ts";
+import { areaOf, currentDepth, dungeonOf, gameOf } from "../resources.ts";
+import { findFreeNear } from "./common.ts";
 import { freshExploreArea, exploreStateOf } from "./explore.ts";
 import { getMap, type ClassicMap } from "./maps.ts";
 import { planPopulation } from "./populate.ts";
+import { formationSpots, occupiedExcept, unitFacing } from "./party.ts";
 import { ensureObelisk } from "./riftObelisk.ts";
 
 /** Runs the queued area transitions in order. */
@@ -60,7 +68,9 @@ function applyTransition(world: World, ctx: SimContext, req: TransitionRequest):
   if (!Number.isInteger(target) || target < 0) return;
   const area = areaOf(world);
   const dungeon = dungeonOf(world);
-  const hero = heroOf(world);
+  // Every member travels (solo: [hero]); the acting leader takes the arrival point.
+  const members = partyMembers(world);
+  const leader = members.length > 0 ? actingLeaderOf(world) : 0;
   const from = area.depth;
   // Snapshot of the portal before any closing: its position places the hero.
   const portal = dungeon.portal ? { ...dungeon.portal } : null;
@@ -74,12 +84,12 @@ function applyTransition(world: World, ctx: SimContext, req: TransitionRequest):
   if (req.via === "riftExit" && target !== 0) return;
   const map = getMap(world, ctx.registry, target);
 
-  if (target !== from) leaveArea(world, hero, from);
+  if (target !== from) leaveArea(world, members, from);
 
   const oldLive = dungeon.live;
-  if (target >= 1 && target !== dungeon.live) enterLevel(world, ctx, map, target, hero, oldLive);
+  if (target >= 1 && target !== dungeon.live) enterLevel(world, ctx, map, target, members, oldLive);
   // A rift cannot be re-entered (wave A): going to town discards its level at once.
-  if (target === 0 && isRiftDepth(oldLive)) dropLiveLevel(world, hero);
+  if (target === 0 && isRiftDepth(oldLive)) dropLiveLevel(world, members);
   // Rift levels never count as the main dungeon: no deepest, no waypoints.
   if (target >= 1 && !isRiftDepth(target)) {
     dungeon.deepest = Math.max(dungeon.deepest, target);
@@ -89,7 +99,7 @@ function applyTransition(world: World, ctx: SimContext, req: TransitionRequest):
     }
   }
 
-  if (hero !== 0) placeHero(world, ctx, map, target, req.via, hero, portal);
+  if (leader !== 0) placeParty(world, ctx, map, target, req.via, leader, members, portal);
 
   // A pair closes when the hero uses it from town, or when the level it leads to is left.
   if (portal) {
@@ -110,13 +120,13 @@ function applyTransition(world: World, ctx: SimContext, req: TransitionRequest):
   });
 }
 
-/** Clears what cannot follow the hero out of the area: summons, projectiles, ground effects. */
-function leaveArea(world: World, hero: Entity, from: number): void {
-  if (hero !== 0) {
+/** Clears what cannot follow the party out of the area: member summons, projectiles, ground effects. */
+function leaveArea(world: World, members: readonly Entity[], from: number): void {
+  if (members.length > 0) {
     for (const e of world.query(Summoned)) {
-      if (world.exists(e) && world.read(e, Summoned).owner === hero) world.destroy(e);
+      if (world.exists(e) && members.includes(world.read(e, Summoned).owner)) world.destroy(e);
     }
-    dropSpawns(world, (r: SpawnRequest) => r.owner === hero);
+    dropSpawns(world, (r: SpawnRequest) => r.owner !== 0 && members.includes(r.owner));
   }
   for (const e of world.query(Projectile, AreaTag)) {
     if (world.exists(e) && world.read(e, AreaTag).depth === from) world.destroy(e);
@@ -135,20 +145,22 @@ function enterLevel(
   ctx: SimContext,
   map: ClassicMap,
   depth: number,
-  hero: Entity,
+  members: readonly Entity[],
   oldLive: number,
 ): void {
   const dungeon = dungeonOf(world);
   if (oldLive > 0) {
     if (!isRiftDepth(oldLive)) recordBossWound(world, oldLive);
-    destroyLevelEntities(world, hero, oldLive);
+    destroyLevelEntities(world, members, oldLive);
   }
   dungeon.live = depth;
 
   const explore = exploreStateOf(world);
   explore.areas = [...explore.areas.filter((a) => a.depth === 0), freshExploreArea(map, false)];
 
-  const plan = planPopulation(ctx, ctx.registry, map, depth, gameOf(world));
+  // Party of 2+: denser packs (docs/design/party.md §8); solo keeps the plain plan.
+  const density = partySize(world) > 1 ? partyScaleOf(world, ctx.registry).densityPct : 100;
+  const plan = planPopulation(ctx, ctx.registry, map, depth, gameOf(world), density);
   for (const req of plan) pushSpawn(world, req);
   dungeon.liveSpawned = plan.length;
   dungeon.liveKilled = 0;
@@ -159,19 +171,20 @@ function enterLevel(
   if (map.waypoint) spawnInteractableAt(world, "waypoint", depth, map.waypoint, depth);
 }
 
-/** Destroys every entity of `depth` except the hero and drops its queued spawns. */
-function destroyLevelEntities(world: World, hero: Entity, depth: number): void {
+/** Destroys every entity of `depth` except the party members and drops its queued spawns. */
+function destroyLevelEntities(world: World, members: readonly Entity[], depth: number): void {
   for (const e of world.query(AreaTag)) {
-    if (e !== hero && world.exists(e) && world.read(e, AreaTag).depth === depth) world.destroy(e);
+    if (members.includes(e)) continue;
+    if (world.exists(e) && world.read(e, AreaTag).depth === depth) world.destroy(e);
   }
   dropSpawns(world, (r) => r.depth === depth);
 }
 
 /** Discards the live level entirely (its entities, exploration and bookkeeping): live = 0. */
-function dropLiveLevel(world: World, hero: Entity): void {
+function dropLiveLevel(world: World, members: readonly Entity[]): void {
   const dungeon = dungeonOf(world);
   if (dungeon.live <= 0) return;
-  destroyLevelEntities(world, hero, dungeon.live);
+  destroyLevelEntities(world, members, dungeon.live);
   const explore = exploreStateOf(world);
   explore.areas = explore.areas.filter((a) => a.depth === 0);
   dungeon.live = 0;
@@ -193,20 +206,48 @@ function recordBossWound(world: World, depth: number): void {
   }
 }
 
-/** Puts the hero on a free walkable tile next to the arrival feature and resets its movement. */
-function placeHero(
+/**
+ * Places the whole party: the leader on a free walkable tile next to the
+ * arrival feature (the solo rule), every other member (slot order) on its
+ * formation spot around the leader. Movement, intents and casts reset.
+ */
+function placeParty(
   world: World,
   ctx: SimContext,
   map: ClassicMap,
   depth: number,
   via: TransitionRequest["via"],
-  hero: Entity,
+  leader: Entity,
+  members: readonly Entity[],
   portal: { depth: number; x: number; y: number } | null,
 ): void {
-  const tile = arrivalTile(world, map, depth, via, hero, portal);
-  const at = tileCenter(tile.x);
-  const atY = tileCenter(tile.y);
-  world.add(hero, Pos, { x: at, y: atY });
+  // Members are being moved: their old tiles do not block anyone.
+  const occupied = occupiedExcept(world, map, depth, members);
+  const tile = arrivalTile(map, via, depth, portal, occupied);
+  placeUnit(world, ctx, leader, tile, depth);
+  const followers = members.filter((m) => m !== leader);
+  if (followers.length === 0) return;
+  const spots = formationSpots(
+    world,
+    ctx.registry,
+    map,
+    tile,
+    unitFacing(world, leader),
+    followers,
+    occupied,
+  );
+  followers.forEach((f, i) => placeUnit(world, ctx, f, spots[i] ?? tile, depth));
+}
+
+/** Puts a hero at the centre of `tile` in area `depth` and resets its movement, intent and casts. */
+function placeUnit(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  tile: TilePos,
+  depth: number,
+): void {
+  world.add(hero, Pos, { x: tileCenter(tile.x), y: tileCenter(tile.y) });
   world.add(hero, AreaTag, { depth });
   if (world.has(hero, Mover)) {
     world.update(hero, Mover, { path: [], goalX: -1, goalY: -1, moving: false, blocked: 0 });
@@ -220,14 +261,12 @@ function placeHero(
 
 /** Arrival tile for a transition: the feature the hero comes through, else the map spawn. */
 function arrivalTile(
-  world: World,
   map: ClassicMap,
-  depth: number,
   via: TransitionRequest["via"],
-  hero: Entity,
+  depth: number,
   portal: { depth: number; x: number; y: number } | null,
+  occupied: ReadonlySet<number>,
 ): TilePos {
-  const occupied = occupiedTiles(world, map, depth, hero);
   let anchor: TilePos | null = null;
   let minRadius = 1;
   switch (via) {
@@ -267,18 +306,6 @@ function arrivalTile(
   }
   const found = anchor ? findFreeNear(map, anchor, minRadius, occupied) : null;
   return found ?? findFreeNear(map, map.spawn, 0, occupied) ?? map.spawn;
-}
-
-/** Tile keys of solid units of `depth` other than the hero (for placement). */
-function occupiedTiles(world: World, map: ClassicMap, depth: number, hero: Entity): Set<number> {
-  const keys = new Set<number>();
-  for (const e of world.query(Pos, Body, AreaTag)) {
-    if (e === hero || world.read(e, AreaTag).depth !== depth) continue;
-    if (!world.read(e, Body).solid) continue;
-    const p = world.read(e, Pos);
-    keys.add(tileKey(map.width, p.x >> 8, p.y >> 8));
-  }
-  return keys;
 }
 
 /** Removes queued spawn requests matching `drop`, keeping the order of the rest. */

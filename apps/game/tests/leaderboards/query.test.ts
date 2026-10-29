@@ -167,6 +167,35 @@ describe("readLeaderboard against migrated tables", () => {
     expect(res.rows[0]!.extra).toEqual({ riftLevel: 4, ticks: 0, deaths: 0 });
   });
 
+  it("level and depth rank one row per account (a party's members do not flood the board)", async () => {
+    const d1 = migrated();
+    // One account's founder and three recruits share the party-wide depth.
+    insertHero(d1, { id: "p", account_id: "acc-p", level: 60, xp: 5, deepest_depth: 40 });
+    for (let i = 1; i <= 3; i++) {
+      insertHero(d1, {
+        id: `p/hero:${i}`,
+        account_id: "acc-p",
+        class_id: "classic.rogue",
+        level: 57,
+        deepest_depth: 40,
+      });
+    }
+    insertHero(d1, { id: "q", level: 30, deepest_depth: 20 });
+    const read = (board: "level" | "depth", classId: string | null = null) =>
+      readLeaderboard(d1.asD1(), { board, mode: "classic", classId, limit: 50 });
+    expect((await read("level")).rows.map((r) => [r.rank, r.accountId, r.value])).toEqual([
+      [1, "acc-p", 60],
+      [2, "acc-q", 30],
+    ]);
+    expect((await read("depth")).rows.map((r) => [r.rank, r.accountId, r.value])).toEqual([
+      [1, "acc-p", 40],
+      [2, "acc-q", 20],
+    ]);
+    // A class filter ranks the account's best hero of that class.
+    const rogues = await read("level", "classic.rogue");
+    expect(rogues.rows.map((r) => [r.accountId, r.value])).toEqual([["acc-p", 57]]);
+  });
+
   it("limit caps the number of rows", async () => {
     const d1 = migrated();
     for (let i = 0; i < 5; i++) insertHero(d1, { id: `p${i}`, level: i + 1 });

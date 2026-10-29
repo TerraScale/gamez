@@ -10,7 +10,7 @@ import { walkableSub, type ClassicMap } from "../world/maps.ts";
 
 /** True when `e` lives in area `depth`. */
 export function inArea(world: World, e: Entity, depth: number): boolean {
-  const a = world.get(e, AreaTag);
+  const a = world.peek(e, AreaTag);
   return a !== undefined && a.depth === depth;
 }
 
@@ -24,7 +24,7 @@ export function statusProto(
 
 /** Active (until > tick) statuses of `e`, or an empty list. */
 function activeList(world: World, e: Entity): readonly StatusInstance[] {
-  return world.get(e, Statuses)?.list ?? [];
+  return world.peek(e, Statuses)?.list ?? [];
 }
 
 /** Highest power among active statuses of `kind` (0 when none). */

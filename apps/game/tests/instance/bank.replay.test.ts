@@ -149,7 +149,11 @@ class Client {
       seq: ++this.seq,
       ...seg,
     });
-    expect(out.map((m) => m.t)).toEqual(["verified"]);
+    // A segment after a long silence on a live socket (eight days of prune
+    // wait) pays the absence right after its ack (offline-idle.md §5.6).
+    const offline = out.find((m): m is Resync => m.t === "resync" && m.code === "offline");
+    if (offline) await this.adopt(offline);
+    expect(out.map((m) => m.t)).toEqual(offline ? ["verified", "resync"] : ["verified"]);
   }
 
   async bank(op: BankOp, opId: string): Promise<BankAnswer> {

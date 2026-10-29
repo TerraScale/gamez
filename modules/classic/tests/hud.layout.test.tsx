@@ -241,25 +241,32 @@ describe("toasts never cover open panels (QA major 2)", () => {
 });
 
 describe("onboarding tip placement", () => {
-  it("desktop: centred above the measured bottom bar, never over a panel", () => {
-    const t = tipLayout("desktop", 200, false, false);
+  it("desktop: bottom-right corner above the measured bottom bar, never over a panel", () => {
+    const insets = { top: 0, bottom: 200 };
+    const t = tipLayout("desktop", insets, false, false);
     expect(t).not.toBeNull();
+    expect(t?.right).toBe(HUD_EDGE);
+    expect(t?.left).toBeUndefined();
     expect(t?.bottom).toBe(bottomBarInset("desktop", 200) + HUD_EDGE + 4);
-    expect(t?.left).toBe("50%");
-    expect(tipLayout("desktop", 200, true, false)).toBeNull();
+    expect(tipLayout("desktop", insets, true, false)).toBeNull();
   });
 
-  it("phones: starts right of the left column and gives way to toasts", () => {
-    const t = tipLayout("compact", 310, false, false);
-    expect(t?.left).toBe(LEFT_WIDTH.compact + HUD_EDGE * 2);
-    expect(t?.bottom).toBe(310 + HUD_EDGE + 4);
-    expect(tipLayout("compact", 310, false, true)).toBeNull();
-    expect(tipLayout("short", 156, true, false)).toBeNull();
+  it("phones: under the top region, clear of the minimap column, and gives way to toasts", () => {
+    const low = { top: 40, bottom: 310 };
+    const t = tipLayout("compact", low, false, false);
+    expect(t?.top).toBe(low.top + HUD_EDGE);
+    expect(t?.left).toBe(HUD_EDGE);
+    expect(t?.right).toBe(topRightInset("compact"));
+    // Once the top region is taller than the minimap column, the card spans the width.
+    const tall = { top: minimapBlockHeight("compact") + HUD_EDGE, bottom: 310 };
+    expect(tipLayout("compact", tall, false, false)?.right).toBe(HUD_EDGE);
+    expect(tipLayout("compact", low, false, true)).toBeNull();
+    expect(tipLayout("short", { top: 0, bottom: 156 }, true, false)).toBeNull();
   });
 
   it("is hidden while any panel is open on every layout", () => {
     for (const layout of ["desktop", "compact", "short"] as const) {
-      expect(tipLayout(layout, 0, true, false)).toBeNull();
+      expect(tipLayout(layout, NO_INSETS, true, false)).toBeNull();
     }
   });
 });

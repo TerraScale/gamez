@@ -17,6 +17,9 @@ export const HERO_COLOR = 0x35e0ff;
 /** Smallest hero dot (CSS px) on the compact minimap; grows with the canvas. */
 export const HERO_MIN_DIAMETER = 10;
 
+/** Other party members on the minimap: a lighter cyan than the hero's dot. */
+export const PARTY_DOT_COLOR = 0x9ff0ff;
+
 export const MM_COLOR = {
   fog: [10, 9, 8],
   floor: [74, 68, 56],
@@ -190,6 +193,28 @@ export function drawMinimapFrame(
   for (const kind of order) {
     for (const d of data.dots) {
       if (d.kind === kind) drawMarker(ctx, kind, (d.x + 0.5) * scale, (d.y + 0.5) * scale);
+    }
+  }
+  // Party members (docs/design/party.md §10.5): small cyan dots, hollow when downed.
+  for (const m of data.party ?? []) {
+    const px = (m.x + 0.5) * scale;
+    const py = (m.y + 0.5) * scale;
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    if (m.dead) {
+      // Hollow: black keyline, then the cyan ring on top.
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#000000";
+      ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = hex(PARTY_DOT_COLOR);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = hex(PARTY_DOT_COLOR);
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#000000";
+      ctx.stroke();
     }
   }
   // The hero: a cyan dot with a white ring and a black keyline, at least HERO_MIN_DIAMETER px across.

@@ -27,6 +27,7 @@ import type {
 } from "@gamez/protocol";
 import { Outbox, type ReplicationBatch } from "@gamez/sync";
 import { DurableObject } from "cloudflare:workers";
+import { AccountActivityStore } from "../account/activity.ts";
 import { AccountEconomy } from "../account/economy.ts";
 import { AccountProfileStore } from "../account/profile.ts";
 import { AccountSocial } from "../account/social.ts";
@@ -50,6 +51,7 @@ const FLUSH_BATCH = 200;
 export class AccountDO extends DurableObject<Env> implements AccountApi, AccountApiC {
   readonly #outbox: Outbox;
   readonly #profile: AccountProfileStore;
+  readonly #activity: AccountActivityStore;
   readonly #economy: AccountEconomy;
   readonly #social: AccountSocial;
   readonly #vault: AccountVault;
@@ -63,11 +65,20 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
     const accountId = ctx.id.name ?? ctx.id.toString();
     this.#outbox = new Outbox(ctx.storage.sql, `account:${accountId}`);
     this.#profile = new AccountProfileStore(store, accountId, this.#outbox);
+    this.#activity = new AccountActivityStore(store, this.#profile, this.#outbox, accountId);
     this.#economy = new AccountEconomy(store);
     this.#social = new AccountSocial(store, Date.now, accountId);
     this.#vault = new AccountVault(store, this.#economy, this.#outbox, accountId);
     this.#notices = new AccountNotices(store);
-    this.#pass = new AccountPass(store, this.#economy, this.#vault, this.#notices);
+    this.#pass = new AccountPass(
+      store,
+      this.#economy,
+      this.#vault,
+      this.#notices,
+      Date.now,
+      this.#outbox,
+      accountId,
+    );
     this.#purchases = new AccountPurchases(
       store,
       this.#economy,
@@ -79,6 +90,7 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
     void ctx.blockConcurrencyWhile(async () => {
       this.#outbox.init();
       this.#profile.init();
+      this.#activity.init();
       this.#economy.init();
       this.#social.init();
       this.#vault.init();
@@ -140,9 +152,17 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
   async openSession(userAgent: string) {
     return this.#profile.openSession(userAgent);
   }
+  /** A valid session counts as activity (account/activity.ts, once per UTC day). */
   async checkSession(sid: string) {
-    return this.#profile.checkSession(sid);
+    const ok = this.#activity.checkSession(sid, Date.now());
+    if (ok) await this.#flushSoon();
+    return ok;
   }
+  async touchActivity(now: number): Promise<void> {
+    this.#activity.touch(now);
+    await this.#flushSoon();
+  }
+
   async closeSession(sid: string) {
     this.#profile.closeSession(sid);
   }
@@ -178,6 +198,7 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
   }
   async grantEntitlement(grant: EntitlementGrant) {
     const r = this.#economy.grantEntitlement(grant);
+    this.#pass.syncProgress(); // a premium grant changes pass_progress (admin dashboard §6)
     await this.#flushSoon();
     return r;
   }
@@ -277,11 +298,13 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
   }
   async fulfillOrder(input: { orderId: string; providerRef: string | null; eventId: string }) {
     const r = this.#purchases.fulfillOrder(input);
+    this.#pass.syncProgress(); // a store grant may be the premium pass
     await this.#flushSoon();
     return r;
   }
   async refundOrder(input: { orderId: string; eventId: string }) {
     const r = this.#purchases.refundOrder(input);
+    this.#pass.syncProgress(); // a refund revokes the premium grant
     await this.#flushSoon();
     return r;
   }

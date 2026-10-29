@@ -8,8 +8,8 @@
 import { useState } from "react";
 import type { ClassicClientApi, PanelId } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
-import { bottomOrderFor, modesControlVisible } from "../layout.ts";
+import { Btn, useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
+import { bottomOrderFor, modesControlVisible, moreMenuAnchor } from "../layout.ts";
 import { BANK_TITLE, SHELL_BUTTONS, type ShellSpec } from "../shell.ts";
 import { MoreMenu, type MoreItem } from "./MoreMenu.tsx";
 
@@ -53,6 +53,14 @@ export const BANK_BUTTON: PanelSpec = {
   text: BANK_TITLE,
 };
 
+/** Party roster (P): desktop bar and phone "More" menu (docs/design/party.md §10.3). */
+export const PARTY_BUTTON: PanelSpec = {
+  id: "party",
+  label: "Party",
+  title: "Party (P)",
+  text: "Party (P)",
+};
+
 /** Phone "More" menu only (the desktop bar has no room for it). */
 const MORE_ONLY: readonly PanelSpec[] = [{ id: "log", label: "Log", title: "Log", text: "Log" }];
 
@@ -66,7 +74,13 @@ export function buildMoreItems(
   showModes: boolean,
 ): MoreItem[] {
   const items: MoreItem[] = [];
-  for (const b of [...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, BANK_BUTTON, ...MORE_ONLY]) {
+  for (const b of [
+    ...SECONDARY_BUTTONS,
+    ...SOCIAL_BUTTONS,
+    BANK_BUTTON,
+    PARTY_BUTTON,
+    ...MORE_ONLY,
+  ]) {
     items.push({
       id: b.id,
       text: b.text,
@@ -103,13 +117,14 @@ export function shellItemsOf(api: Pick<ClassicClientApi, "openScreen">): MoreIte
 export function PanelButtons({ api }: SlotProps) {
   const open = useSelect(api.ui, (u) => u.panels);
   const layout = useHudLayout(api);
+  const insets = useHudInsets();
   const compact = layout !== "desktop";
   const [moreOpen, setMoreOpen] = useState(false);
   // The mode picker control. The shell has no back button for classic (ClientModeView.ownsExitControl).
   const showModes = modesControlVisible(layout, open.length > 0);
   const primary = compact
     ? PRIMARY_BUTTONS
-    : [...PRIMARY_BUTTONS, ...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, BANK_BUTTON];
+    : [...PRIMARY_BUTTONS, ...SECONDARY_BUTTONS, ...SOCIAL_BUTTONS, BANK_BUTTON, PARTY_BUTTON];
   const moreItems: MoreItem[] = compact ? buildMoreItems(api, open, showModes) : [];
   // Desktop: the shell screens as their own buttons, only when the shell can open them.
   const shell = compact || !api.openScreen ? [] : SHELL_BUTTONS;
@@ -170,7 +185,12 @@ export function PanelButtons({ api }: SlotProps) {
         </Btn>
       ) : null}
       {compact ? (
-        <MoreMenu items={moreItems} open={moreOpen && moreItems.length > 0} setOpen={setMoreOpen} />
+        <MoreMenu
+          items={moreItems}
+          open={moreOpen && moreItems.length > 0}
+          setOpen={setMoreOpen}
+          anchorBottom={moreMenuAnchor(layout, insets.bottom)}
+        />
       ) : null}
     </div>
   );

@@ -9,6 +9,14 @@ import type { HudSnapshot, ItemView } from "../contract.ts";
 export interface TipFacts {
   /** Phase "play" with a living hero. */
   playing: boolean;
+  /**
+   * Hero tile (whole tiles, floored): a change means the hero walked. Whole tiles keep the facts
+   * stable mid-step, so the tip card does not re-render on every snapshot while the hero walks.
+   */
+  heroX: number;
+  heroY: number;
+  /** The player took over from Auto/Idle (a click, a cast): control.overridden. */
+  overridden: boolean;
   level: number;
   skillPoints: number;
   talentPoints: number;
@@ -53,6 +61,9 @@ export function tipFacts(hud: HudSnapshot): TipFacts {
   );
   return {
     playing: hud.phase === "play" && hero !== null && !hero.dead,
+    heroX: Math.floor(hero?.x ?? 0),
+    heroY: Math.floor(hero?.y ?? 0),
+    overridden: hud.control.overridden,
     level: hero?.level ?? 1,
     skillPoints: hero?.skillPoints ?? 0,
     talentPoints: hud.talents?.points ?? 0,
