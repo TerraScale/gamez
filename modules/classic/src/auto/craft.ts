@@ -11,7 +11,6 @@
  * Every op is queued once per visit in one batch (the owners check gold and
  * reach themselves, so a refused op costs nothing and is retried next visit).
  */
-import { pushCommand } from "../bus.ts";
 import { Equipment, Inventory, Npc } from "../components.ts";
 import { gamblePrice, maxSocketsOf, repairCost, socketCost, upgradeCost } from "../rules.ts";
 import {
@@ -36,7 +35,7 @@ import {
 } from "./econ.ts";
 import { primaryOf } from "./gear.ts";
 import { itemScore } from "./score.ts";
-import { bagFits, type AutoCtx } from "./util.ts";
+import { bagFits, pushCmd, type AutoCtx } from "./util.ts";
 import { at, type StepResult } from "./visit.ts";
 
 /** Gear below this durability (% of max) is repaired on a town visit. */
@@ -118,7 +117,7 @@ export function repairStep(c: AutoCtx): StepResult {
   const uids = planRepairs(c, econ, goldOf(c));
   if (uids.length === 0) return "skip";
   return at(c, npc, () => {
-    for (const uid of uids) pushCommand(c.world, { op: "repair", npc, uid });
+    for (const uid of uids) pushCmd(c, { op: "repair", npc, uid });
   });
 }
 
@@ -260,7 +259,7 @@ export function craftStep(c: AutoCtx, potionReserve: number): StepResult {
   const ops = planCrafts(c, econ, Math.max(0, Math.floor((surplus * CRAFT_SHARE_PCT) / 100)));
   if (ops.length === 0) return "skip";
   return at(c, npc, () => {
-    for (const o of ops) pushCommand(c.world, { ...o, npc });
+    for (const o of ops) pushCmd(c, { ...o, npc });
   });
 }
 
@@ -318,6 +317,6 @@ export function gambleStep(c: AutoCtx, potionReserve: number): StepResult {
   const cats = planGambles(c, econ, offered, budget);
   if (cats.length === 0) return "skip";
   return at(c, npc, () => {
-    for (const category of cats) pushCommand(c.world, { op: "gamble", npc, category });
+    for (const category of cats) pushCmd(c, { op: "gamble", npc, category });
   });
 }

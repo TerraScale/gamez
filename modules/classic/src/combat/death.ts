@@ -3,6 +3,10 @@
  * {at, killer}, removal from the spatial grid, cast/dash/order cancelled,
  * walk cleared, a DeathRecord on the bus and a classic.death event. Never
  * kills the same unit twice.
+ *
+ * Party (docs/design/party.md §7.1): every member is a hero here
+ * (DeathRecord.isHero); a member's body stays on the field with Dead (revive
+ * and respawn belong to classic.party / classic.progression).
  */
 import type { Entity, SimContext, World } from "@gamez/kernel";
 import { busOf, type DeathRecord } from "../bus.ts";
@@ -21,6 +25,7 @@ import {
 } from "../components.ts";
 import { emit } from "../events.ts";
 import { currentDepth, heroOf } from "../resources.ts";
+import { isPartyHero } from "../party/shared.ts";
 import { gridOf } from "../spatial.ts";
 import { isHeroSide } from "./common.ts";
 
@@ -43,7 +48,8 @@ export function killUnit(world: World, ctx: SimContext, e: Entity, killer: Entit
     m.moving = false;
   }
   const p = world.get(e, Pos) ?? { x: 0, y: 0 };
-  const isHero = e === heroOf(world) || world.has(e, Hero);
+  const controlled = heroOf(world);
+  const isHero = e === controlled || world.has(e, Hero);
   const mon = world.get(e, Monster);
   const rec: DeathRecord = {
     entity: e,
@@ -71,6 +77,8 @@ export function killUnit(world: World, ctx: SimContext, e: Entity, killer: Entit
     rarity: rec.rarity,
     x: p.x,
     y: p.y,
+    // Party: a follower's death names it (the controlled hero's never does: solo unchanged).
+    ...(isHero && e !== controlled && isPartyHero(world, e) ? { hero: e } : {}),
   });
   return true;
 }

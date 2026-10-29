@@ -18,6 +18,12 @@
  *   extraProjectiles, extraPierce, extraBounces, durationPct on applied
  *   statuses, buffs and summon lifetimes, extraSummons on count and max.
  *   Units without BonusStats (monsters) take the unmodified path.
+ *
+ * Party (docs/design/party.md §6.5): a heal with SkillProto.heal.allyRadius
+ * also heals every standing hero-team unit (members, member summons) within
+ * that radius of a hero-team caster by the same amount, in a party of 2+
+ * only (a solo hero keeps the self heal, bit for bit). One classic.heal per
+ * healed ally. Buffs already reach allies in their radius.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { busOf, pushHit, pushSpawn } from "../bus.ts";
@@ -38,6 +44,7 @@ import { angleDiff, angleOf, angleVec, isqrt, pct, scaleTo, tiles, toTile } from
 import { SYSTEM } from "../ids.ts";
 import { currentDepth } from "../resources.ts";
 import type { SkillModTotals } from "../rules.ts";
+import { isFollower } from "../party/shared.ts";
 import { gridOf, type SpatialGrid } from "../spatial.ts";
 import { KIND, type MonsterProto, type SkillProto, type Team } from "../types.ts";
 import { getAreaMap, walkableAt, type ClassicMap } from "../world/maps.ts";
@@ -45,6 +52,7 @@ import { canStand, inArea, isStunned } from "../core/units.ts";
 import {
   alliesInRadius,
   BASIC_PROJECTILE_RADIUS,
+  bigPartySize,
   BASIC_PROJECTILE_SPEED,
   bodyRadius,
   castMods,
@@ -168,7 +176,7 @@ function fireContext(
   c: { skill: string; rank: number; target: Entity; x: number; y: number },
   skill: Readonly<SkillProto>,
 ): Fire {
-  const p = world.read(e, Pos);
+  const p = world.peek(e, Pos)!;
   let tx = c.x;
   let ty = c.y;
   let target: Entity = 0;
@@ -177,7 +185,7 @@ function fireContext(
     ty = p.y;
   } else if (c.target !== 0 && isLiveUnit(world, c.target, depth)) {
     target = c.target;
-    const tp = world.read(target, Pos);
+    const tp = world.peek(target, Pos)!;
     tx = tp.x;
     ty = tp.y;
   }
@@ -192,7 +200,7 @@ function fireContext(
     skillId: c.skill,
     skill,
     rank: Math.max(1, c.rank),
-    stats: world.get(e, CombatStats),
+    stats: world.peek(e, CombatStats),
     px: p.x,
     py: p.y,
     tx,
@@ -579,6 +587,8 @@ function fireSelf(f: Fire): void {
       const actual = Math.max(0, Math.min(amount, life.max - life.hp));
       life.hp += actual;
       emit(f.ctx, { type: "classic.heal", target: f.caster, amount: actual, x: f.px, y: f.py });
+      const ar = s.heal.allyRadius ?? 0;
+      if (ar > 0 && f.team === "hero" && bigPartySize(w) > 0) healAllies(f, ar, amount);
     }
   }
   if (s.buff) {
@@ -608,6 +618,28 @@ function fireSelf(f: Fire): void {
     radius,
     points: [],
   });
+}
+
+/** Heals the standing hero-team units within `radius` of the caster (not the caster) by `amount`. */
+function healAllies(f: Fire, radius: number, amount: number): void {
+  const w = f.world;
+  for (const a of alliesInRadius(w, f.grid, f.px, f.py, radius, "hero", f.depth)) {
+    if (a === f.caster) continue;
+    const life = w.get(a, Life);
+    if (!life) continue;
+    const actual = Math.max(0, Math.min(amount, life.max - life.hp));
+    if (actual <= 0) continue;
+    life.hp += actual;
+    const p = w.read(a, Pos);
+    emit(f.ctx, {
+      type: "classic.heal",
+      target: a,
+      amount: actual,
+      x: p.x,
+      y: p.y,
+      ...(isFollower(w, a) ? { hero: a } : {}),
+    });
+  }
 }
 
 /** §20: an exploder that fired its onDeathSkill dies by its own hand (no credit). */

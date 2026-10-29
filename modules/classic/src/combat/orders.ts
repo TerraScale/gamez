@@ -123,8 +123,9 @@ function tryStart(
     : 0;
   if (mana && mana.mp < cost) return ERR.noMana;
 
-  const p = world.read(e, Pos);
-  const stats = world.get(e, CombatStats);
+  // Read-only values use peek() (no rollback copy); Mana and Mover change below.
+  const p = world.peek(e, Pos)!;
+  const stats = world.peek(e, CombatStats);
   const team = teamOf(world, e) ?? "monster";
   let tx = order.x;
   let ty = order.y;
@@ -140,7 +141,7 @@ function tryStart(
         : isLiveUnit(world, order.target, depth);
       if (!ok) return ERR.badTarget;
       target = order.target;
-      const tp = world.read(target, Pos);
+      const tp = world.peek(target, Pos)!;
       tx = tp.x;
       ty = tp.y;
       const reach =
@@ -175,10 +176,10 @@ function tryStart(
   if (mana && cost > 0) mana.mp -= cost;
   const cooldown = mods ? effectiveCooldown(skill as SkillProto, mods) : skill.cooldown;
   if (cooldown > 0) setCooldown(world, e, order.skill, tick + cooldown, tick);
-  const m = world.get(e, Mover);
+  const m = world.peek(e, Mover);
   if (m && (tx !== p.x || ty !== p.y)) {
     const f = facingOf(tx - p.x, ty - p.y, m.facing);
-    if (f !== m.facing) m.facing = f;
+    if (f !== m.facing) world.update(e, Mover, { facing: f });
   }
   world.add(e, Casting, {
     skill: order.skill,

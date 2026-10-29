@@ -36,6 +36,7 @@ import {
 import { WAVE_B_RUNNERS } from "./waveB/index.ts";
 import { WAVE_C_RUNNERS } from "./waveC/index.ts";
 import { QUESTS_RUNNERS } from "./quests.ts";
+import { PARTY_RUNNERS } from "./party.ts";
 
 interface Args {
   scenario: string;
@@ -95,6 +96,7 @@ const SCENARIOS: readonly string[] = [
   ...Object.keys(WAVE_B_RUNNERS),
   ...Object.keys(WAVE_C_RUNNERS),
   ...Object.keys(QUESTS_RUNNERS),
+  ...Object.keys(PARTY_RUNNERS),
 ];
 
 function usage(msg?: string): never {
@@ -106,6 +108,8 @@ function usage(msg?: string): never {
       "  classic-idle <class> <minutes> <speed> speed: 1 | 2 | 4 | 8\n" +
       "  classic-features <class>              cheats (?debug=1&cheats=1): talents, smith, gambler, sets, rift\n" +
       "  classic-boss <class>                  cheats: a boss beside the hero, its telegraphs, phases and shake\n" +
+      "  classic-party <class>                 cheats: a party of four, F2 / Tab control, Idle x8 for a minute\n" +
+      "  party <class>                         party panel: buy slots, recruit, portrait / F-key / Tab control, camera, outlines\n" +
       "  gallery [--all-facings]\n" +
       "  panels [class], classic-create [class]\n",
   );
@@ -1354,6 +1358,7 @@ const RUNNERS: Record<string, (run: Run) => Promise<void>> = {
   ...WAVE_B_RUNNERS,
   ...WAVE_C_RUNNERS,
   ...QUESTS_RUNNERS,
+  ...PARTY_RUNNERS,
   picker,
   "classic-start": classicStart,
   "classic-create": classicCreate,

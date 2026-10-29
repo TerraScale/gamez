@@ -4,15 +4,18 @@
  * the Auto/Idle allocation (points.ts). Every check runs before the first
  * write, so a failed op leaves the world untouched. Talents live in the hero's
  * Talents component (created lazily) and feed BonusStats["classic.talents"].
+ * Party (docs/design/party.md §7.4): ops take the hero; the reset cost comes
+ * from the party purse.
  */
 import type { Entity, FrozenRegistry, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, OK, type OpResult } from "../actions.ts";
 import { setBonusSource } from "../bonus.ts";
-import { Dead, Hero, Level, Talents, Wallet } from "../components.ts";
+import { Dead, Hero, Level, Talents } from "../components.ts";
 import { emit } from "../events.ts";
 import { MODULE } from "../ids.ts";
+import { heroTag, purseWallet, setPurseGold } from "../items/common.ts";
 import { applyHeroStats } from "../progression/stats.ts";
-import { currentDepth, heroOf, RES, type RunStats } from "../resources.ts";
+import { currentDepth, RES, type RunStats } from "../resources.ts";
 import { talentResetCost } from "../rules.ts";
 import {
   ECONOMY_ID,
@@ -45,10 +48,9 @@ function isResult(v: Entity | OpResult): v is OpResult {
   return typeof v !== "number";
 }
 
-/** The hero, or a failed OpResult when there is none (or it is dead, unless `alive` is false). */
-function liveHero(world: World, alive = true): Entity | OpResult {
-  const hero = heroOf(world);
-  if (hero === 0) return fail(ERR.noHero, "there is no hero");
+/** `hero`, or a failed OpResult when there is none (or it is dead, unless `alive` is false). */
+function liveHero(world: World, hero: Entity, alive = true): Entity | OpResult {
+  if (hero === 0 || !world.exists(hero)) return fail(ERR.noHero, "there is no hero");
   if (alive && world.has(hero, Dead)) return fail(ERR.dead, "the hero is dead");
   return hero;
 }
@@ -172,9 +174,14 @@ export function syncTalentBonus(world: World, reg: FrozenRegistry, hero: Entity)
   setBonusSource(world, hero, TALENT_SOURCE, b.mods, b.skills);
 }
 
-/** Spends one point on `nodeId`: one more rank, stats refreshed at once. */
-export function execLearnTalent(world: World, ctx: SimContext, nodeId: string): OpResult {
-  const hero = liveHero(world);
+/** `hero` spends one point on `nodeId`: one more rank, stats refreshed at once. */
+export function execLearnTalent(
+  world: World,
+  ctx: SimContext,
+  heroIn: Entity,
+  nodeId: string,
+): OpResult {
+  const hero = liveHero(world, heroIn);
   if (isResult(hero)) return hero;
   const check = learnCheck(world, ctx.registry, hero, nodeId);
   if (!check.ok) return check;
@@ -186,16 +193,17 @@ export function execLearnTalent(world: World, ctx: SimContext, nodeId: string): 
   world.update(hero, Talents, { points: t.points - 1, spent: t.spent + 1, ranks });
   syncTalentBonus(world, ctx.registry, hero);
   applyHeroStats(world, ctx.registry, hero, ctx.tick);
-  emit(ctx, { type: "classic.talent.learned", node: nodeId, rank });
+  emit(ctx, { type: "classic.talent.learned", node: nodeId, rank, ...heroTag(world, hero) });
   return OK;
 }
 
 /**
- * Town only: refunds every spent point for rules.talentResetCost gold (a gold
- * sink, counted in RunStats.goldSpent). Without EconomyProto the reset is free.
+ * Town only: refunds every point `hero` spent for rules.talentResetCost gold
+ * (its level; paid from the party purse; a gold sink, counted in
+ * RunStats.goldSpent). Without EconomyProto the reset is free.
  */
-export function execResetTalents(world: World, ctx: SimContext): OpResult {
-  const hero = liveHero(world);
+export function execResetTalents(world: World, ctx: SimContext, heroIn: Entity): OpResult {
+  const hero = liveHero(world, heroIn);
   if (isResult(hero)) return hero;
   if (currentDepth(world) !== 0) return fail(ERR.notInTown, "talents can only be reset in town");
   const t = world.get(hero, Talents);
@@ -203,7 +211,7 @@ export function execResetTalents(world: World, ctx: SimContext): OpResult {
   const level = world.get(hero, Level)?.level ?? 1;
   const econ = ctx.registry.get<EconomyProto>(KIND.economy, ECONOMY_ID);
   const cost = econ ? talentResetCost(econ, level) : 0;
-  const wallet = world.get(hero, Wallet);
+  const wallet = purseWallet(world);
   if (cost > 0 && (!wallet || wallet.gold < cost)) {
     return fail(ERR.noGold, `a talent reset costs ${cost} gold`);
   }
@@ -211,12 +219,12 @@ export function execResetTalents(world: World, ctx: SimContext): OpResult {
   const refunded = t.spent;
   world.update(hero, Talents, { points: t.points + refunded, spent: 0, ranks: [] });
   if (cost > 0 && wallet) {
-    world.update(hero, Wallet, { gold: wallet.gold - cost });
+    setPurseGold(world, wallet.purse, wallet.gold - cost);
     const stats = world.getResource<RunStats>(RES.stats);
     if (stats) stats.goldSpent = (stats.goldSpent ?? 0) + cost;
   }
   syncTalentBonus(world, ctx.registry, hero);
   applyHeroStats(world, ctx.registry, hero, ctx.tick);
-  emit(ctx, { type: "classic.talents.reset", refunded, cost });
+  emit(ctx, { type: "classic.talents.reset", refunded, cost, ...heroTag(world, hero) });
   return OK;
 }

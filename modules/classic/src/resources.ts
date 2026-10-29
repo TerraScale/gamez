@@ -34,6 +34,9 @@ export const RES = {
   rift: "classic.riftState",
   /** Owner classic.achievements. */
   achievements: "classic.achievements",
+  // ---- party (docs/design/party.md)
+  /** Owner classic.party. Created lazily by the first party action (absent = a party of one: GameState.hero). */
+  party: "classic.party",
 } as const;
 
 export interface GameState {
@@ -43,14 +46,20 @@ export interface GameState {
   worldSeed: number;
   /** Next ItemInstance uid. */
   nextUid: number;
-  /** The hero entity (0 before classic.newHero). */
+  /**
+   * The CONTROLLED hero (0 before classic.newHero). Every manual action, the
+   * HUD, the camera and ControlState.mode apply to this hero. With a party
+   * (docs/design/party.md §2) it is always one of PartyState.members and
+   * changes only through classic.party.control (or the party's auto-switch
+   * on death); the other members are always driven by the party AI.
+   */
   hero: Entity;
   /** Pack ids for monster population, monotonic. */
   nextPack: number;
 }
 
 export interface AreaState {
-  /** 0 = town, >= 1 dungeon depth. The hero's AreaTag always equals this. */
+  /** 0 = town, >= 1 dungeon depth. The AreaTag of the hero (every party member) always equals this. */
   depth: number;
   /** ThemeProto id ("classic.theme.town" for the town). */
   theme: string;
@@ -258,6 +267,11 @@ export interface RiftRecord {
   endTick: number;
   /** Run id (RiftState.nextRun at open time). */
   run: number;
+  /**
+   * Party (docs/design/party.md §7.4): every member at the end of the run, in
+   * slot order (hero fields above = the acting leader). Absent for solo runs.
+   */
+  party?: { name: string; classId: string; level: number }[];
 }
 
 export interface RiftRun {
@@ -311,7 +325,11 @@ export const controlOf = (w: World): ControlState => need<ControlState>(w, RES.c
 export const vendorsOf = (w: World): VendorState => need<VendorState>(w, RES.vendors);
 export const stashOf = (w: World): StashState => need<StashState>(w, RES.stash);
 
-/** The hero entity, or 0 when none exists yet (phase "choose") or the game resource is missing. */
+/**
+ * The CONTROLLED hero entity, or 0 when none exists yet (phase "choose") or
+ * the game resource is missing. Party code that must act on every member
+ * uses party/shared.ts partyMembers() instead.
+ */
 export function heroOf(w: World): Entity {
   const g = w.getResource<GameState>(RES.game);
   if (!g || g.hero === 0 || !w.exists(g.hero)) return 0;
@@ -344,6 +362,57 @@ export function exploredPct(area: ExploreArea): number {
 
 export function exploreAreaOf(w: World, depth: number): ExploreArea | undefined {
   return w.getResource<ExploreState>(RES.explore)?.areas.find((a) => a.depth === depth);
+}
+
+// ---------------------------------------------------------------------------
+// Party (docs/design/party.md §2). Owner classic.party.
+// ---------------------------------------------------------------------------
+
+export type PartyFormation = "wedge" | "line" | "ring";
+
+/** Party AI options (classic.party.config). */
+export interface PartyConfig {
+  /** Formation shape of the followers around the leader (§6.2). */
+  formation: PartyFormation;
+  /** Follow distance from the leader in tiles, 1..4. */
+  spread: number;
+  /** Followers prefer the leader's target (focus fire) over their own pick. */
+  focusFire: boolean;
+  /** Followers walk to downed allies and revive them when no foe is near. */
+  revive: boolean;
+  /** Auto/Idle: when the controlled hero goes down, control moves to the acting leader. */
+  autoSwitch: boolean;
+}
+
+export const DEFAULT_PARTY_CONFIG: PartyConfig = {
+  formation: "wedge",
+  spread: 2,
+  focusFire: true,
+  revive: true,
+  autoSwitch: true,
+};
+
+/**
+ * The party (resource RES.party). ABSENT until the first party action
+ * (recruit, buySlot, config...): a world without it is a party of one made
+ * of GameState.hero, which keeps old saves and every solo game bit-identical.
+ * Read it only through party/shared.ts helpers.
+ */
+export interface PartyState {
+  /** Hero entities in slot order (party frames, F1..F4). 1..PartyProto.maxMembers; always contains GameState.hero and `founder`. */
+  members: Entity[];
+  /** The first hero of the save: never dismissed, holds the shared Wallet and Supplies (the purse), owns the "hero" leaderboard row. */
+  founder: Entity;
+  /** Slots bought with gold (0..3); unlocked slots = 1 + max(bosses unlocked, slotsBought). */
+  slotsBought: number;
+  /** Next PartyMember.uid (the founder has 0). Monotonic. */
+  nextUid: number;
+  config: PartyConfig;
+}
+
+/** The party resource or null (a party of one). */
+export function partyStateOf(w: World): PartyState | null {
+  return w.getResource<PartyState>(RES.party) ?? null;
 }
 
 export const DEFAULT_LOOT_FILTER: LootFilter = {

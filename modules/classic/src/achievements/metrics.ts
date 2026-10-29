@@ -4,24 +4,17 @@
  * or component reads as 0 (never throws). Used by the check system and by the
  * client view (client/model/achievements.ts).
  */
-import type { FrozenRegistry, World } from "@gamez/kernel";
+import type { Entity, FrozenRegistry, World } from "@gamez/kernel";
 import { Equipment, Level, Talents } from "../components.ts";
-import {
-  heroOf,
-  riftOf,
-  RES,
-  type DungeonState,
-  type QuestState,
-  type RunStats,
-} from "../resources.ts";
+import { partyMembers } from "../party/shared.ts";
+import { riftOf, RES, type DungeonState, type QuestState, type RunStats } from "../resources.ts";
 import { KIND, type AchievementMetric, type SetProto } from "../types.ts";
 
 /** Ticks per sim minute (20 Hz). */
 export const TICKS_PER_MINUTE = 1200;
 
-/** 1 when, for some set, every piece id is the `set` of an equipped item; else 0. */
-function setCompleteValue(world: World, registry: FrozenRegistry, hero: number): number {
-  if (hero === 0) return 0;
+/** 1 when, for some set, every piece id is the `set` of an item the hero has equipped; else 0. */
+function setCompleteOf(world: World, registry: FrozenRegistry, hero: Entity): number {
   const equipment = world.get(hero, Equipment);
   if (!equipment) return 0;
   const worn: string[] = [];
@@ -34,13 +27,28 @@ function setCompleteValue(world: World, registry: FrozenRegistry, hero: number):
   return 0;
 }
 
+/**
+ * Highest value of `read` over the party members (solo: the hero, so the
+ * same number as before). Party metrics that describe a hero use the best member.
+ */
+function highestOf(world: World, read: (e: Entity) => number): number {
+  let best = 0;
+  for (const e of partyMembers(world)) best = Math.max(best, read(e));
+  return best;
+}
+
+/** 1 when any party member has a complete set equipped (solo: the hero). */
+function setCompleteValue(world: World, registry: FrozenRegistry): number {
+  for (const e of partyMembers(world)) if (setCompleteOf(world, registry, e) === 1) return 1;
+  return 0;
+}
+
 /** Current value of one metric (integer, >= 0). */
 export function metricValue(
   world: World,
   registry: FrozenRegistry,
   metric: AchievementMetric,
 ): number {
-  const hero = heroOf(world);
   const stats = world.getResource<RunStats>(RES.stats);
   switch (metric) {
     case "kills":
@@ -73,10 +81,11 @@ export function metricValue(
       return stats?.riftsCompleted ?? 0;
     case "playMinutes":
       return Math.floor((stats?.ticksPlayed ?? 0) / TICKS_PER_MINUTE);
+    // Party (docs/design/party.md §7.4): hero metrics use the highest member; counters stay party-wide.
     case "level":
-      return hero === 0 ? 0 : (world.get(hero, Level)?.level ?? 0);
+      return highestOf(world, (e) => world.get(e, Level)?.level ?? 0);
     case "talentPoints":
-      return hero === 0 ? 0 : (world.get(hero, Talents)?.spent ?? 0);
+      return highestOf(world, (e) => world.get(e, Talents)?.spent ?? 0);
     case "deepest":
       return world.getResource<DungeonState>(RES.dungeon)?.deepest ?? 0;
     case "questsCompleted":
@@ -84,7 +93,7 @@ export function metricValue(
     case "riftLevel":
       return riftOf(world)?.maxCompleted ?? 0;
     case "setComplete":
-      return setCompleteValue(world, registry, hero);
+      return setCompleteValue(world, registry);
     default:
       return 0;
   }

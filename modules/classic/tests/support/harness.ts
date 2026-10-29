@@ -42,6 +42,7 @@ import {
   Monster,
   Mover,
   Ai,
+  PartyMember,
   Pos,
   SkillBar,
   SkillBook,
@@ -59,6 +60,9 @@ import {
   type DungeonState,
   type ExploreState,
   type GameState,
+  DEFAULT_PARTY_CONFIG,
+  type PartyConfig,
+  type PartyState,
 } from "../../src/resources.ts";
 import { gridOf } from "../../src/spatial.ts";
 import type { EquipSlot, ItemInstance, MonsterRarity } from "../../src/types.ts";
@@ -320,6 +324,56 @@ export function spawnTestHero(world: World, o: TestHeroOptions = {}): Entity {
   const p = world.read(e, Pos);
   gridOf(world).insert(e, p.x, p.y);
   return e;
+}
+
+export interface TestPartyOptions {
+  /** Index into the heroes of the controlled hero (default 0 = the founder). */
+  controlled?: number;
+  config?: Partial<PartyConfig>;
+  slotsBought?: number;
+  /** Formation role per hero (default: "front"). */
+  roles?: ("front" | "back")[];
+}
+
+/**
+ * A party (docs/design/party.md §2) of spawnTestHero heroes: heroes[0] is the
+ * founder (keeps Wallet + Supplies, PartyMember uid 0); the others lose
+ * Wallet/Supplies like real recruits. Sets RES.party and GameState.hero (the
+ * controlled one). Returns the hero entities in slot order.
+ */
+export function spawnTestParty(
+  world: World,
+  heroes: TestHeroOptions[],
+  o: TestPartyOptions = {},
+): Entity[] {
+  if (heroes.length < 1) throw new Error("spawnTestParty: at least one hero");
+  const ents = heroes.map((h, i) =>
+    spawnTestHero(world, { x: 5 + i, y: 5, ...h, gold: i === 0 ? h.gold : 0 }),
+  );
+  ents.forEach((e, i) => {
+    if (i > 0) {
+      world.remove(e, Wallet);
+      world.remove(e, Supplies);
+    }
+    world.add(e, PartyMember, {
+      uid: i,
+      joinedTick: 0,
+      role: o.roles?.[i] ?? "front",
+      kills: 0,
+      deaths: 0,
+    });
+  });
+  const party: PartyState = {
+    members: [...ents],
+    founder: ents[0]!,
+    slotsBought: o.slotsBought ?? Math.max(0, ents.length - 1),
+    nextUid: ents.length,
+    config: { ...DEFAULT_PARTY_CONFIG, ...o.config },
+  };
+  world.setResource(RES.party, party);
+  const g = world.getResource<GameState>(RES.game)!;
+  g.hero = ents[o.controlled ?? 0]!;
+  return ents;
 }
 
 export interface TestMonsterOptions {

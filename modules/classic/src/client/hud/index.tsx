@@ -32,6 +32,7 @@ import { useHudLayout } from "./common.tsx";
 import { AreaBanner } from "./widgets/AreaBanner.tsx";
 import { AccountPanel } from "./panels/AccountPanel.tsx";
 import { BankPanel } from "./panels/BankPanel.tsx";
+import { PartyPanel } from "./panels/PartyPanel.tsx";
 import { ChatPanel } from "./panels/ChatPanel.tsx";
 import { GuildPanel } from "./panels/GuildPanel.tsx";
 import { LeaderboardPanel } from "./panels/LeaderboardPanel.tsx";
@@ -39,6 +40,7 @@ import { ControlBar } from "./widgets/ControlBar.tsx";
 import { SyncBadge } from "./widgets/SyncBadge.tsx";
 import { PerfOverlay } from "./widgets/PerfOverlay.tsx";
 import { Minimap } from "./widgets/Minimap.tsx";
+import { PartyFrames } from "./widgets/PartyFrames.tsx";
 import { StatusBar } from "./widgets/StatusBar.tsx";
 import { TargetBar } from "./widgets/TargetBar.tsx";
 import { QuestTracker } from "./widgets/QuestTracker.tsx";
@@ -94,6 +96,7 @@ export const DEFAULT_WIDGETS: readonly WidgetSpec[] = [
   { slot: SLOT.topRight, id: "classic.minimap", order: 10, component: Minimap },
   { slot: SLOT.target, id: "classic.statusBar", order: 5, component: StatusBar },
   { slot: SLOT.target, id: "classic.targetBar", order: 10, component: TargetBar },
+  { slot: SLOT.left, id: "classic.partyFrames", order: 5, component: PartyFrames },
   { slot: SLOT.left, id: "classic.questTracker", order: 10, component: QuestTracker },
   { slot: SLOT.left, id: "classic.combatLog", order: 20, component: CombatLog },
   { slot: SLOT.bottom, id: "classic.xpBar", order: 10, component: XpBar },
@@ -135,6 +138,8 @@ export const PANEL_COMPONENTS: Record<PanelId, SlotComponent> = {
   account: AccountPanel,
   // wave C
   bank: BankPanel,
+  // party
+  party: PartyPanel,
 };
 
 /** Registers the default HUD widgets and panels into `slots` (see §13 slot table). Call once per registry. */

@@ -246,6 +246,14 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.hasTarget = true;
   }
 
+  /** Camera centre and target in tile coordinates (debug info; the inverse of follow()). */
+  private cameraTiles(): { x: number; y: number; targetX: number; targetY: number } {
+    const c = screenToTile(this.camX, this.camY);
+    const t = screenToTile(this.targetX, this.targetY);
+    const r = (v: number): number => Math.round((v - 0.5) * 100) / 100;
+    return { x: r(c.x), y: r(c.y), targetX: r(t.x), targetY: r(t.y) };
+  }
+
   snapCamera(x: number, y: number): void {
     this.follow(x, y);
     // updateCamera places the camera on the target at the next frame.
@@ -452,6 +460,7 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
       floatsShown: t?.floatsShown ?? 0,
       shakes: t?.shakes ?? 0,
       outlines: this.entities?.outlineCensus() ?? { self: 0, party: 0, ally: 0 },
+      camera: this.cameraTiles(),
       activeEffects: this.fx?.activeEffects ?? 0,
     };
   }

@@ -11,7 +11,8 @@ import {
   type SimContext,
   type World,
 } from "@gamez/kernel";
-import { INTERACT_RANGE } from "../actions.ts";
+import { INTERACT_RANGE, type HeroCommandBody } from "../actions.ts";
+import { pushCommand } from "../bus.ts";
 import {
   AreaTag,
   AutoState,
@@ -24,13 +25,23 @@ import {
   Mana,
   Npc,
   Pos,
+  Supplies,
+  Wallet,
   type AutoPlan,
   type HeroIntentValue,
   type InteractableKind,
 } from "../components.ts";
-import { emit } from "../events.ts";
+import { emit, type ClassicEventBody } from "../events.ts";
 import { pct, type TilePos } from "../fixed.ts";
-import { DEFAULT_AUTO_CONFIG, RES, type AutoConfig, type ControlState } from "../resources.ts";
+import { partySize, purseOf } from "../party/shared.ts";
+import {
+  currentDepth,
+  DEFAULT_AUTO_CONFIG,
+  heroOf,
+  RES,
+  type AutoConfig,
+  type ControlState,
+} from "../resources.ts";
 import {
   BALANCE_ID,
   KIND,
@@ -41,7 +52,7 @@ import {
   type NpcProto,
   type NpcRole,
 } from "../types.ts";
-import type { ClassicMap } from "../world/maps.ts";
+import { getAreaMap, type ClassicMap } from "../world/maps.ts";
 
 /**
  * Travel commitment of the auto controller (owner: classic.auto, on the
@@ -174,6 +185,73 @@ export interface AutoCtx {
   classProto: ClassProto | undefined;
   /** tick >= AutoState.thinkAt at the start of this tick (full re-plan and travel allowed). */
   due: boolean;
+  /**
+   * Party (docs/design/party.md §4.2): `hero` is the controlled hero
+   * (GameState.hero). Commands and events of every other member carry
+   * `hero`; the controlled hero's never do (bit-identical solo snapshots).
+   */
+  controlled: boolean;
+  /** A party of two or more members: party rules apply (false = the solo game exactly). */
+  party: boolean;
+}
+
+/**
+ * Queues a HeroCommand for the context's hero: unchanged for the controlled
+ * hero (solo producers stay bit-identical), with `hero` for any other member.
+ */
+export function pushCmd(c: AutoCtx, cmd: HeroCommandBody): void {
+  pushCommand(c.world, c.controlled ? cmd : { ...cmd, hero: c.hero });
+}
+
+/** Emits a classic event about the context's hero (`hero` set for non-controlled members). */
+export function emitFor(c: AutoCtx, ev: ClassicEventBody): void {
+  emit(c.ctx, c.controlled ? ev : { ...ev, hero: c.hero });
+}
+
+/** The shared purse's gold (party/shared.ts purseOf; solo: the hero's Wallet). */
+export function purseGold(c: AutoCtx): number {
+  const purse = c.party ? purseOf(c.world) : c.hero;
+  return c.world.get(purse, Wallet)?.gold ?? 0;
+}
+
+/** Town portal scrolls in the shared purse (solo: the hero's Supplies). */
+export function purseScrolls(c: AutoCtx): number {
+  const purse = c.party ? purseOf(c.world) : c.hero;
+  return c.world.get(purse, Supplies)?.tpScrolls ?? 0;
+}
+
+/** True when the world holds a party of two or more members (party rules apply). */
+export function isParty(world: World): boolean {
+  return partySize(world) > 1;
+}
+
+/** True when `hero` is the controlled hero (GameState.hero). */
+export function isControlled(world: World, hero: Entity): boolean {
+  return heroOf(world) === hero;
+}
+
+export function makeAutoCtx(world: World, ctx: SimContext, hero: Entity): AutoCtx {
+  const st = ensureAutoState(world, hero, ctx.tick);
+  const p = world.read(hero, Pos);
+  return {
+    world,
+    ctx,
+    reg: ctx.registry,
+    tick: ctx.tick,
+    hero,
+    st,
+    cfg: configOf(world),
+    map: getAreaMap(world, ctx.registry),
+    depth: currentDepth(world),
+    hx: p.x,
+    hy: p.y,
+    tx: p.x >> 8,
+    ty: p.y >> 8,
+    classProto: heroClass(world, ctx.registry, hero),
+    due: ctx.tick >= st.thinkAt,
+    controlled: heroOf(world) === hero,
+    party: isParty(world),
+  };
 }
 
 /** Adds AutoState to the hero when missing and returns the live value. */
@@ -218,7 +296,7 @@ const AUTO_STATE_EXTRA = {
 export function setPlan(c: AutoCtx, plan: AutoPlan, note: string): void {
   if (c.st.plan === plan) return;
   c.st.plan = plan;
-  emit(c.ctx, { type: "classic.auto.plan", plan, note });
+  emitFor(c, { type: "classic.auto.plan", plan, note });
 }
 
 type IntentBody =

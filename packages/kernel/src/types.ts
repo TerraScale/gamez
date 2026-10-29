@@ -70,6 +70,13 @@ export interface World {
   get<T>(e: Entity, c: ComponentType<T>): T | undefined;
   /** Like get() but throws when the component is missing. */
   read<T>(e: Entity, c: ComponentType<T>): T;
+  /**
+   * Read-only view of a component (undefined when absent). Same value as get(), but
+   * it never logs a rollback copy, so hot read-only loops cost nothing extra inside a
+   * transaction. NEVER mutate the result (not even later in the same call): use
+   * get()/read() for values you change, or update().
+   */
+  peek<T>(e: Entity, c: ComponentType<T>): Readonly<T> | undefined;
   /** Entities having ALL given components, in ascending entity id order. */
   query(...cs: ComponentType<unknown>[]): Entity[];
   /** Singleton state keyed by name (e.g. "steps.floor"). */

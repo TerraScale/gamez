@@ -7,6 +7,57 @@ import { C, FONT, panelStyle, titleStyle } from "../styles.ts";
 
 export const HERO_NAME_MAX = 16;
 
+/** Class cards (radio group): shared by the new-hero screen and the party recruit form. */
+export function ClassPicker({
+  classes,
+  value,
+  onPick,
+}: {
+  classes: readonly { id: string; name: string; description: string }[];
+  value: string;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Class"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+        gap: 10,
+      }}
+    >
+      {classes.map((c) => {
+        const on = c.id === value;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onPick(c.id)}
+            style={{
+              pointerEvents: "auto",
+              textAlign: "left",
+              minHeight: 44,
+              padding: 12,
+              borderRadius: 10,
+              cursor: "pointer",
+              color: C.text,
+              font: "inherit",
+              background: on ? "rgba(90, 66, 32, 0.9)" : "rgba(255, 240, 210, 0.04)",
+              border: `2px solid ${on ? C.borderStrong : C.border}`,
+            }}
+          >
+            <div style={{ color: C.goldBright, fontWeight: 700, fontSize: 16 }}>{c.name}</div>
+            <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>{c.description}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function NewHeroScreen({ api }: SlotProps) {
   const phase = useSelect(api.hud, (s) => s.phase);
   const classes = useSelect(api.hud, (s) => s.classes);
@@ -40,43 +91,7 @@ export function NewHeroScreen({ api }: SlotProps) {
           Pick a class. Your hero then explores, fights and levels up on its own. You can take over
           at any time.
         </p>
-        <div
-          role="radiogroup"
-          aria-label="Class"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: 10,
-          }}
-        >
-          {classes.map((c) => {
-            const on = c.id === classId;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => setPicked(c.id)}
-                style={{
-                  pointerEvents: "auto",
-                  textAlign: "left",
-                  minHeight: 44,
-                  padding: 12,
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  color: C.text,
-                  font: "inherit",
-                  background: on ? "rgba(90, 66, 32, 0.9)" : "rgba(255, 240, 210, 0.04)",
-                  border: `2px solid ${on ? C.borderStrong : C.border}`,
-                }}
-              >
-                <div style={{ color: C.goldBright, fontWeight: 700, fontSize: 16 }}>{c.name}</div>
-                <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>{c.description}</div>
-              </button>
-            );
-          })}
-        </div>
+        <ClassPicker classes={classes} value={classId} onPick={setPicked} />
         <label style={{ display: "block", marginTop: 16, color: C.muted }}>
           Hero name
           <input

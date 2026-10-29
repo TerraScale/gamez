@@ -48,8 +48,15 @@ export const PANEL_IDS: readonly PanelId[] = [
  */
 export const WAVE_C_PANEL_IDS: readonly PanelId[] = ["bank"];
 
-/** Every panel the HUD renders: PANEL_IDS, then the wave C panels. */
-export const ALL_PANEL_IDS: readonly PanelId[] = [...PANEL_IDS, ...WAVE_C_PANEL_IDS];
+/** Party panel id (docs/design/party.md §10.3). Kept apart from PANEL_IDS for the same reason. */
+export const PARTY_PANEL_IDS: readonly PanelId[] = ["party"];
+
+/** Every panel the HUD renders: PANEL_IDS, then the wave C and party panels. */
+export const ALL_PANEL_IDS: readonly PanelId[] = [
+  ...PANEL_IDS,
+  ...WAVE_C_PANEL_IDS,
+  ...PARTY_PANEL_IDS,
+];
 
 export function panelSlot(id: PanelId): string {
   return `classic.panel.${id}`;

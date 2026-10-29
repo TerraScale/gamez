@@ -750,7 +750,7 @@ describe("determinism", () => {
 });
 
 /** Pinned after the first green run of the fixed script (see script()). */
-const PINNED_HASH = "b6869be2b2da260e";
+const PINNED_HASH = "e5b5d3893fe4a89f";
 
 // ---------------------------------------------------------------------------
 // HUD view model

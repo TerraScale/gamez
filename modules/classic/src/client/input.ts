@@ -9,7 +9,8 @@ import type { Entity } from "@gamez/kernel";
 import type { PointerInfo } from "@gamez/ui-host";
 import type { ControlMode, SimSpeed } from "../resources.ts";
 import { SUB } from "../fixed.ts";
-import type { PanelId } from "./contract.ts";
+import { ACTION } from "../actions.ts";
+import type { PanelId, PartyView } from "./contract.ts";
 
 export type KeyCommand =
   | { kind: "cast"; slot: number }
@@ -20,7 +21,18 @@ export type KeyCommand =
   | { kind: "cycleMode" }
   | { kind: "speed"; delta: 1 | -1 }
   | { kind: "minimap" }
-  | { kind: "automap" };
+  | { kind: "automap" }
+  /** F1-F4: take control of the party member in slot `slot` (0..3). */
+  | { kind: "control"; slot: number }
+  /** Tab / Shift+Tab with a party of two or more: the next / previous member. */
+  | { kind: "cycleControl"; delta: 1 | -1 };
+
+/** Context of a keypress that changes meaning with the party (Tab) and Shift. */
+export interface KeyContext {
+  shift?: boolean;
+  /** Party size (1 = solo: Tab keeps the automap). */
+  partySize?: number;
+}
 
 /** Panel keys (letters are case-insensitive). N = talents, Y = achievements (wave A; no clash with the bindings below). */
 const PANEL_KEYS: Readonly<Record<string, PanelId>> = {
@@ -32,21 +44,35 @@ const PANEL_KEYS: Readonly<Record<string, PanelId>> = {
   y: "achievements",
   // Wave C: the bank (K = keep; B, G and the other social letters stay free for wave B's planned keys).
   k: "bank",
+  // Party roster (docs/design/party.md §10.4).
+  p: "party",
 };
 const DRINK_KEYS: Readonly<Record<string, number>> = { q: 0, w: 1, e: 2, r: 3 };
 
-/** The command bound to a KeyboardEvent.key value, or null. Letters are case-insensitive. */
-export function keyCommand(key: string): KeyCommand | null {
+/** F1..F4 -> party slot 0..3. */
+const CONTROL_KEYS: Readonly<Record<string, number>> = { F1: 0, F2: 1, F3: 2, F4: 3 };
+
+/**
+ * The command bound to a KeyboardEvent.key value, or null. Letters are case-insensitive.
+ * Tab cycles control with a party of two or more (Shift+Tab backwards); solo, Tab is the
+ * automap. The backquote key always toggles the automap.
+ */
+export function keyCommand(key: string, ctx: KeyContext = {}): KeyCommand | null {
   const k = key.length === 1 ? key.toLowerCase() : key;
   if (k >= "1" && k <= "6" && k.length === 1) return { kind: "cast", slot: Number(k) - 1 };
   if (k in DRINK_KEYS) return { kind: "drink", slot: DRINK_KEYS[k]! };
   if (k in PANEL_KEYS) return { kind: "panel", panel: PANEL_KEYS[k]! };
+  if (k in CONTROL_KEYS) return { kind: "control", slot: CONTROL_KEYS[k]! };
   switch (k) {
     case "Escape":
       return { kind: "closeAll" };
     case "m":
       return { kind: "minimap" };
     case "Tab":
+      if ((ctx.partySize ?? 1) >= 2) return { kind: "cycleControl", delta: ctx.shift ? -1 : 1 };
+      return { kind: "automap" };
+    case "`":
+    case "Backquote":
       return { kind: "automap" };
     case "t":
       return { kind: "portal" };
@@ -87,15 +113,47 @@ export function isTypingTarget(target: unknown): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable === true;
 }
 
-/** Keydown listener on `win` that forwards bound keys (no Ctrl/Meta/Alt, not while typing). Returns the unbind function. */
+/**
+ * Party control for a key command (docs/design/party.md §10.4), as the action to send: F1..F4 and
+ * Tab/Shift+Tab take control of a member. Null when the command is not a party command, the target
+ * is missing or already controlled, or there is no party of two or more for Tab.
+ */
+export function partyKeyCall(
+  cmd: KeyCommand,
+  party: PartyView | null,
+): { name: string; payload: { hero: number } } | null {
+  if (!party) return null;
+  const members = party.members;
+  if (cmd.kind === "control") {
+    const m = members[cmd.slot];
+    if (!m || m.controlled) return null;
+    return { name: ACTION.partyControl, payload: { hero: m.entity } };
+  }
+  if (cmd.kind === "cycleControl") {
+    const n = members.length;
+    if (n < 2) return null;
+    const at = members.findIndex((m) => m.controlled);
+    const from = at < 0 ? 0 : at;
+    const next = members[(from + cmd.delta + n) % n];
+    if (!next || next.controlled) return null;
+    return { name: ACTION.partyControl, payload: { hero: next.entity } };
+  }
+  return null;
+}
+
+/**
+ * Keydown listener on `win` that forwards bound keys (no Ctrl/Meta/Alt, not while typing). Returns the
+ * unbind function. `partySize` (optional) tells Tab whether the party has two or more members.
+ */
 export function bindKeyboard(
   win: Pick<Window, "addEventListener" | "removeEventListener">,
   onKey: (cmd: KeyCommand) => void,
+  partySize?: () => number,
 ): () => void {
   const listener = (e: KeyboardEvent): void => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (isTypingTarget(e.target)) return;
-    const cmd = keyCommand(e.key);
+    const cmd = keyCommand(e.key, { shift: e.shiftKey, partySize: partySize?.() ?? 1 });
     if (cmd === null) return;
     e.preventDefault();
     onKey(cmd);
@@ -147,7 +205,8 @@ export type PointerCommand =
 
 /** What is under a fractional tile position (see SceneSync.pickAt). */
 export interface PointerPick {
-  kind: "unit" | "loot" | "npc" | "interactable";
+  /** "ally": a downed party member (scene.ts PickKind); taps on it interact (revive). */
+  kind: "unit" | "loot" | "npc" | "interactable" | "ally";
   entity: Entity;
 }
 

@@ -227,6 +227,11 @@ export class WorldImpl implements World {
     return this.live(this.stores.get(c.name)?.get(e)) as T | undefined;
   }
 
+  peek<T>(e: Entity, c: ComponentType<T>): Readonly<T> | undefined {
+    if (c.name === ENTITY_COMPONENT) return (this.alive.has(e) ? true : undefined) as T | undefined;
+    return this.stores.get(c.name)?.get(e)?.value as T | undefined;
+  }
+
   read<T>(e: Entity, c: ComponentType<T>): T {
     const v = this.get(e, c);
     if (v === undefined)

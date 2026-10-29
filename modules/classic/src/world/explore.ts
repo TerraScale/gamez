@@ -3,12 +3,16 @@
  * bitset per level: the town (always fully revealed) and the live dungeon
  * level. classic.world.explore (post 500) reveals every tile within the
  * hero's light radius and counts the newly revealed walkable tiles.
+ *
+ * Party (docs/design/party.md §7.1): every STANDING member reveals around
+ * itself with its own light radius, in slot order (solo: the hero, as before).
  */
 import type { SystemDef, World } from "@gamez/kernel";
-import { HeroStats, Pos } from "../components.ts";
+import { Dead, HeroStats, Pos } from "../components.ts";
 import { clamp } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
-import { heroOf, RES, type ExploreArea, type ExploreState } from "../resources.ts";
+import { partyMembers } from "../party/shared.ts";
+import { RES, type ExploreArea, type ExploreState } from "../resources.ts";
 import { balanceOf, filled, tileKey } from "./common.ts";
 import { getAreaMap, type ClassicMap } from "./maps.ts";
 
@@ -91,14 +95,20 @@ export function revealAround(
 export const exploreSystem: SystemDef = {
   ...SYSTEM.worldExplore,
   run(world, ctx) {
-    const hero = heroOf(world);
-    if (hero === 0 || !world.has(hero, Pos)) return;
-    const map = getAreaMap(world, ctx.registry);
-    const area = exploreAreaFor(world, map);
-    const p = world.read(hero, Pos);
-    const sheet = world.get(hero, HeroStats);
-    const bal = balanceOf(ctx.registry);
-    const radius = clamp(sheet?.lightRadius ?? bal?.lightRadius ?? FALLBACK_LIGHT_RADIUS, 1, 24);
-    revealAround(area, map, p.x >> 8, p.y >> 8, radius);
+    const members = partyMembers(world);
+    // Solo keeps the single-hero rule (it also reveals while dead); a party skips downed members.
+    const party = members.length > 1;
+    let map: ClassicMap | null = null;
+    let area: ExploreArea | null = null;
+    for (const hero of members) {
+      if (!world.has(hero, Pos) || (party && world.has(hero, Dead))) continue;
+      if (map === null) map = getAreaMap(world, ctx.registry);
+      if (area === null) area = exploreAreaFor(world, map);
+      const p = world.read(hero, Pos);
+      const sheet = world.get(hero, HeroStats);
+      const bal = balanceOf(ctx.registry);
+      const radius = clamp(sheet?.lightRadius ?? bal?.lightRadius ?? FALLBACK_LIGHT_RADIUS, 1, 24);
+      revealAround(area, map, p.x >> 8, p.y >> 8, radius);
+    }
   },
 };

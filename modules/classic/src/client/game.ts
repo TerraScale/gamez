@@ -36,12 +36,14 @@ import type {
   PointerInfo,
 } from "@gamez/ui-host";
 import { ACTION } from "../actions.ts";
+import type { ClassicEvent } from "../events.ts";
 import {
   Ai,
   AreaTag,
   CombatStats,
   Dead,
   Faction,
+  Hero,
   Intent,
   Monster,
   Pos,
@@ -67,6 +69,7 @@ import {
   type UiState,
 } from "./contract.ts";
 import {
+  LOG_COLOR,
   floatPolicy,
   planEvent,
   type EffectEnv,
@@ -174,6 +177,8 @@ const TOWN_CLOSE_RANGE = 4;
 const TOAST_LONG_MS = 7000;
 /** Colour of system log lines (server sync notices). */
 const SYSTEM_LOG_COLOR = 0x9fb3c8;
+/** Party toasts (docs/design/party.md §10.5): short, so a busy party does not bury the screen. */
+export const PARTY_TOAST_MS = 4000;
 
 interface Cell<T> {
   store: Store<T>;
@@ -258,6 +263,149 @@ function engagedTarget(world: World): Entity {
   const intent = hero ? world.get(hero, Intent) : undefined;
   if (intent?.kind === "skill" && isLiveMonster(world, intent.target)) return intent.target;
   return 0;
+}
+
+/** What the feedback filter knows: the controlled hero and how to name a member. */
+export interface FeedbackEnv {
+  controlled: Entity;
+  nameOf(e: Entity): string;
+}
+
+/** Name of a hero entity for feedback text ("Hero" when it is gone). */
+export function heroNameIn(world: World, e: Entity): string {
+  if (e === 0 || !world.exists(e)) return "Hero";
+  return world.get(e, Hero)?.name ?? "Hero";
+}
+
+function partyLines(ev: GameEvent, env: FeedbackEnv): Visual[] {
+  const e = ev as unknown as ClassicEvent;
+  const log = (text: string, color: number): Visual => ({
+    kind: "log",
+    logKind: "system",
+    text,
+    color,
+  });
+  const toast = (title: string, body: string, kind: Toast["kind"] = "info"): Visual => ({
+    kind: "toast",
+    toastKind: kind,
+    title,
+    body,
+    ms: PARTY_TOAST_MS,
+  });
+  const nameOf = (h: Entity | undefined): string => env.nameOf(h ?? 0);
+  switch (e.type) {
+    case "classic.party.recruited":
+      return [
+        log(`${e.name} joins the party (level ${e.level})`, LOG_COLOR.system),
+        toast("Party", `${e.name} joined the party`),
+      ];
+    case "classic.party.dismissed": {
+      const items =
+        e.stashed > 0 ? `; ${e.stashed} item${e.stashed === 1 ? "" : "s"} to the stash` : "";
+      return [
+        log(`${e.name} leaves the party${items}`, LOG_COLOR.system),
+        toast("Party", `${e.name} left the party`),
+      ];
+    }
+    case "classic.party.renamed":
+      return [log(`Renamed to ${e.name}`, LOG_COLOR.system)];
+    case "classic.party.control": {
+      const name = nameOf(e.hero);
+      if (e.reason === "death") {
+        return [
+          log(`Control passes to ${name}`, LOG_COLOR.system),
+          toast("Control", `${name} takes control`),
+        ];
+      }
+      return [log(`Control: ${name}`, LOG_COLOR.system)];
+    }
+    case "classic.party.config":
+      return [log("Party AI options changed", LOG_COLOR.system)];
+    case "classic.party.slots":
+      return [
+        log(
+          e.via === "gold"
+            ? `Party slot ${e.slots} bought for ${e.cost} gold`
+            : `Party slot ${e.slots} unlocked`,
+          LOG_COLOR.level,
+        ),
+        toast("Party slots", `${e.slots} of 4 slots unlocked`),
+      ];
+    case "classic.party.downed":
+      return [
+        log(`${e.name} is down`, LOG_COLOR.death),
+        toast("Party", `${e.name} is down. Click them to revive.`, "death"),
+      ];
+    case "classic.party.reviving":
+      return [log(`${nameOf(e.by)} starts reviving ${nameOf(e.hero)}`, LOG_COLOR.system)];
+    case "classic.party.reviveCancelled":
+      return [log(`Revive of ${nameOf(e.hero)} cancelled`, LOG_COLOR.system)];
+    case "classic.party.revived": {
+      const name = nameOf(e.hero);
+      const text =
+        e.via === "ally"
+          ? `${name} is back on their feet`
+          : e.via === "town"
+            ? `${name} returns to the party in town`
+            : `${name} is revived`;
+      return [log(text, LOG_COLOR.quest), toast("Party", text)];
+    }
+    case "classic.party.wiped":
+      return [
+        log("Your party has fallen", LOG_COLOR.death),
+        toast("Party", "Your party has fallen", "death"),
+      ];
+    case "classic.party.itemGiven":
+      return [log(`${nameOf(e.from)} gives ${e.name} to ${nameOf(e.to)}`, LOG_COLOR.system)];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Feedback of one event (docs/design/party.md §10.5). Events about the controlled hero (no `hero`
+ * field, or the controlled entity) keep every visual. A follower's event keeps only compact feedback:
+ * its log lines, named ("Brannoc: Learned Strike"), and a small toast when it levels up. Floating
+ * numbers, effects on the controlled hero, panels, vendors and shakes stay with the controlled hero.
+ * Party events (classic.party.*) drop the planned log and toast and get the lines above instead.
+ */
+export function feedbackFor(ev: GameEvent, visuals: Visual[], env: FeedbackEnv): Visual[] {
+  const e = ev as unknown as { type: string; hero?: Entity; level?: number };
+  if (e.type.startsWith("classic.party.")) {
+    return [
+      ...visuals.filter((v) => v.kind !== "log" && v.kind !== "toast"),
+      ...partyLines(ev, env),
+    ];
+  }
+  const hero = e.hero ?? 0;
+  if (hero === 0 || hero === env.controlled) return visuals;
+  const name = env.nameOf(hero);
+  if (e.type === "classic.levelUp") {
+    return [
+      {
+        kind: "log",
+        logKind: "level",
+        text: `${name} reached level ${e.level ?? 0}`,
+        color: LOG_COLOR.level,
+      },
+      {
+        kind: "toast",
+        toastKind: "info",
+        title: name,
+        body: `Reached level ${e.level ?? 0}`,
+        ms: PARTY_TOAST_MS,
+      },
+    ];
+  }
+  // The hero's own death and respawn lines do not fit another member; the party events say it.
+  if (e.type === "classic.hero.died" || e.type === "classic.hero.respawned") return [];
+  const out: Visual[] = [];
+  for (const v of visuals) {
+    if (v.kind === "log") out.push({ ...v, text: `${name}: ${v.text}` });
+    else if (v.kind === "effect" && v.spec.kind !== "levelup") out.push(v);
+    else if (v.kind === "error") out.push(v);
+  }
+  return out;
 }
 
 export function createClassicGame(deps: GameDeps): ClassicGame {
@@ -444,7 +592,10 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       }
       let visuals: Visual[];
       try {
-        visuals = planEvent(ev, env);
+        visuals = feedbackFor(ev, planEvent(ev, env), {
+          controlled: env.hero,
+          nameOf: (e) => heroNameIn(sim.world, e),
+        });
       } catch (err) {
         reportError(err);
         continue;

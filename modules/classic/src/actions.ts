@@ -17,10 +17,15 @@
  * - Shared operations live in the owner module as `execX(world, ctx, ...): OpResult`
  *   and are used by both the action (throw ActionError when !ok) and the
  *   owner's command system (emit classic.command.failed when !ok).
+ * - Party (docs/design/party.md §4): manual actions ALWAYS act for the
+ *   controlled hero (GameState.hero / heroOf). Ops that act for a hero take
+ *   that hero as a parameter; command systems resolve it with
+ *   party/shared.ts commandHero(world, cmd) (HeroCommand.hero, else the
+ *   controlled hero), so the party AI can command any member.
  */
 import type { Entity } from "@gamez/kernel";
 import type { Attr, EquipSlot, ItemCategory, ItemRarity } from "./types.ts";
-import type { AutoConfig, ControlMode, LootFilter, SimSpeed } from "./resources.ts";
+import type { AutoConfig, ControlMode, LootFilter, PartyConfig, SimSpeed } from "./resources.ts";
 
 export const MANUAL_OVERRIDE_TICKS = 60;
 /** Max hero distance (sub) to an NPC / Interactable for ops that need one (buy, sell, heal, stash, stairs, waypoint, portal). */
@@ -86,6 +91,21 @@ export const ACTION = {
   // classic.rift
   openRift: "classic.openRift",
   leaveRift: "classic.leaveRift",
+  // ---- party (docs/design/party.md §4): classic.party
+  /** Town: create a new hero (any class) in a free slot. */
+  partyRecruit: "classic.party.recruit",
+  /** Town: dismiss a member (not the founder); its gear goes to the shared stash. */
+  partyDismiss: "classic.party.dismiss",
+  partyRename: "classic.party.rename",
+  /** New slot order (a permutation of the members). */
+  partyReorder: "classic.party.reorder",
+  /** Take control of a member (GameState.hero). */
+  partyControl: "classic.party.control",
+  partyConfig: "classic.party.config",
+  /** Town: buy the next party slot with gold. */
+  partyBuySlot: "classic.party.buySlot",
+  /** Move a bag item of the controlled hero into another member's bag. */
+  partyGive: "classic.party.give",
 } as const;
 
 export type ActionName = (typeof ACTION)[keyof typeof ACTION];
@@ -168,6 +188,20 @@ export interface ActionPayloads {
   "classic.openRift": { target: Entity; level: number };
   /** In a rift: abandon it (failed, reason "left") and return to town. After completion: return to town. */
   "classic.leaveRift": Record<string, never>;
+  // ---- party
+  /** Same rules as classic.newHero (class id, cleanHeroName); town only; free unlocked slot; fee paid from the purse. */
+  "classic.party.recruit": { classId: string; name: string };
+  /** `hero` = a member other than the founder; town only. */
+  "classic.party.dismiss": { hero: Entity };
+  "classic.party.rename": { hero: Entity; name: string };
+  /** Every member exactly once. */
+  "classic.party.reorder": { order: Entity[] };
+  /** A member (alive or downed). */
+  "classic.party.control": { hero: Entity };
+  "classic.party.config": { config: Partial<PartyConfig> };
+  "classic.party.buySlot": Record<string, never>;
+  /** `uid` in the controlled hero's bag; `to` another member with room. */
+  "classic.party.give": { uid: number; to: Entity };
 }
 
 /** Standard ActionError codes. */
@@ -224,6 +258,17 @@ export const ERR = {
   inRift: "in_rift",
   notInRift: "not_in_rift",
   badTab: "bad_tab",
+  // ---- party
+  /** Not a member of the party. */
+  notMember: "not_member",
+  /** No free unlocked slot (recruit) / every slot already unlocked (buySlot). */
+  partyFull: "party_full",
+  /** The founder cannot be dismissed. */
+  founder: "founder",
+  /** classic.party.reorder: not a permutation of the members. */
+  badOrder: "bad_order",
+  /** Revive: the target is not a downed member / reviver busy or in danger. */
+  notDowned: "not_downed",
 } as const;
 
 export type OpResult = { ok: true } | { ok: false; code: string; message: string };
@@ -238,8 +283,16 @@ export function fail(code: string, message: string): OpResult {
  * (update stage, see SYSTEM table) in queue order and emits
  * classic.command.failed for failures. Leftover commands are dropped by
  * classic.core.cleanup.
+ *
+ * Party: every command may carry `hero`, the member it acts for (absent = the
+ * controlled hero, which keeps solo producers unchanged). Owners resolve it
+ * with party/shared.ts commandHero(); a `hero` that is not a party member
+ * fails the command (code not_member). Producers acting for a follower MUST
+ * set it.
  */
-export type HeroCommand =
+export type HeroCommand = HeroCommandBody & { hero?: Entity };
+
+export type HeroCommandBody =
   // owner classic.items
   | { op: "pickup"; target: Entity }
   | { op: "equip"; uid: number; slot: EquipSlot | null }
@@ -271,6 +324,13 @@ export type HeroCommand =
   | { op: "usePortal" }
   | { op: "stairs"; target: Entity }
   | { op: "waypoint"; depth: number }
+  /**
+   * Party leash (docs/design/party.md §6.7): place the acting hero (`hero`, a
+   * follower) on a free walkable tile next to the acting leader, same area.
+   * Used by the party AI when a follower is stuck or farther than
+   * PartyProto.leashTeleport. Fails (not_member) for the leader itself.
+   */
+  | { op: "regroup" }
   // owner classic.progression
   | { op: "allocate"; attr: Attr; points: number }
   | { op: "learn"; skill: string }
@@ -293,7 +353,12 @@ export type HeroCommand =
   | { op: "resetTalents" }
   // owner classic.rift (wave A)
   | { op: "openRift"; target: Entity; level: number }
-  | { op: "leaveRift" };
+  | { op: "leaveRift" }
+  // owner classic.party
+  /** Start channelling a revive on a downed member `target` (the acting hero must be alive and within reviveRange). */
+  | { op: "revive"; target: Entity }
+  /** Move bag item `uid` of the acting hero into member `to`'s bag (any distance; same party). */
+  | { op: "give"; uid: number; to: Entity };
 
 export type HeroCommandOp = HeroCommand["op"];
 
@@ -303,7 +368,8 @@ export type CommandOwner =
   | "classic.progression"
   | "classic.crafting"
   | "classic.talents"
-  | "classic.rift";
+  | "classic.rift"
+  | "classic.party";
 
 export const COMMAND_OWNER: Record<HeroCommandOp, CommandOwner> = {
   pickup: "classic.items",
@@ -320,6 +386,7 @@ export const COMMAND_OWNER: Record<HeroCommandOp, CommandOwner> = {
   usePortal: "classic.world",
   stairs: "classic.world",
   waypoint: "classic.world",
+  regroup: "classic.world",
   allocate: "classic.progression",
   learn: "classic.progression",
   setBar: "classic.progression",
@@ -341,4 +408,6 @@ export const COMMAND_OWNER: Record<HeroCommandOp, CommandOwner> = {
   resetTalents: "classic.talents",
   openRift: "classic.rift",
   leaveRift: "classic.rift",
+  revive: "classic.party",
+  give: "classic.party",
 };

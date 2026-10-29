@@ -10,10 +10,13 @@
  * RunStats: goldSpent for every paid op; itemsCrafted for a successful
  * upgrade, reroll, added socket and combined gems (resources.ts RunStats
  * doc); gemsSocketed per socketed gem. Repair adds only goldSpent.
+ *
+ * Party (docs/design/party.md §7.4): every op acts for an explicit hero (its
+ * bag and equipment, its reach to the smith); gold comes from the purse.
  */
 import type { Entity, FrozenRegistry, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, INTERACT_RANGE, OK, type OpResult } from "../actions.ts";
-import { Equipment, Inventory, Npc, Pos, Wallet, type InvEntry } from "../components.ts";
+import { Equipment, Inventory, Npc, Pos, type InvEntry } from "../components.ts";
 import { emit } from "../events.ts";
 import { within } from "../fixed.ts";
 import {
@@ -42,6 +45,9 @@ import {
   clearWarned,
   emitSetChanges,
   gemBaseOf,
+  heroTag,
+  purseWallet,
+  setPurseGold,
   makeGemItem,
   rollAffixes,
   setSnapshot,
@@ -60,13 +66,17 @@ interface Smith {
   econ: Readonly<EconomyProto>;
 }
 
-/** Town, live hero, a crafting NPC in reach and the economy prototype. */
-export function smithFor(world: World, ctx: SimContext, npcEntity: Entity): Smith | OpResult {
+/** Town, `hero` alive, a crafting NPC in its reach and the economy prototype. */
+export function smithFor(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npcEntity: Entity,
+): Smith | OpResult {
   const town = townOnly(world);
   if (town) return town;
-  const h = liveHero(world);
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero = h.hero;
   if (!world.exists(npcEntity) || !world.has(npcEntity, Npc) || !world.has(npcEntity, Pos)) {
     return fail(ERR.badTarget, "no such npc");
   }
@@ -138,20 +148,16 @@ export function writeBack(world: World, hero: Entity, loc: ItemLoc, item: ItemIn
   });
 }
 
-/** Pays `cost` gold (checked first by the caller) and counts it as spent. */
-function pay(world: World, hero: Entity, cost: number): void {
+/** Pays `cost` gold from the party purse (checked first by the caller) and counts it as spent. */
+function pay(world: World, cost: number): void {
   if (cost <= 0) return;
-  const wallet = world.read(hero, Wallet);
-  world.update(hero, Wallet, { gold: wallet.gold - cost });
+  const wallet = purseWallet(world)!;
+  setPurseGold(world, wallet.purse, wallet.gold - cost);
   addRunStat(world, "goldSpent", cost);
 }
 
-function goldOf(world: World, hero: Entity): number {
-  return world.get(hero, Wallet)?.gold ?? 0;
-}
-
-function needGold(world: World, hero: Entity, cost: number): OpResult | null {
-  return goldOf(world, hero) < cost ? fail(ERR.noGold, `need ${cost} gold`) : null;
+function needGold(world: World, cost: number): OpResult | null {
+  return (purseWallet(world)?.gold ?? 0) < cost ? fail(ERR.noGold, `need ${cost} gold`) : null;
 }
 
 /** Item name without a trailing smith suffix " +N". */
@@ -170,10 +176,16 @@ export function upgradedName(name: string, level: number): string {
 // ---------------------------------------------------------------------------
 
 /** Repairs one item (uid > 0) or everything worn and carried that needs it (uid 0). */
-export function execRepair(world: World, ctx: SimContext, npc: Entity, uid: number): OpResult {
-  const s = smithFor(world, ctx, npc);
+export function execRepair(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npc: Entity,
+  uid: number,
+): OpResult {
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero, econ } = s;
+  const { econ } = s;
   const reg = ctx.registry;
 
   const targets: { item: ItemInstance; loc: ItemLoc; cost: number }[] = [];
@@ -202,18 +214,18 @@ export function execRepair(world: World, ctx: SimContext, npc: Entity, uid: numb
   }
 
   const total = targets.reduce((n, t) => n + t.cost, 0);
-  const broke = needGold(world, hero, total);
+  const broke = needGold(world, total);
   if (broke) return broke;
 
   const sets = setSnapshot(world, reg, hero);
-  pay(world, hero, total);
+  pay(world, total);
   for (const t of targets) {
     const max = t.item.dur!.max;
     writeBack(world, hero, t.loc, { ...t.item, dur: { cur: max, max } });
   }
   const uids = targets.map((t) => t.item.uid);
   clearWarned(world, uids);
-  emit(ctx, { type: "classic.repaired", uids, cost: total });
+  emit(ctx, { type: "classic.repaired", uids, cost: total, ...heroTag(world, hero) });
   emitSetChanges(world, ctx, hero, sets);
   return OK;
 }
@@ -223,22 +235,28 @@ export function execRepair(world: World, ctx: SimContext, npc: Entity, uid: numb
 // ---------------------------------------------------------------------------
 
 /** Upgrades an item one level: costs rules.upgradeCost, succeeds with chancePct[L] (ctx.rng). */
-export function execUpgrade(world: World, ctx: SimContext, npc: Entity, uid: number): OpResult {
-  const s = smithFor(world, ctx, npc);
+export function execUpgrade(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npc: Entity,
+  uid: number,
+): OpResult {
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero, econ } = s;
+  const { econ } = s;
   const f = locate(world, ctx.registry, hero, uid);
   if (!("item" in f)) return f;
   if (socketGroup(f.base) === null) return fail(ERR.badTarget, `${f.item.name} cannot be upgraded`);
   const cost = upgradeCost(econ, f.item);
   if (cost === null) return fail(ERR.maxUpgrade, `${f.item.name} is fully upgraded`);
-  const broke = needGold(world, hero, cost);
+  const broke = needGold(world, cost);
   if (broke) return broke;
 
   const level = f.item.upgrade ?? 0;
   const chance = econ.upgrade.chancePct[level] ?? 0;
   const success = ctx.rng.int(0, 99) < chance;
-  pay(world, hero, cost);
+  pay(world, cost);
   let item = f.item;
   if (success) {
     item = { ...f.item, upgrade: level + 1, name: upgradedName(f.item.name, level + 1) };
@@ -252,24 +270,31 @@ export function execUpgrade(world: World, ctx: SimContext, npc: Entity, uid: num
     level: item.upgrade ?? 0,
     success,
     cost,
+    ...heroTag(world, hero),
   });
   return OK;
 }
 
 /** New affixes for the same base, rarity and ilvl (magic and rare only). */
-export function execReroll(world: World, ctx: SimContext, npc: Entity, uid: number): OpResult {
-  const s = smithFor(world, ctx, npc);
+export function execReroll(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npc: Entity,
+  uid: number,
+): OpResult {
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero, econ } = s;
+  const { econ } = s;
   const f = locate(world, ctx.registry, hero, uid);
   if (!("item" in f)) return f;
   const cost = rerollCost(econ, f.item);
   if (cost === null) return fail(ERR.notRerollable, `${f.item.name} cannot be rerolled`);
-  const broke = needGold(world, hero, cost);
+  const broke = needGold(world, cost);
   if (broke) return broke;
 
   const rolled = rollAffixes(ctx, f.base, f.item.rarity, f.item.ilvl);
-  pay(world, hero, cost);
+  pay(world, cost);
   const item: ItemInstance = {
     ...f.item,
     mods: rolled.mods,
@@ -279,7 +304,7 @@ export function execReroll(world: World, ctx: SimContext, npc: Entity, uid: numb
   };
   writeBack(world, hero, f.loc, item);
   addRunStat(world, "itemsCrafted", 1);
-  emit(ctx, { type: "classic.rerolled", uid, name: item.name, cost });
+  emit(ctx, { type: "classic.rerolled", uid, name: item.name, cost, ...heroTag(world, hero) });
   return OK;
 }
 
@@ -288,21 +313,33 @@ export function execReroll(world: World, ctx: SimContext, npc: Entity, uid: numb
 // ---------------------------------------------------------------------------
 
 /** Adds one empty socket (EconomyProto.sockets.addCost[n]). */
-export function execAddSocket(world: World, ctx: SimContext, npc: Entity, uid: number): OpResult {
-  const s = smithFor(world, ctx, npc);
+export function execAddSocket(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npc: Entity,
+  uid: number,
+): OpResult {
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero, econ } = s;
+  const { econ } = s;
   const f = locate(world, ctx.registry, hero, uid);
   if (!("item" in f)) return f;
   const cost = socketGroup(f.base) === null ? null : socketCost(econ, f.base, f.item);
   if (cost === null) return fail(ERR.maxSockets, `${f.item.name} cannot take more sockets`);
-  const broke = needGold(world, hero, cost);
+  const broke = needGold(world, cost);
   if (broke) return broke;
-  pay(world, hero, cost);
+  pay(world, cost);
   const sockets = [...(f.item.sockets ?? []), null];
   writeBack(world, hero, f.loc, { ...f.item, sockets });
   addRunStat(world, "itemsCrafted", 1);
-  emit(ctx, { type: "classic.socket.added", uid, sockets: sockets.length, cost });
+  emit(ctx, {
+    type: "classic.socket.added",
+    uid,
+    sockets: sockets.length,
+    cost,
+    ...heroTag(world, hero),
+  });
   return OK;
 }
 
@@ -323,13 +360,13 @@ function bagGem(
 export function execSocketGem(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   npc: Entity,
   uid: number,
   gemUid: number,
 ): OpResult {
-  const s = smithFor(world, ctx, npc);
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero } = s;
   const reg = ctx.registry;
   const f = locate(world, reg, hero, uid);
   if (!("item" in f)) return f;
@@ -349,15 +386,21 @@ export function execSocketGem(
   next[slot] = gemId;
   writeBack(world, hero, f.loc, { ...f.item, sockets: next });
   addRunStat(world, "gemsSocketed", 1);
-  emit(ctx, { type: "classic.gem.socketed", uid, gem: gemId, slot });
+  emit(ctx, { type: "classic.gem.socketed", uid, gem: gemId, slot, ...heroTag(world, hero) });
   return OK;
 }
 
 /** Removes every gem of `uid` into the bag (all or nothing, ERR.bagFull) for unsocketCost. */
-export function execUnsocket(world: World, ctx: SimContext, npc: Entity, uid: number): OpResult {
-  const s = smithFor(world, ctx, npc);
+export function execUnsocket(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  npc: Entity,
+  uid: number,
+): OpResult {
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero, econ } = s;
+  const { econ } = s;
   const reg = ctx.registry;
   const f = locate(world, reg, hero, uid);
   if (!("item" in f)) return f;
@@ -369,7 +412,7 @@ export function execUnsocket(world: World, ctx: SimContext, npc: Entity, uid: nu
     if (!baseOf(reg, g)) return fail(ERR.unknownId, `unknown gem "${g}"`);
   }
   const cost = econ.sockets.unsocketCost;
-  const broke = needGold(world, hero, cost);
+  const broke = needGold(world, cost);
   if (broke) return broke;
 
   // Fit check with placeholder uids first (the bag minus nothing: the host stays where it is).
@@ -380,12 +423,12 @@ export function execUnsocket(world: World, ctx: SimContext, npc: Entity, uid: nu
     grid = next;
   }
 
-  pay(world, hero, cost);
+  pay(world, cost);
   writeBack(world, hero, f.loc, { ...f.item, sockets: sockets.map(() => null) });
   let bag: GridBag = world.read(hero, Inventory);
   for (const g of gems) bag = placeItem(reg, bag, makeGemItem(world, reg, g))!;
   world.update(hero, Inventory, { items: bag.items });
-  emit(ctx, { type: "classic.gems.removed", uid, gems, cost });
+  emit(ctx, { type: "classic.gems.removed", uid, gems, cost, ...heroTag(world, hero) });
   return OK;
 }
 
@@ -398,12 +441,13 @@ function probeItem(base: string, uid = -2): ItemInstance {
 export function execCombineGems(
   world: World,
   ctx: SimContext,
+  hero: Entity,
   npc: Entity,
   baseId: string,
 ): OpResult {
-  const s = smithFor(world, ctx, npc);
+  const s = smithFor(world, ctx, hero, npc);
   if (!("hero" in s)) return s;
-  const { hero, econ } = s;
+  const { econ } = s;
   const reg = ctx.registry;
   const base = baseOf(reg, baseId);
   if (!base?.gem) return fail(ERR.notGem, `"${baseId}" is not a gem`);
@@ -418,16 +462,16 @@ export function execCombineGems(
     .sort((a, b) => a - b)
     .slice(0, 3);
   if (uids.length < 3) return fail(ERR.needThree, `needs three ${base.name}`);
-  const broke = needGold(world, hero, cost);
+  const broke = needGold(world, cost);
   if (broke) return broke;
 
   let grid: GridBag = bag!;
   for (const u of uids) grid = removeItem(grid, u)!.bag;
   if (!placeItem(reg, grid, probeItem(to))) return fail(ERR.bagFull, "there is no room in the bag");
-  pay(world, hero, cost);
+  pay(world, cost);
   const next = placeItem(reg, grid, makeGemItem(world, reg, to))!;
   world.update(hero, Inventory, { items: next.items });
   addRunStat(world, "itemsCrafted", 1);
-  emit(ctx, { type: "classic.gems.combined", from: baseId, to, cost });
+  emit(ctx, { type: "classic.gems.combined", from: baseId, to, cost, ...heroTag(world, hero) });
   return OK;
 }

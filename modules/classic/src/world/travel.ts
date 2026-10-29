@@ -4,6 +4,16 @@
  * both its action (throws ActionError when it fails) and the command system
  * (emits classic.command.failed). Travel is a transition request: the hero
  * moves in the next classic.world.transition (pre, next tick).
+ *
+ * Party (docs/design/party.md §4.3, §6.6, §6.7):
+ * - Every op acts for an explicit hero: actions pass the controlled hero
+ *   (heroOf), the command system party/shared.ts commandHero(cmd) (a `hero`
+ *   that is not a member fails with not_member). Reach checks (stairs,
+ *   waypoint, portal) use that hero; the town portal opens where it stands
+ *   and spends a scroll from the shared purse (purseOf).
+ * - Any standing member may travel; the transition moves the whole party.
+ * - `regroup` (the party AI's leash): places a FOLLOWER (not the acting
+ *   leader) on its formation spot next to the acting leader, same area.
  */
 import {
   ActionError,
@@ -28,6 +38,7 @@ import {
   Dead,
   Interactable,
   type InteractableKind,
+  Mover,
   Pos,
   Supplies,
 } from "../components.ts";
@@ -36,8 +47,11 @@ import { emit } from "../events.ts";
 import { dist2, tileCenter, within } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { isRiftDepth } from "../rules.ts";
+import { actingLeaderOf, commandHero, partyMembers, purseOf } from "../party/shared.ts";
 import { currentDepth, dungeonOf, heroOf } from "../resources.ts";
-import { getMap } from "./maps.ts";
+import { gridOf } from "../spatial.ts";
+import { getAreaMap, getMap } from "./maps.ts";
+import { formationSpots, occupiedExcept, unitFacing } from "./party.ts";
 import { closePortal, spawnInteractableSub } from "./transition.ts";
 
 const TOWN = 0;
@@ -45,9 +59,8 @@ const STAIRS: readonly InteractableKind[] = ["stairsDown", "stairsUp"];
 const PORTALS: readonly InteractableKind[] = ["portal"];
 const WAYPOINTS: readonly InteractableKind[] = ["waypoint"];
 
-/** Common precondition: a hero exists and is alive. */
-function checkHero(world: World): OpResult {
-  const hero = heroOf(world);
+/** Common precondition: the acting hero exists and is alive. */
+function checkHero(world: World, hero: Entity): OpResult {
   if (hero === 0) return fail(ERR.noHero, "there is no hero yet");
   if (world.has(hero, Dead)) return fail(ERR.dead, "the hero is dead");
   return OK;
@@ -85,14 +98,15 @@ function hasInArea(world: World, kinds: readonly InteractableKind[]): boolean {
 }
 
 /** Opens a town portal pair from the dungeon (costs one scroll). */
-export function execTownPortal(world: World, ctx: SimContext): OpResult {
-  const ready = checkHero(world);
+export function execTownPortal(world: World, ctx: SimContext, hero: Entity): OpResult {
+  const ready = checkHero(world, hero);
   if (!ready.ok) return ready;
-  const hero = heroOf(world);
   const depth = currentDepth(world);
   if (depth === TOWN) return fail(ERR.inTown, "the town portal opens from the dungeon");
   if (isRiftDepth(depth)) return fail(ERR.inRift, "no town portal inside a rift");
-  const supplies = world.get(hero, Supplies);
+  // Scrolls are part of the shared purse (solo: the hero itself).
+  const purse = purseOf(world);
+  const supplies = world.get(purse, Supplies);
   if (!supplies || supplies.tpScrolls < 1) return fail(ERR.noScroll, "no town portal scroll");
 
   closePortal(world);
@@ -108,7 +122,7 @@ export function execTownPortal(world: World, ctx: SimContext): OpResult {
     TOWN,
   );
   dungeonOf(world).portal = { depth, x: p.x, y: p.y };
-  world.update(hero, Supplies, { tpScrolls: supplies.tpScrolls - 1 });
+  world.update(purse, Supplies, { tpScrolls: supplies.tpScrolls - 1 });
   emit(ctx, { type: "classic.portal.opened", depth });
   pushTransition(world, { to: TOWN, via: "townPortal" });
   return OK;
@@ -119,10 +133,9 @@ export function execTownPortal(world: World, ctx: SimContext): OpResult {
  * back to the portal's depth (and closes the pair on arrival), from the
  * dungeon it leads to town (the pair stays open).
  */
-export function execUsePortal(world: World): OpResult {
-  const ready = checkHero(world);
+export function execUsePortal(world: World, hero: Entity): OpResult {
+  const ready = checkHero(world, hero);
   if (!ready.ok) return ready;
-  const hero = heroOf(world);
   if (isRiftDepth(currentDepth(world))) return fail(ERR.inRift, "no portals inside a rift");
   const portal = dungeonOf(world).portal;
   if (!portal) return fail(ERR.noPortal, "no town portal is open");
@@ -135,10 +148,9 @@ export function execUsePortal(world: World): OpResult {
 }
 
 /** Takes the staircase `target` (an Interactable of the current area within reach). */
-export function execStairs(world: World, target: Entity): OpResult {
-  const ready = checkHero(world);
+export function execStairs(world: World, hero: Entity, target: Entity): OpResult {
+  const ready = checkHero(world, hero);
   if (!ready.ok) return ready;
-  const hero = heroOf(world);
   if (
     !world.exists(target) ||
     !world.has(target, Interactable) ||
@@ -164,10 +176,9 @@ export function execStairs(world: World, target: Entity): OpResult {
 }
 
 /** Travels to the unlocked waypoint of `depth`; the hero must stand at a waypoint of this area. */
-export function execWaypoint(world: World, depth: number): OpResult {
-  const ready = checkHero(world);
+export function execWaypoint(world: World, hero: Entity, depth: number): OpResult {
+  const ready = checkHero(world, hero);
   if (!ready.ok) return ready;
-  const hero = heroOf(world);
   if (isRiftDepth(currentDepth(world))) return fail(ERR.inRift, "no waypoints inside a rift");
   if (!dungeonOf(world).waypoints.includes(depth)) {
     return fail(ERR.noWaypoint, `waypoint ${depth} is not unlocked`);
@@ -182,11 +193,62 @@ export function execWaypoint(world: World, depth: number): OpResult {
   return OK;
 }
 
+/**
+ * Party leash (op `regroup`): places follower `hero` on its formation spot
+ * next to the acting leader (a free walkable tile connected to the leader's,
+ * else the nearest free one), same area. Resets its walk and moves it in the
+ * spatial grid. Fails not_member for non-members, the controlled hero and the
+ * acting leader; dead for a downed follower.
+ */
+export function execRegroup(world: World, ctx: SimContext, hero: Entity): OpResult {
+  if (hero === 0 || hero === heroOf(world)) {
+    return fail(ERR.notMember, "only a follower can regroup");
+  }
+  const leader = actingLeaderOf(world);
+  if (hero === leader || leader === 0) return fail(ERR.notMember, "the leader cannot regroup");
+  if (world.has(hero, Dead)) return fail(ERR.dead, "the hero is down");
+  const depth = currentDepth(world);
+  const hp = world.get(hero, Pos);
+  const lp = world.get(leader, Pos);
+  if (!hp || !lp || world.get(hero, AreaTag)?.depth !== depth) {
+    return fail(ERR.badTarget, "not in the leader's area");
+  }
+  if (world.get(leader, AreaTag)?.depth !== depth) {
+    return fail(ERR.badTarget, "the leader is in another area");
+  }
+  const map = getAreaMap(world, ctx.registry);
+  const followers = partyMembers(world).filter((m) => m !== leader);
+  const lt = { x: lp.x >> 8, y: lp.y >> 8 };
+  // The whole formation is laid out (slot order) and this follower takes its own spot.
+  const occupied = occupiedExcept(world, map, depth, [hero]);
+  const spots = formationSpots(
+    world,
+    ctx.registry,
+    map,
+    lt,
+    unitFacing(world, leader),
+    followers,
+    occupied,
+  );
+  const spot = spots[followers.indexOf(hero)];
+  if (!spot || (spot.x === lt.x && spot.y === lt.y)) {
+    return fail(ERR.blocked, "no room next to the leader");
+  }
+  const x = tileCenter(spot.x);
+  const y = tileCenter(spot.y);
+  world.update(hero, Pos, { x, y });
+  if (world.has(hero, Mover)) {
+    world.update(hero, Mover, { path: [], goalX: -1, goalY: -1, moving: false, blocked: 0 });
+  }
+  gridOf(world).move(hero, x, y);
+  return OK;
+}
+
 // ---------------------------------------------------------------------------
 // Command system (update 51)
 // ---------------------------------------------------------------------------
 
-const WORLD_OPS = ["townPortal", "usePortal", "stairs", "waypoint"] as const;
+const WORLD_OPS = ["townPortal", "usePortal", "stairs", "waypoint", "regroup"] as const;
 type WorldCommand = Extract<HeroCommand, { op: (typeof WORLD_OPS)[number] }>;
 
 export const worldCommandsSystem: SystemDef = {
@@ -203,15 +265,22 @@ export const worldCommandsSystem: SystemDef = {
 };
 
 function runCommand(world: World, ctx: SimContext, cmd: WorldCommand): OpResult {
+  // The acting hero: cmd.hero (a member) or the controlled hero.
+  const hero = commandHero(world, cmd);
+  if (cmd.hero !== undefined && hero === 0) {
+    return fail(ERR.notMember, "that hero is not in the party");
+  }
   switch (cmd.op) {
     case "townPortal":
-      return execTownPortal(world, ctx);
+      return execTownPortal(world, ctx, hero);
     case "usePortal":
-      return execUsePortal(world);
+      return execUsePortal(world, hero);
     case "stairs":
-      return execStairs(world, cmd.target);
+      return execStairs(world, hero, cmd.target);
     case "waypoint":
-      return execWaypoint(world, cmd.depth);
+      return execWaypoint(world, hero, cmd.depth);
+    case "regroup":
+      return execRegroup(world, ctx, cmd.hero === undefined ? 0 : hero);
   }
 }
 
@@ -237,7 +306,7 @@ export const townPortalAction: ActionDef<Record<string, never>> = {
   name: ACTION.townPortal,
   parse: (_world, payload) => parseEmpty(payload),
   apply(world, _p, ctx) {
-    runOrThrow(world, ctx, execTownPortal(world, ctx));
+    runOrThrow(world, ctx, execTownPortal(world, ctx, heroOf(world)));
   },
 };
 
@@ -245,7 +314,7 @@ export const usePortalAction: ActionDef<Record<string, never>> = {
   name: ACTION.usePortal,
   parse: (_world, payload) => parseEmpty(payload),
   apply(world, _p, ctx) {
-    runOrThrow(world, ctx, execUsePortal(world));
+    runOrThrow(world, ctx, execUsePortal(world, heroOf(world)));
   },
 };
 
@@ -253,11 +322,12 @@ export const useStairsAction: ActionDef<Record<string, never>> = {
   name: ACTION.useStairs,
   parse: (_world, payload) => parseEmpty(payload),
   apply(world, _p, ctx) {
-    const ready = checkHero(world);
+    const hero = heroOf(world);
+    const ready = checkHero(world, hero);
     if (!ready.ok) throw new ActionError(ready.code, ready.message);
-    const stairs = nearestInReach(world, heroOf(world), STAIRS);
+    const stairs = nearestInReach(world, hero, STAIRS);
     if (stairs === 0) throw new ActionError(ERR.tooFar, "no staircase within reach");
-    runOrThrow(world, ctx, execStairs(world, stairs));
+    runOrThrow(world, ctx, execStairs(world, hero, stairs));
   },
 };
 
@@ -271,6 +341,6 @@ export const useWaypointAction: ActionDef<{ depth: number }> = {
     return { depth };
   },
   apply(world, p, ctx) {
-    runOrThrow(world, ctx, execWaypoint(world, p.depth));
+    runOrThrow(world, ctx, execWaypoint(world, heroOf(world), p.depth));
   },
 };

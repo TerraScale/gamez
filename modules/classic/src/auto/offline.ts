@@ -26,12 +26,21 @@ import {
 } from "../components.ts";
 import { emit } from "../events.ts";
 import { clamp } from "../fixed.ts";
+import {
+  actingLeaderOf,
+  aliveMembers,
+  partyScaleOf,
+  partySize,
+  partyWiped,
+} from "../party/shared.ts";
 import { heroOf, RES, type DungeonState, type QuestState, type RunStats } from "../resources.ts";
 import {
   effectiveRank,
   itemValue,
   levelForXp,
   monsterLevel,
+  partyKillXp,
+  partyProtoOf,
   rollSkillDamage,
   scaledTicks,
   scaleMonster,
@@ -40,6 +49,7 @@ import {
   xpForKill,
 } from "../rules.ts";
 import { totalDamage } from "../bus.ts";
+import { isParty } from "./util.ts";
 import {
   BALANCE_ID,
   KIND,
@@ -203,6 +213,100 @@ export function computeOffline(
   return { ms, depth, monsterLevel: mlvl, kills, xp, gold, items, levels };
 }
 
+/** One member's share of a party's offline progress. */
+export interface OfflineShare {
+  hero: Entity;
+  xp: number;
+  levels: number;
+}
+
+/**
+ * Party offline progress (docs/design/party.md §6.8). The rate model of
+ * computeOffline for the ACTING LEADER's strength and level (depth), against
+ * monsters scaled for the party size (life x lifePct), times the number of
+ * standing members (the party kill rate). Each standing member gets
+ * partyKillXp for its own level per kill (Monster.xp x xpPct); gold and kept
+ * items scale with lootPct. `result` holds the party totals (xp and levels
+ * summed over the members), so classic.offline.summary keeps its shape.
+ */
+export function computePartyOffline(
+  world: World,
+  reg: FrozenRegistry,
+  elapsedMs: number,
+): { result: OfflineResult; shares: OfflineShare[] } {
+  const leader = actingLeaderOf(world);
+  const alive = aliveMembers(world);
+  const bal = reg.get<BalanceProto>(KIND.balance, BALANCE_ID);
+  const proto = partyProtoOf(reg);
+  const size = Math.max(1, partySize(world));
+  const scale = partyScaleOf(world, reg);
+  const leaderLevel = world.get(leader, Level)?.level ?? 1;
+  const ms = Math.min(elapsedMs, bal?.offlineCapMs ?? elapsedMs);
+  const minutes = Math.floor(ms / 60000);
+  const depth = offlineDepth(world, leaderLevel);
+  const mlvl = monsterLevel(depth);
+  const result: OfflineResult = {
+    ms,
+    depth,
+    monsterLevel: mlvl,
+    kills: 0,
+    xp: 0,
+    gold: 0,
+    items: 0,
+    levels: 0,
+  };
+  const shares: OfflineShare[] = [];
+  if (!bal || minutes <= 0 || alive.length === 0) return { result, shares };
+
+  const monsters = depthMonsters(reg, depth);
+  let lifeSum = 0;
+  for (const m of monsters) lifeSum += scaleMonster(m, mlvl, "normal", []).life;
+  const n = Math.max(1, monsters.length);
+  const avgLife = Math.max(1, Math.floor((Math.floor(lifeSum / n) * scale.lifePct) / 100));
+
+  const atk = bestAttack(world, reg, leader);
+  const killsPerMin = clamp(
+    Math.floor(
+      (atk.dmg * 1200 * bal.offlineEfficiencyPct * alive.length) / (atk.ticks * avgLife * 100),
+    ),
+    1,
+    KILLS_PER_MIN_MAX,
+  );
+  const kills = killsPerMin * minutes;
+
+  for (const e of alive) {
+    const lvl = world.get(e, Level);
+    const own = lvl?.level ?? 1;
+    let xpSum = 0;
+    for (const m of monsters) {
+      const pool = Math.floor((scaleMonster(m, mlvl, "normal", []).xp * scale.xpPct) / 100);
+      xpSum += partyKillXp(bal, proto, size, own, mlvl, pool);
+    }
+    const xp = kills * Math.floor(xpSum / n);
+    const levels = Math.max(0, levelForXp(bal, (lvl?.xp ?? 0) + xp) - own);
+    shares.push({ hero: e, xp, levels });
+    result.xp += xp;
+    result.levels += levels;
+  }
+
+  const goldFind = world.get(leader, HeroStats)?.goldFind ?? 0;
+  const avgPile = Math.floor(
+    ((bal.goldPerLevel[0] + bal.goldPerLevel[1]) * mlvl * (100 + goldFind)) / 200,
+  );
+  let gold = Math.floor((kills * bal.drops.normal.gold * avgPile * scale.lootPct) / 10000);
+  const items = Math.min(
+    ITEM_KEEP_MAX,
+    Math.floor((kills * ITEM_KEEP_PCT * scale.lootPct) / 10000),
+  );
+  const dropped = Math.floor((kills * bal.drops.normal.item * scale.lootPct) / 10000);
+  const sold = Math.max(0, dropped - items);
+  if (sold > 0) gold += sold * junkPrice(reg, mlvl);
+  result.kills = kills;
+  result.gold = gold;
+  result.items = items;
+  return { result, shares };
+}
+
 /** What the junk buyer pays for an average normal item of item level `ilvl`. */
 function junkPrice(reg: FrozenRegistry, ilvl: number): number {
   let buyPct = 0;
@@ -261,6 +365,10 @@ export const offlineAction: ActionDef<{ elapsedMs: number }> = {
     return { elapsedMs: ms };
   },
   apply(world, p, ctx) {
+    if (isParty(world)) {
+      applyPartyOffline(world, ctx, p.elapsedMs);
+      return;
+    }
     const hero = heroOf(world);
     if (hero === 0 || !world.has(hero, Level)) throw new ActionError(ERR.noHero, "no hero");
     if (world.has(hero, Dead)) throw new ActionError(ERR.dead, "the hero is dead");
@@ -291,3 +399,44 @@ export const offlineAction: ActionDef<{ elapsedMs: number }> = {
     });
   },
 };
+
+/**
+ * classic.offlineProgress for a party: XP to every standing member (grantXp
+ * with `hero` for the non-controlled ones), gold to the purse (grantGold),
+ * items to the stash (grantItems toStash, the owner falls back to the
+ * founder's bag), offline kills to the quests, one summary of party totals.
+ */
+function applyPartyOffline(world: World, ctx: SimContext, elapsedMs: number): void {
+  const hero = heroOf(world);
+  if (hero === 0 || !world.has(hero, Level)) throw new ActionError(ERR.noHero, "no hero");
+  if (partyWiped(world)) throw new ActionError(ERR.dead, "the party is down");
+  const { result: r, shares } = computePartyOffline(world, ctx.registry, elapsedMs);
+  for (const sh of shares) {
+    if (sh.xp <= 0) continue;
+    const cmd = { op: "grantXp", amount: sh.xp, reason: "offline" } as const;
+    pushCommand(world, sh.hero === hero ? cmd : { ...cmd, hero: sh.hero });
+  }
+  if (r.gold > 0) pushCommand(world, { op: "grantGold", amount: r.gold, reason: "offline" });
+  if (r.items > 0)
+    pushCommand(world, {
+      op: "grantItems",
+      count: r.items,
+      ilvl: r.monsterLevel,
+      minRarity: "magic",
+      toStash: true,
+      reason: "offline",
+    });
+  creditOfflineKills(world, ctx, r.kills);
+  const stats = world.getResource<RunStats>(RES.stats);
+  if (stats) stats.offlineMs += r.ms;
+  emit(ctx, {
+    type: "classic.offline.summary",
+    ms: r.ms,
+    depth: r.depth,
+    kills: r.kills,
+    xp: r.xp,
+    gold: r.gold,
+    items: r.items,
+    levels: r.levels,
+  });
+}

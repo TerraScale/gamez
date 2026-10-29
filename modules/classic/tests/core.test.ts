@@ -46,6 +46,7 @@ import {
   testSim,
   useOpenMap,
 } from "./support/harness.ts";
+import { loadScale } from "./support/perf.ts";
 
 const sub = (t: number) => tileCenter(t);
 const of = (events: GameEvent[], type: string) =>
@@ -250,10 +251,13 @@ describe("movement", () => {
       expect(ticks).toBe(100);
       best = Math.min(best, total / ticks);
     }
-    console.log(`classic.core.movement: ${best.toFixed(3)} ms/tick for 300 movers`);
-    // Budget 1 ms (logged above); the assertion allows 2x so a shared, loaded
-    // machine does not flake the suite. A real regression is far larger.
-    expect(best).toBeLessThan(2);
+    const scale = loadScale();
+    console.log(
+      `classic.core.movement: ${best.toFixed(3)} ms/tick for 300 movers (load scale ${scale.toFixed(2)})`,
+    );
+    // Budget 1 ms (logged above); the assertion allows 2x times the measured load scale
+    // (support/perf.ts) so a shared, loaded machine does not flake the suite.
+    expect(best).toBeLessThan(2 * scale);
   });
 });
 
@@ -660,6 +664,6 @@ describe("determinism", () => {
   });
 
   it("pins the hash after a fixed script", () => {
-    expect(script(9).hash()).toBe("06e0cf325772af36");
+    expect(script(9).hash()).toBe("4ced3140ac46ee29");
   });
 });

@@ -67,25 +67,28 @@ export interface Foe {
   name: string;
 }
 
-/** Awake, alive monster-team units within 12 tiles (with line of sight unless focused), ascending ids. */
-export function scanFoes(c: AutoCtx): Foe[] {
+/**
+ * Awake, alive monster-team units within `range` (default FIGHT_RANGE, 12
+ * tiles; with line of sight unless focused), ascending ids.
+ */
+export function scanFoes(c: AutoCtx, range: number = FIGHT_RANGE): Foe[] {
   const { world, reg } = c;
   const out: Foe[] = [];
-  for (const e of gridOf(world).query(c.hx, c.hy, FIGHT_RANGE)) {
+  for (const e of gridOf(world).query(c.hx, c.hy, range)) {
     if (e === c.hero) continue;
-    const f = world.get(e, Faction);
+    const f = world.peek(e, Faction);
     if (!f || f.team !== "monster" || world.has(e, Dead)) continue;
-    const life = world.get(e, Life);
+    const life = world.peek(e, Life);
     if (life && life.hp <= 0) continue;
-    const ai = world.get(e, Ai);
+    const ai = world.peek(e, Ai);
     if (ai && ai.state === "sleep") continue;
-    const p = world.get(e, Pos);
+    const p = world.peek(e, Pos);
     if (!p) continue;
     if (e !== c.st.focus && !lineOfSight(c.map, c.hx, c.hy, p.x, p.y)) continue;
     const dist = isqrt(d2To(c, p.x, p.y));
     // Spots given up as unreachable, unless the enemy is close enough to hit us.
     if (dist > 2 * TILE && isIgnored(c.st, p.x >> 8, p.y >> 8)) continue;
-    const m = world.get(e, Monster);
+    const m = world.peek(e, Monster);
     const proto = m ? reg.get<MonsterProto>(KIND.monster, m.proto) : undefined;
     const behaviour = proto?.behaviour ?? "";
     out.push({
@@ -101,6 +104,35 @@ export function scanFoes(c: AutoCtx): Foe[] {
   }
   addSummoners(c, out);
   return out;
+}
+
+/**
+ * The Foe record of one monster-team unit (no range or line-of-sight test),
+ * or null when it is dead, asleep or gone. Party followers use it to keep
+ * their focus between full scans.
+ */
+export function foeOf(c: AutoCtx, e: Entity): Foe | null {
+  const { world, reg } = c;
+  if (e === 0 || !world.exists(e) || world.has(e, Dead)) return null;
+  if (world.get(e, Faction)?.team !== "monster") return null;
+  const life = world.get(e, Life);
+  if (life && life.hp <= 0) return null;
+  if (world.get(e, Ai)?.state === "sleep") return null;
+  const p = world.get(e, Pos);
+  if (!p) return null;
+  const m = world.get(e, Monster);
+  const proto = m ? reg.get<MonsterProto>(KIND.monster, m.proto) : undefined;
+  const behaviour = proto?.behaviour ?? "";
+  return {
+    e,
+    x: p.x,
+    y: p.y,
+    dist: isqrt(d2To(c, p.x, p.y)),
+    behaviour,
+    rarity: m?.rarity ?? "normal",
+    melee: proto ? proto.keepDistance === 0 && behaviour !== "totem" : true,
+    name: m?.name ?? "enemy",
+  };
 }
 
 /**

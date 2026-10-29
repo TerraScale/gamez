@@ -14,10 +14,28 @@
  * 4. hp <= 0 -> killUnit (Dead, grid removal, DeathRecord, classic.death).
  * Hits pushed while resolving (thorns) are resolved in the same pass, so
  * nothing is left for core.cleanup to drop.
+ *
+ * Party (docs/design/party.md §6.5, §7.1):
+ * - No friendly fire: a hit from a hero-side source (any member or member
+ *   summon) on another hero-team unit is dropped before any roll (target
+ *   selection is already team-based; this is the backstop).
+ * - Threat: in a party of 2+, a standing member that hits a monster which
+ *   targets someone else turns it on the hitter (monsters/util noteThreat).
+ * - classic.hit carries `hero` when the target is a follower.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { busOf, type HitRequest } from "../bus.ts";
-import { CombatStats, Hero, Life, Mana, Pos, type CombatStatsValue } from "../components.ts";
+import {
+  Ai,
+  CombatStats,
+  Faction,
+  Hero,
+  Life,
+  Mana,
+  Monster,
+  Pos,
+  type CombatStatsValue,
+} from "../components.ts";
 import { emit } from "../events.ts";
 import { isqrt, pct, scaleTo } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
@@ -27,7 +45,18 @@ import { gridOf } from "../spatial.ts";
 import { ELEMENTS, type Damage, type SkillProto } from "../types.ts";
 import { getAreaMap, walkableSub } from "../world/maps.ts";
 import { canStand } from "../core/units.ts";
-import { bodyRadius, isBasic, isHeroSide, isLiveUnit, rollPct, skillOf, wake } from "./common.ts";
+import { noteThreat } from "../monsters/util.ts";
+import { isPartyHero } from "../party/shared.ts";
+import {
+  bigPartySize,
+  bodyRadius,
+  isBasic,
+  isHeroSide,
+  isLiveUnit,
+  rollPct,
+  skillOf,
+  wake,
+} from "./common.ts";
 import { killUnit } from "./death.ts";
 import { applyStatus } from "./statuses.ts";
 
@@ -69,27 +98,37 @@ export const resolveSystem: SystemDef = {
     const bus = busOf(world);
     if (bus.hits.length === 0) return;
     const depth = currentDepth(world);
+    const party = bigPartySize(world) > 0;
     let budget = MAX_HITS_PER_TICK;
     while (bus.hits.length > 0 && budget > 0) {
       const batch = bus.hits;
       bus.hits = [];
       for (const h of batch) {
         if (budget-- <= 0) break;
-        resolveOne(world, ctx, h, depth);
+        resolveOne(world, ctx, h, depth, party);
       }
     }
     bus.hits = [];
   },
 };
 
-function resolveOne(world: World, ctx: SimContext, h: HitRequest, depth: number): void {
+function resolveOne(
+  world: World,
+  ctx: SimContext,
+  h: HitRequest,
+  depth: number,
+  party: boolean,
+): void {
   const t = h.target;
   if (!isLiveUnit(world, t, depth)) return;
-  const tp = world.read(t, Pos);
+  // No friendly fire: hero-side sources never hurt hero-team units (before any roll).
+  if (h.source !== t && friendly(world, h.source, t)) return;
+  // Read-only values use peek() (no rollback copy per hit).
+  const tp = world.peek(t, Pos)!;
   const srcAlive = h.source !== 0 && world.exists(h.source) && isLiveUnit(world, h.source, depth);
   const src =
-    h.source !== 0 && world.exists(h.source) ? world.get(h.source, CombatStats) : undefined;
-  const def = world.get(t, CombatStats);
+    h.source !== 0 && world.exists(h.source) ? world.peek(h.source, CombatStats) : undefined;
+  const def = world.peek(t, CombatStats);
 
   // 1. to-hit and block
   if (h.canMiss && !h.dot) {
@@ -158,6 +197,7 @@ function resolveOne(world: World, ctx: SimContext, h: HitRequest, depth: number)
     }
   }
   const hero = heroOf(world);
+  const heroHit = t === hero || world.has(t, Hero);
   emit(ctx, {
     type: "classic.hit",
     source: h.source,
@@ -167,10 +207,12 @@ function resolveOne(world: World, ctx: SimContext, h: HitRequest, depth: number)
     element,
     crit,
     dot: h.dot,
-    heroHit: t === hero || world.has(t, Hero),
+    heroHit,
     byHero: isHeroSide(world, h.source),
     x: tp.x,
     y: tp.y,
+    // Party: a hit on a follower names it (the controlled hero's never do: solo unchanged).
+    ...(heroHit && t !== hero && party ? { hero: t } : {}),
   });
 
   // 4. death, else on-hit effects
@@ -187,6 +229,28 @@ function resolveOne(world: World, ctx: SimContext, h: HitRequest, depth: number)
   }
   if (h.knockback > 0 && srcAlive) knockback(world, ctx, t, h.source, h.knockback);
   wake(world, t, h.source);
+  if (party && srcAlive && world.has(t, Monster) && isPartyHero(world, h.source)) {
+    threat(world, ctx, t, h.source);
+  }
+}
+
+/** True when `source` is hero-side and `target` is a hero-team unit (a friendly hit). */
+function friendly(world: World, source: Entity, target: Entity): boolean {
+  if (source === 0) return false;
+  return world.get(target, Faction)?.team === "hero" && isHeroSide(world, source);
+}
+
+/**
+ * Party threat: a member hitting a monster that is chasing someone else
+ * turns it on the hitter, unless it switched for threat moments ago
+ * (monsters/util THREAT_HOLD, so two hitters do not flip it every hit).
+ */
+function threat(world: World, ctx: SimContext, t: Entity, by: Entity): void {
+  const ai = world.get(t, Ai);
+  if (!ai || ai.target === by || ai.state === "sleep") return;
+  if (world.get(t, Faction)?.team !== "monster") return;
+  if (!noteThreat(world, t, ctx.tick)) return;
+  world.update(t, Ai, { target: by });
 }
 
 /** Pushes `t` away from `from` by up to `dist` sub, stopping before walls. */

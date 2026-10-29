@@ -4,7 +4,7 @@
  * AreaTag on the next tick; items add the starter kit; progression computes
  * the stats every tick after that.
  */
-import type { SimContext, World } from "@gamez/kernel";
+import type { Entity, SimContext, World } from "@gamez/kernel";
 import {
   Attributes,
   Body,
@@ -56,6 +56,33 @@ export function execNewHero(
     return fail(ERR.badPayload, "name must be 1-16 letters, digits, spaces, _ or -");
   }
 
+  const e = spawnHeroEntity(world, ctx, cls, classId, name);
+
+  game.hero = e;
+  game.phase = "play";
+  world.setResource(RES.game, game);
+  pushTransition(world, { to: 0, via: "new" });
+  emit(ctx, { type: "classic.hero.created", hero: e, classId, name });
+  return OK;
+}
+
+/**
+ * Creates a level-1 hero entity of class `cls` with every progression-owned
+ * component (identity, level, attributes, skills, bar, vitals, stats,
+ * movement, body, faction, intent, statuses). It has NO Pos/AreaTag (the
+ * caller places it: world transition for classic.newHero, classic.party for
+ * recruits) and no items (classic.items.heroInit adds them next tick).
+ * Does not touch GameState. Shared by classic.newHero and
+ * classic.party.recruit (docs/design/party.md §4.1); `name` must already be
+ * clean (cleanHeroName).
+ */
+export function spawnHeroEntity(
+  world: World,
+  ctx: SimContext,
+  cls: ClassProto,
+  classId: string,
+  name: string,
+): Entity {
   const res = computeHeroStats(ctx.registry, {
     classId,
     level: 1,
@@ -95,11 +122,5 @@ export function execNewHero(
   world.add(e, Faction, { team: "hero" });
   world.add(e, Intent, { kind: "idle", source: "manual", at: ctx.tick });
   world.add(e, Statuses, { list: [] });
-
-  game.hero = e;
-  game.phase = "play";
-  world.setResource(RES.game, game);
-  pushTransition(world, { to: 0, via: "new" });
-  emit(ctx, { type: "classic.hero.created", hero: e, classId, name });
-  return OK;
+  return e;
 }

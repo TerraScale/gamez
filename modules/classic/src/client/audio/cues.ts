@@ -128,7 +128,7 @@ function effectRecipe(effect: string, radius: number): { recipe: Recipe; key: st
 
 const TABLE: { [K in ClassicEventType]: Entry<K> } = {
   // ---- combat
-  "classic.hit": (ev) => {
+  "classic.hit": (ev, env) => {
     if (ev.dot) {
       // Damage-over-time ticks are frequent: only poison bubbles, and quietly.
       return ev.element === "poison"
@@ -136,7 +136,11 @@ const TABLE: { [K in ClassicEventType]: Entry<K> } = {
         : null;
     }
     if (ev.heroHit) {
-      return cue("hit.hero", 1, 90, 0.7, S.heroHurt, at(ev.x, ev.y));
+      // The controlled hero's hurt sound is full; party followers' is quieter (docs §10.6).
+      if (ev.target === env.hero || env.hero === 0) {
+        return cue("hit.hero", 1, 90, 0.7, S.heroHurt, at(ev.x, ev.y));
+      }
+      return cue("hit.party", 0, 150, 0.3, S.heroHurt, at(ev.x, ev.y));
     }
     const prio: Prio = ev.crit ? 1 : 0;
     const hit = S.hitRecipe(ev.element);
@@ -182,8 +186,10 @@ const TABLE: { [K in ClassicEventType]: Entry<K> } = {
     return cue(fx.key, 1, 120, 0.55, fx.recipe, at(ev.x, ev.y));
   },
   "classic.status": () => null,
-  "classic.death": (ev) => {
+  "classic.death": (ev, env) => {
     if (ev.isHero || ev.rarity === "hero") {
+      // A party follower going down is announced by classic.party.downed (a thud).
+      if (ev.entity !== env.hero && env.hero !== 0) return null;
       return cue("death.hero", 2, 500, 0.8, S.heroDeath);
     }
     const pos = at(ev.x, ev.y);
@@ -204,7 +210,11 @@ const TABLE: { [K in ClassicEventType]: Entry<K> } = {
   },
   // ---- progression
   "classic.xp": () => null,
-  "classic.levelUp": () => cue("levelUp", 2, 0, 0.7, S.levelUp),
+  // The fanfare is the controlled hero's; a party member's level-up is a quiet chime.
+  "classic.levelUp": (ev, env) =>
+    ev.hero === undefined || ev.hero === env.hero
+      ? cue("levelUp", 2, 0, 0.7, S.levelUp)
+      : cue("levelUp.party", 0, 200, 0.3, S.chime(1046)),
   "classic.statAllocated": () => cue("ui.stat", 0, 60, 0.35, S.click),
   "classic.skillLearned": () => cue("ui.skill", 1, 100, 0.5, S.chime(659)),
   "classic.hero.created": () => cue("hero.created", 1, 300, 0.5, S.chime(523)),
@@ -222,11 +232,15 @@ const TABLE: { [K in ClassicEventType]: Entry<K> } = {
     if (ev.kind === "potion") return cue("loot.potion", 0, 100, 0.35, S.tick, pos);
     return { ...lootCue(ev.rarity), pos };
   },
-  "classic.loot.picked": (ev) => {
+  "classic.loot.picked": (ev, env) => {
     if (ev.kind !== "item") return null;
+    const follower = ev.hero !== undefined && ev.hero !== env.hero;
     if (ev.rarity === "rare" || ev.rarity === "set" || ev.rarity === "unique") {
+      // The loot chime is the controlled hero's; a follower's rare pickup is a soft tick.
+      if (follower) return cue("pick.party", 0, 200, 0.2, S.tick);
       return cue("pick.rare", 1, 150, 0.45, S.chime(880));
     }
+    if (follower) return null;
     return cue("pick.item", 0, 60, 0.35, S.click);
   },
   // Pickup chimes come from classic.gold / classic.potion; loot.picked stays quiet for gold and potions.
@@ -297,6 +311,20 @@ const TABLE: { [K in ClassicEventType]: Entry<K> } = {
   "classic.rift.failed": () => cue("rift.failed", 2, 500, 0.7, S.riftFail),
   // ---- wave A: achievements
   "classic.achievement.unlocked": () => cue("achievement", 2, 500, 0.7, S.fanfare),
+  // ---- party (docs/design/party.md §10.6)
+  "classic.party.recruited": () => cue("party.recruited", 2, 500, 0.7, S.fanfare),
+  "classic.party.dismissed": () => cue("party.dismissed", 1, 200, 0.4, S.click),
+  "classic.party.renamed": () => null,
+  "classic.party.reordered": () => null,
+  "classic.party.control": () => cue("party.control", 1, 150, 0.4, S.click),
+  "classic.party.config": () => null,
+  "classic.party.slots": () => cue("party.slots", 2, 500, 0.7, S.fanfare),
+  "classic.party.downed": () => cue("party.downed", 2, 400, 0.6, S.downThud),
+  "classic.party.reviving": () => null,
+  "classic.party.reviveCancelled": () => null,
+  "classic.party.revived": () => cue("party.revived", 2, 300, 0.6, S.chime(587)),
+  "classic.party.wiped": () => cue("party.wiped", 2, 500, 0.5, S.heroDeath),
+  "classic.party.itemGiven": () => cue("party.itemGiven", 1, 150, 0.4, S.click),
 };
 
 /**

@@ -20,7 +20,7 @@ import { riftTrackSystem } from "./track.ts";
 
 export const classicRift = defineModule({
   id: MODULE.rift,
-  version: "1.0.1",
+  version: "1.1.0",
   deps: [MODULE.core, MODULE.world],
   optionalDeps: [MODULE.content, MODULE.monsters, MODULE.items, MODULE.progression],
   systems: [riftCommandsSystem, riftTrackSystem],

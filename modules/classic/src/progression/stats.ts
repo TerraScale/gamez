@@ -21,7 +21,7 @@ import { pct } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { addItemStats, isBroken, type StatTotals, stat } from "../rules.ts";
 import { bonusMods } from "../bonus.ts";
-import { heroOf } from "../resources.ts";
+import { partyMembers } from "../party/shared.ts";
 import {
   ATTRS,
   BALANCE_ID,
@@ -184,11 +184,12 @@ export function computeHeroStats(registry: FrozenRegistry, input: HeroStatsInput
 
 /** Reads the hero's components into a HeroStatsInput (buffs filtered to `tick`). */
 export function heroStatsInput(world: World, hero: Entity, tick: number): HeroStatsInput {
-  const h = world.read(hero, Hero);
-  const lvl = world.read(hero, Level);
-  const base = world.read(hero, Attributes);
-  const equipment = world.get(hero, Equipment) ?? null;
-  const list = world.get(hero, Statuses)?.list ?? [];
+  // Read-only: peek() takes no rollback copy (the equipment is the biggest component).
+  const h = world.peek(hero, Hero)!;
+  const lvl = world.peek(hero, Level)!;
+  const base = world.peek(hero, Attributes)!;
+  const equipment = world.peek(hero, Equipment) ?? null;
+  const list = world.peek(hero, Statuses)?.list ?? [];
   return {
     classId: h.classId,
     level: lvl.level,
@@ -230,12 +231,10 @@ export function applyHeroStats(
   return res;
 }
 
-/** classic.progression.stats (pre -500): hero stats every tick. */
+/** classic.progression.stats (pre -500): hero stats every tick, for every party member (slot order). */
 export const progressionStats: SystemDef = {
   ...SYSTEM.progressionStats,
   run(world, ctx) {
-    const hero = heroOf(world);
-    if (hero === 0) return;
-    applyHeroStats(world, ctx.registry, hero, ctx.tick);
+    for (const hero of partyMembers(world)) applyHeroStats(world, ctx.registry, hero, ctx.tick);
   },
 };

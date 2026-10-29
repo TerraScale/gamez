@@ -18,6 +18,7 @@ import {
 import { generateArea } from "../src/world/generate.ts";
 import type { ClassicMap } from "../src/world/maps.ts";
 import { TEST_BALANCE } from "./support/content.ts";
+import { loadScale } from "./support/perf.ts";
 
 const BIG_BALANCE: BalanceProto = {
   ...TEST_BALANCE,
@@ -183,7 +184,8 @@ describe("dungeon generator", () => {
       generateArea(reg, 100 + s, 5);
       times.push(performance.now() - t0);
     }
-    expect(Math.min(...times)).toBeLessThan(30);
+    // 30 ms on an idle box, times the measured load scale (support/perf.ts).
+    expect(Math.min(...times)).toBeLessThan(30 * loadScale());
   });
 
   it("keeps every room reachable from the spawn", () => {

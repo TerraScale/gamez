@@ -9,8 +9,9 @@ import type { Entity, FrozenRegistry, GameEvent, World } from "@gamez/kernel";
 import type { EffectKind, EffectSpec, ParticleStyle } from "@gamez/ui-host";
 import type { ClassicEvent } from "../events.ts";
 import { ERR } from "../actions.ts";
-import { Hero, Monster, Talents } from "../components.ts";
+import { Hero, Monster, Pos, Summoned, Talents } from "../components.ts";
 import { SUB } from "../fixed.ts";
+import { isPartyHero } from "../party/shared.ts";
 import {
   KIND,
   type ClassProto,
@@ -97,6 +98,8 @@ const TOAST_LONG_MS = 7000;
 
 /** Healing numbers and heal effects: a white-green, distinct from poison. */
 export const HEAL_COLOR = 0xb8ffcc;
+/** Experience floats (controlled hero only): a pale blue. */
+export const XP_COLOR = 0xbfe3ff;
 
 interface EffectRow {
   kind: EffectKind;
@@ -306,6 +309,31 @@ function isArcSkill(registry: FrozenRegistry, id: string): boolean {
   return registry.get<SkillProto>(KIND.skill, id)?.shape === "arc";
 }
 
+/**
+ * True when the event is about the controlled hero: its `hero` field is absent
+ * (solo and old emitters) or equals env.hero (docs/design/party.md §5).
+ */
+export function isMineEvent(hero: Entity | undefined, env: EffectEnv): boolean {
+  return hero === undefined || hero === env.hero;
+}
+
+/** A party member other than the controlled hero (its feedback is compact). */
+function isFollowerOf(env: EffectEnv, e: Entity): boolean {
+  return e !== 0 && e !== env.hero && isPartyHero(env.world, e);
+}
+
+/** The hero a summon belongs to, or the entity itself. */
+function ownerOf(env: EffectEnv, e: Entity): Entity {
+  if (e === 0 || !env.world.exists(e)) return e;
+  return env.world.get(e, Summoned)?.owner ?? e;
+}
+
+/** A hero's display name (its Hero component), or "someone". */
+function heroNameOf(env: EffectEnv, e: Entity): string {
+  if (e === 0 || !env.world.exists(e)) return "Someone";
+  return env.world.get(e, Hero)?.name ?? "Someone";
+}
+
 /** Plans the visuals of one event. Unknown events produce no visuals. */
 export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
   const ev = raw as unknown as ClassicEvent;
@@ -342,7 +370,9 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
           spec: { kind: "hit", x, y, radius: 0.35, color: ELEMENT_COLOR[ev.element] },
         });
       }
-      if (!ev.dot && ev.byHero) {
+      // Party members' own hits and hits on them are shown as damage numbers only (no log spam).
+      const followerHit = isFollowerOf(env, ownerOf(env, ev.source));
+      if (!ev.dot && ev.byHero && !followerHit) {
         const target = nameOf(env, ev.target);
         log(
           "combat",
@@ -351,7 +381,7 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
             : `You hit ${target} for ${ev.amount}`,
           ev.crit ? LOG_COLOR.gold : LOG_COLOR.combat,
         );
-      } else if (ev.heroHit && !ev.dot) {
+      } else if (ev.heroHit && !ev.dot && !isFollowerOf(env, ev.target)) {
         // The source can be gone already (a projectile from a monster that died since).
         const who = nameOf(env, ev.source);
         log(
@@ -442,15 +472,44 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
           y: tile(ev.y),
           text: `+${ev.amount}`,
           color: HEAL_COLOR,
-          size: "m",
+          // Heals on party members read a little smaller than the controlled hero's own.
+          size: isFollowerOf(env, ev.target) ? "s" : "m",
         });
       }
       return out;
     }
     case "classic.xp": {
+      // Floating XP is for the controlled hero only; followers' XP is in their frame.
+      if (ev.amount > 0 && isMineEvent(ev.hero, env)) {
+        out.push({
+          kind: "float",
+          x: env.heroX,
+          y: env.heroY,
+          text: `+${ev.amount} XP`,
+          color: XP_COLOR,
+          size: "s",
+        });
+      }
       return out;
     }
     case "classic.levelUp": {
+      if (!isMineEvent(ev.hero, env)) {
+        // A party member levelled: a small sparkle at its place and a log line, no toast.
+        const who = ev.hero ?? 0;
+        const at = who !== 0 && env.world.exists(who) ? env.world.get(who, Pos) : undefined;
+        out.push({
+          kind: "effect",
+          spec: {
+            kind: "levelup",
+            x: at ? tile(at.x) : env.heroX,
+            y: at ? tile(at.y) : env.heroY,
+            radius: 1,
+            color: LOG_COLOR.level,
+          },
+        });
+        log("level", `${heroNameOf(env, who)} reached level ${ev.level}`, LOG_COLOR.level);
+        return out;
+      }
       out.push({
         kind: "effect",
         spec: { kind: "levelup", x: env.heroX, y: env.heroY, radius: 2, color: LOG_COLOR.level },
@@ -477,6 +536,8 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       return out;
     }
     case "classic.hero.died": {
+      // A party member going down is announced by classic.party.downed.
+      if (!isMineEvent(ev.hero, env)) return out;
       toast(
         "death",
         "You have died",
@@ -491,6 +552,7 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       return out;
     }
     case "classic.hero.respawned": {
+      if (!isMineEvent(ev.hero, env)) return out;
       log("system", "You return to town.", LOG_COLOR.system);
       return out;
     }
@@ -525,11 +587,21 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       return out;
     }
     case "classic.loot.picked": {
-      if (ev.kind === "item") log("loot", `Picked up ${ev.name}`, RARITY_COLOR[ev.rarity]);
+      if (ev.kind !== "item") return out;
+      if (isMineEvent(ev.hero, env)) {
+        log("loot", `Picked up ${ev.name}`, RARITY_COLOR[ev.rarity]);
+      } else {
+        log(
+          "loot",
+          `${heroNameOf(env, ev.hero ?? 0)} picks up ${ev.name}`,
+          RARITY_COLOR[ev.rarity],
+        );
+      }
       return out;
     }
     case "classic.gold": {
-      if (ev.amount > 0) {
+      // Gold floats over the controlled hero only (the purse is shared).
+      if (ev.amount > 0 && isMineEvent(ev.hero, env)) {
         out.push({
           kind: "float",
           x: env.heroX,
@@ -787,6 +859,64 @@ export function planEvent(raw: GameEvent, env: EffectEnv): Visual[] {
       const title = ev.title !== null ? ` - title "${ev.title}"` : "";
       toast("loot", `Achievement: ${ev.name}`, `+${ev.gold} gold${title}`, TOAST_LONG_MS);
       log("quest", `Achievement unlocked: ${ev.name}`, LOG_COLOR.quest);
+      return out;
+    }
+    // ======================= party (docs/design/party.md §10.5) =======================
+    case "classic.party.recruited": {
+      const cls = env.registry.get<ClassProto>(KIND.class, ev.classId);
+      toast("info", "Party", `${ev.name} the ${cls?.name ?? ev.classId} joins (level ${ev.level})`);
+      log("system", `${ev.name} joins the party`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.party.dismissed": {
+      log("system", `${ev.name} leaves the party`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.party.renamed": {
+      log("system", `Renamed to ${ev.name}`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.party.reordered":
+    case "classic.party.config":
+    case "classic.party.reviving":
+    case "classic.party.reviveCancelled":
+      return out;
+    case "classic.party.control": {
+      const name = heroNameOf(env, ev.hero);
+      log(
+        "system",
+        ev.reason === "player" ? `Controlling ${name}` : `${name} takes control`,
+        LOG_COLOR.system,
+      );
+      return out;
+    }
+    case "classic.party.slots": {
+      toast("info", "Party slot unlocked", `${ev.slots} heroes can travel together`);
+      log("system", `A party slot opens (${ev.slots} in all)`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.party.downed": {
+      const name = heroNameOf(env, ev.hero);
+      toast("death", `${name} is down`, "Click them to revive, or take control (F-keys).");
+      log("death", `${name} is down`, LOG_COLOR.death);
+      return out;
+    }
+    case "classic.party.revived": {
+      const name = heroNameOf(env, ev.hero);
+      const how = ev.via === "ally" ? "is back on their feet" : "is back in the fight";
+      log("system", `${name} ${how}`, LOG_COLOR.system);
+      return out;
+    }
+    case "classic.party.wiped": {
+      log("death", "Your whole party has fallen.", LOG_COLOR.death);
+      return out;
+    }
+    case "classic.party.itemGiven": {
+      log(
+        "loot",
+        `${heroNameOf(env, ev.to)} takes ${ev.name} from ${heroNameOf(env, ev.from)}`,
+        LOG_COLOR.system,
+      );
       return out;
     }
     default:

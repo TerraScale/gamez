@@ -198,6 +198,6 @@ describe("pinned drops", () => {
     for (let i = 0; i < 12; i++) {
       kill(sim, [death({ rarity: i % 4 === 0 ? "boss" : "normal", level: 2 + (i % 3) })]);
     }
-    expect(sim.hash()).toBe("05660f41019fd280");
+    expect(sim.hash()).toBe("059457ad6d3b3e12");
   });
 });

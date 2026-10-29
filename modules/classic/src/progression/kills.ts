@@ -2,20 +2,30 @@
  * classic.progression.kills (post 0): XP for hero-credited monster deaths,
  * life/mana on kill, run stats and kill quests; depth and level quests are
  * checked every tick here as well (docs/design/classic.md §6.3, §16).
+ *
+ * Party (docs/design/party.md §7.2): every STANDING member in the current
+ * area gets rules.partyKillXp for its own level and the party size; life and
+ * mana on kill and PartyMember.kills go to the hero credited with the kill
+ * (items/common.ts creditedHero: the killer, a killing summon's owner, else
+ * the controlled hero). RunStats and quests advance once per kill. A solo
+ * game (no party, or a party of one) keeps the exact solo path.
  */
-import type { SimContext, SystemDef, World } from "@gamez/kernel";
+import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { busOf, type DeathRecord } from "../bus.ts";
-import { HeroStats, Level, Life, Mana } from "../components.ts";
+import { AreaTag, Dead, HeroStats, Level, Life, Mana, PartyMember } from "../components.ts";
 import { SYSTEM } from "../ids.ts";
-import { heroOf, RES, runStatsOf, type DungeonState } from "../resources.ts";
-import { xpForKill } from "../rules.ts";
+import { creditedHero } from "../items/common.ts";
+import { partyMembers, partySize } from "../party/shared.ts";
+import { currentDepth, heroOf, RES, runStatsOf, type DungeonState } from "../resources.ts";
+import { partyKillXp, partyProtoOf, xpForKill } from "../rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../types.ts";
 import { addXp } from "./level.ts";
 import { advanceKillQuests, advanceLevelQuests } from "./quests.ts";
 
 /** Life and mana on kill (HeroStats.lifeOnKill / manaOnKill), clamped to the maxima. */
 function onKillRestore(world: World, hero: number): void {
-  const sheet = world.read(hero, HeroStats);
+  const sheet = world.get(hero, HeroStats);
+  if (!sheet) return;
   if (sheet.lifeOnKill > 0 && world.has(hero, Life)) {
     const l = world.read(hero, Life);
     world.update(hero, Life, { hp: Math.min(l.max, l.hp + sheet.lifeOnKill) });
@@ -38,7 +48,10 @@ export const progressionKills: SystemDef = {
     if (hero === 0) return;
     const deaths = busOf(world).deaths;
     const kills = deaths.filter(isCreditedKill);
-    if (kills.length > 0) creditKills(world, ctx, hero, kills);
+    if (kills.length > 0) {
+      if (partySize(world) > 1) creditPartyKills(world, ctx, kills);
+      else creditKills(world, ctx, hero, kills);
+    }
     advanceLevelQuests(world, ctx, levelDeathThisTick(world, deaths));
   },
 };
@@ -53,6 +66,15 @@ function levelDeathThisTick(world: World, deaths: DeathRecord[]): boolean {
   return deaths.some((d) => !d.isHero && d.team === "monster" && d.depth === live);
 }
 
+/** One credited kill's run stats (counters by rarity). */
+function countKill(stats: ReturnType<typeof runStatsOf>, d: DeathRecord): void {
+  stats.kills++;
+  if (d.rarity === "champion") stats.championKills++;
+  if (d.rarity === "unique") stats.uniqueKills++;
+  if (d.rarity === "boss") stats.bossKills++;
+}
+
+/** Solo (and a party of one): the hero gets everything (the pre-party path, bit-identical). */
 function creditKills(world: World, ctx: SimContext, hero: number, kills: DeathRecord[]): void {
   const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
   const stats = runStatsOf(world);
@@ -61,10 +83,41 @@ function creditKills(world: World, ctx: SimContext, hero: number, kills: DeathRe
     const xp = d.xp > 0 ? xpForKill(bal, heroLevel, d.level, d.xp) : 0;
     addXp(world, ctx, hero, xp, "kill");
     onKillRestore(world, hero);
-    stats.kills++;
-    if (d.rarity === "champion") stats.championKills++;
-    if (d.rarity === "unique") stats.uniqueKills++;
-    if (d.rarity === "boss") stats.bossKills++;
+    const pm = world.get(hero, PartyMember);
+    if (pm) world.update(hero, PartyMember, { kills: pm.kills + 1 });
+    countKill(stats, d);
+    advanceKillQuests(world, ctx, d);
+  }
+  world.setResource(RES.stats, stats);
+}
+
+/** Standing members in the current area (slot order): the ones a kill's XP is shared with. */
+function xpReceivers(world: World): Entity[] {
+  const depth = currentDepth(world);
+  return partyMembers(world).filter(
+    (e) => !world.has(e, Dead) && world.get(e, AreaTag)?.depth === depth && world.has(e, Level),
+  );
+}
+
+/** A party of two or more: shared XP, killer credit (docs/design/party.md §7.2). */
+function creditPartyKills(world: World, ctx: SimContext, kills: DeathRecord[]): void {
+  const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
+  const proto = partyProtoOf(ctx.registry);
+  const size = partySize(world);
+  const stats = runStatsOf(world);
+  for (const d of kills) {
+    for (const m of xpReceivers(world)) {
+      const own = world.read(m, Level).level;
+      const xp = d.xp > 0 ? partyKillXp(bal, proto, size, own, d.level, d.xp) : 0;
+      addXp(world, ctx, m, xp, "kill");
+    }
+    const killer = creditedHero(world, d.killer);
+    if (killer !== 0 && world.exists(killer)) {
+      if (!world.has(killer, Dead)) onKillRestore(world, killer);
+      const pm = world.get(killer, PartyMember);
+      if (pm) world.update(killer, PartyMember, { kills: pm.kills + 1 });
+    }
+    countKill(stats, d);
     advanceKillQuests(world, ctx, d);
   }
   world.setResource(RES.stats, stats);

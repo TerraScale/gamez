@@ -14,7 +14,7 @@ import { planWalk, walkAt, walkEnd } from "../../shared/walk.ts";
 import { worldOfChunk, type PresenceWorldSpec } from "../../shared/worlds.ts";
 import { RelayFanout } from "../presence/fanout.ts";
 import { FixtureError, FixtureStore, validateFixtures } from "../presence/fixtures.ts";
-import { continueWalk, sameStanding, sanitisePose } from "../presence/pose.ts";
+import { poseState, sameStanding, sanitisePose } from "../presence/pose.ts";
 import { defaultWorld } from "../presence/world.ts";
 
 /** Min interval between delta flushes; changes inside the window are coalesced. */
@@ -229,15 +229,9 @@ export class ChunkDO extends DurableObject<Env> implements ChunkApi, ChunkPoseAp
     this.#stats.poses++;
     const check = sanitisePose(pose, this.#world);
     if (!check.ok) return { ok: false, reason: check.reason };
-    const { appearance, tag } = check.pose;
     const now = Date.now();
-    const state: EntityState = {
-      ...avatar.state,
-      ...continueWalk(avatar.state, check.pose, now),
-      appearance,
-    };
-    delete state.tag;
-    if (tag !== undefined) state.tag = tag;
+    // Companions (party, §11.3) replace the list only when the report carries one.
+    const state = poseState(avatar.state, check.pose, now);
     // A keepalive of a hero standing still: nothing to broadcast.
     if (sameStanding(avatar.state, state, now)) return { ok: true };
     // Pose worlds keep poses in memory only (the row stays as of the join): a

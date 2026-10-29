@@ -120,6 +120,7 @@ Rollback uses an undo log, not a snapshot. Each `dispatch()`/`step()` call is a 
 
 - Mutate only values you got from the world in the same call. A value cached across calls and mutated later is not rolled back.
 - Do not assign one live value into another (`a.items = world.read(b, Inv).items`). Use `add`/`update`/`setResource`, which clone.
+- `world.peek(e, C)` returns the same value as `get()` without logging a copy. Use it in hot read-only loops (a monster's think, the movement index, spatial rebuilds) and never mutate what it returns; `update()` after a `peek()` is fine, because `update()` logs its own copy.
 
 ## Determinism rules
 

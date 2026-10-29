@@ -380,6 +380,11 @@ export interface RendererDebugInfo {
   shakes?: number;
   /** Identity outlines drawn right now (visible, not faded out), by kind. */
   outlines?: Record<EntityHighlight, number>;
+  /**
+   * Camera centre and its follow target, in tile coordinates (the values passed to
+   * follow()). QA uses it to check that the camera follows the controlled hero.
+   */
+  camera?: { x: number; y: number; targetX: number; targetY: number };
   activeEffects: number;
 }
 

@@ -6,10 +6,10 @@
  * Pure and deterministic; never throws on partial/old worlds (no hero yet,
  * missing wave A resources): returns [] or defaults instead.
  */
-import type { FrozenRegistry, InstanceReport, World } from "@gamez/kernel";
-import { Hero, Level } from "../components.ts";
+import type { Entity, FrozenRegistry, InstanceReport, World } from "@gamez/kernel";
+import { Hero, Level, PartyMember } from "../components.ts";
+import { founderOf, partyMembers } from "../party/shared.ts";
 import {
-  heroOf,
   RES,
   type DungeonState,
   type RiftRecord,
@@ -17,7 +17,11 @@ import {
   type RunStats,
 } from "../resources.ts";
 
-/** { table: "classic_hero", key: "hero" } once the hero exists. */
+/**
+ * { table: "classic_hero", key } once per party member (docs/design/party.md
+ * §7.4): key "hero" for the founder (existing rows keep it) and
+ * `hero:<PartyMember.uid>` for the others. Solo: the single "hero" row.
+ */
 export interface ClassicHeroReport {
   heroName: string;
   classId: string;
@@ -83,16 +87,28 @@ function riftRow(r: RiftRecord): InstanceReport {
   return { table: REPORT_TABLES.rift, key: riftKey(r.worldSeed, r.run), data: { ...data } };
 }
 
+/** The row key of a member: "hero" for the founder, else `hero:<uid>` (slot when it has no PartyMember). */
+export function heroKey(
+  founder: Entity,
+  e: Entity,
+  member: { readonly uid: number } | undefined,
+  slot: number,
+): string {
+  if (e === founder) return "hero";
+  return member ? `hero:${int(member.uid)}` : `hero:s${int(slot)}`;
+}
+
 /**
- * Hero row plus one rift row per RiftState.history record (newest first).
- * RiftState.best is also emitted when it has scrolled out of the history, so
- * the rift board keeps a best run that is older than the last 10 runs.
+ * One hero row per party member plus one rift row per RiftState.history
+ * record (newest first). RiftState.best is also emitted when it has scrolled
+ * out of the history, so the rift board keeps a best run that is older than
+ * the last 10 runs. Kills and deaths come from PartyMember when present, else
+ * RunStats (solo); depth, rifts and play time are party-wide.
  */
 export function classicReports(world: World, _registry: FrozenRegistry): InstanceReport[] {
-  const hero = heroOf(world);
-  if (hero === 0) return [];
-  const heroComp = world.get(hero, Hero);
-  const levelComp = world.get(hero, Level);
+  const members = partyMembers(world);
+  if (members.length === 0) return [];
+  const founder = founderOf(world);
   const dungeon = world.getResource<DungeonState>(RES.dungeon);
   const stats = world.getResource<RunStats>(RES.stats);
   const rift = world.getResource<RiftState>(RES.rift);
@@ -100,20 +116,29 @@ export function classicReports(world: World, _registry: FrozenRegistry): Instanc
   const best = rift?.best ?? null;
   const bestCompleted = best !== null && best.completed === true;
 
-  const heroData: ClassicHeroReport = {
-    heroName: text(heroComp?.name),
-    classId: text(heroComp?.classId),
-    level: int(levelComp?.level),
-    xp: int(levelComp?.xp),
-    deepestDepth: int(dungeon?.deepest),
-    riftBestLevel: bestCompleted ? int(best.level) : 0,
-    riftBestScore: bestCompleted ? int(best.score) : 0,
-    playTicks: int(stats?.ticksPlayed),
-    kills: int(stats?.kills),
-    deaths: int(stats?.deaths),
-  };
-
-  const out: InstanceReport[] = [{ table: REPORT_TABLES.hero, key: "hero", data: { ...heroData } }];
+  const out: InstanceReport[] = [];
+  members.forEach((e, slot) => {
+    const heroComp = world.get(e, Hero);
+    const levelComp = world.get(e, Level);
+    const member = world.get(e, PartyMember);
+    const data: ClassicHeroReport = {
+      heroName: text(heroComp?.name),
+      classId: text(heroComp?.classId),
+      level: int(levelComp?.level),
+      xp: int(levelComp?.xp),
+      deepestDepth: int(dungeon?.deepest),
+      riftBestLevel: bestCompleted ? int(best.level) : 0,
+      riftBestScore: bestCompleted ? int(best.score) : 0,
+      playTicks: int(stats?.ticksPlayed),
+      kills: int(member ? member.kills : stats?.kills),
+      deaths: int(member ? member.deaths : stats?.deaths),
+    };
+    out.push({
+      table: REPORT_TABLES.hero,
+      key: heroKey(founder, e, member, slot),
+      data: { ...data },
+    });
+  });
 
   const history = rift?.history ?? [];
   const seen = new Set<number>();

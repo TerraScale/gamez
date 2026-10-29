@@ -28,7 +28,7 @@ import {
   type MonsterProto,
   type SkillProto,
 } from "../types.ts";
-import { aggroOf, skillOf } from "./util.ts";
+import { forgetAggro, skillOf } from "./util.ts";
 
 /** On-death skill ids of a monster: its prototype first, then its mods in order. */
 function deathSkills(world: World, ctx: SimContext, e: number): string[] {
@@ -104,14 +104,14 @@ export const monstersCorpsesSystem: SystemDef = {
       if (ctx.tick - world.read(e, Dead).at < corpseTicks) continue;
       grid.remove(e);
       world.destroy(e);
-      delete aggroOf(world).last[String(e)];
+      forgetAggro(world, e);
     }
     for (const e of world.query(Summoned)) {
       if (world.read(e, AreaTag).depth !== depth) continue;
       if (shouldExpire(world, e, ctx.tick, depth)) {
         grid.remove(e);
         world.destroy(e);
-        delete aggroOf(world).last[String(e)];
+        forgetAggro(world, e);
       }
     }
   },

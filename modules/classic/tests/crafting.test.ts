@@ -930,6 +930,6 @@ describe("determinism (crafting)", () => {
   });
 
   it("pins the hash of the fixed script", () => {
-    expect(script(7).hash()).toBe("78f589135131022d");
+    expect(script(7).hash()).toBe("19a02e66f240e4db");
   });
 });

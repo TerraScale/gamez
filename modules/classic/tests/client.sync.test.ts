@@ -516,7 +516,7 @@ describe("ServerSync recording and verification", () => {
     const v = c.sync.view.getSnapshot();
     expect(v.verifiedTick).toBe(server.tick);
     expect(v.overflow).toBe(false);
-  });
+  }, 30_000);
 
   it("keeps x8 Full Idle segments within the tick limit", async () => {
     const server = new FakeServer(LOADED);

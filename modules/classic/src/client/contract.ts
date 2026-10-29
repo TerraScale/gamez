@@ -12,7 +12,14 @@ import type { PlatformScreen, PlatformServices } from "@gamez/ui-host";
 import type { BankOp, BankResult } from "@gamez/protocol";
 import type { DispatchResult, Entity } from "@gamez/kernel";
 import type { AutoPlan, HeroStatsValue } from "../components.ts";
-import type { AutoConfig, ControlMode, LootFilter, RiftRecord, SimSpeed } from "../resources.ts";
+import type {
+  AutoConfig,
+  ControlMode,
+  LootFilter,
+  PartyConfig,
+  RiftRecord,
+  SimSpeed,
+} from "../resources.ts";
 import type { ClassicMap } from "../world/maps.ts";
 import type {
   AttrBlock,
@@ -21,6 +28,7 @@ import type {
   ItemRarity,
   MonsterRarity,
   NpcRole,
+  PartyRole,
 } from "../types.ts";
 
 /** Minimal external store (useSyncExternalStore-compatible). getSnapshot returns the same object until it changes. */
@@ -64,7 +72,10 @@ export type PanelId =
   | "account"
   // ---- wave C (docs/design/wave-C.md §10.4)
   /** Hero <-> account bank and vault; opened from the stash chest (needs api.bank). */
-  | "bank";
+  | "bank"
+  // ---- party (docs/design/party.md §10)
+  /** Party roster: recruit, dismiss, rename, reorder, slots, party AI options (key P). */
+  | "party";
 
 /** Display colours (0xRRGGBB) shared by HUD and renderer. */
 export const RARITY_COLOR: Record<ItemRarity, number> = {
@@ -342,6 +353,11 @@ export interface HudSnapshot {
   phase: "choose" | "play";
   /** Class choices for the new-hero screen. */
   classes: { id: string; name: string; description: string }[];
+  /**
+   * The CONTROLLED hero (GameState.hero). With a party every hero-specific
+   * section (hero, skillBar, belt, inventory, equipment, skills, talents,
+   * craft, dps...) describes this hero; switching control switches them all.
+   */
   hero: HeroView | null;
   area: AreaView | null;
   control: ControlView;
@@ -368,6 +384,70 @@ export interface HudSnapshot {
   lootFilter?: LootFilterView | null;
   stashTabs?: StashTabView[];
   dps?: DpsView | null;
+  // ---- party (docs/design/party.md §10); built by src/client/model/party.ts
+  /** Party frames and roster. Always present once a hero exists (a party of one has one member). */
+  party?: PartyView | null;
+}
+
+// ---------------------------------------------------------------------------
+// Party HUD views (docs/design/party.md §10)
+// ---------------------------------------------------------------------------
+
+export interface PartyMemberView {
+  entity: Entity;
+  /** Slot index 0..3 (frame order). */
+  slot: number;
+  /** Hotkey label "F1".."F4". */
+  key: string;
+  name: string;
+  classId: string;
+  className: string;
+  /** ClassProto.appearance, for the portrait ("unit.hero.warrior"). */
+  appearance: string;
+  /** ClassProto.tint (portrait tint / fallback colour). */
+  tint: number;
+  level: number;
+  /** XP progress inside the current level, 0..1000 (per mille). */
+  xpPermille: number;
+  life: number;
+  lifeMax: number;
+  mana: number;
+  manaMax: number;
+  role: PartyRole;
+  /** Downed (Dead) in party play. */
+  dead: boolean;
+  /** Revive in progress on this member: reviver and progress 0..100. */
+  reviving: { by: Entity; pct: number } | null;
+  /** This is GameState.hero. */
+  controlled: boolean;
+  /** The acting leader (formation and travel follow it). */
+  leader: boolean;
+  founder: boolean;
+  /** AutoState.plan of the member ("none" when it has no AutoState). */
+  plan: AutoPlan;
+  /** Unspent stat + skill + talent points (badge on the frame). */
+  unspent: number;
+  /** Debuffs and buffs, soonest to expire first (at most 4 for the frame). */
+  statuses: StatusView[];
+}
+
+export interface PartyView {
+  members: PartyMemberView[];
+  /** Unlocked slots (1..maxMembers). */
+  slots: number;
+  maxMembers: number;
+  /** Gold price of the next slot (null: all unlocked). */
+  nextSlotPrice: number | null;
+  /** Boss depth that unlocks the next slot for free (null: none left). */
+  nextSlotBossDepth: number | null;
+  /** What a recruit would start at and cost now, and why it is not possible ("town", "slots", "gold"; null = possible). */
+  recruit: { level: number; fee: number; blocked: "town" | "slots" | "gold" | null };
+  config: PartyConfig;
+  /** Party gold (the purse). */
+  gold: number;
+  inTown: boolean;
+  /** ControlState.mode !== "manual": every member runs on the party AI ("Party: Auto"). */
+  partyAuto: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -588,8 +668,14 @@ export interface MinimapData {
   map: ClassicMap;
   /** ExploreArea.bits of the current area (or null = all visible, e.g. town). */
   explored: readonly number[] | null;
+  /** The controlled hero (tiles). */
   heroX: number;
   heroY: number;
+  /**
+   * Party (docs/design/party.md §10.5): every OTHER member's tile position
+   * (cyan dots; downed ones hollow). Optional so older fakes stay valid.
+   */
+  party?: { x: number; y: number; dead: boolean }[];
   /** Tile positions of notable things. */
   dots: {
     x: number;

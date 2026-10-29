@@ -2,11 +2,12 @@
  * classic.progression.regen (post 300): hero life and mana regeneration.
  * HeroStats.lifeRegen / manaRegen are per second x10; each tick adds
  * value * 5 thousandths, and every whole point is paid out (docs §6.2).
+ * Party: every standing member, slot order.
  */
 import type { SystemDef, World } from "@gamez/kernel";
 import { Dead, HeroStats, Life, Mana } from "../components.ts";
 import { SYSTEM } from "../ids.ts";
-import { heroOf } from "../resources.ts";
+import { partyMembers } from "../party/shared.ts";
 
 /** Thousandths of a point per tick for a x10-per-second rate. */
 const ACC_PER_RATE = 5;
@@ -47,10 +48,11 @@ function regenMana(world: World, hero: number, rate: number): void {
 export const progressionRegen: SystemDef = {
   ...SYSTEM.progressionRegen,
   run(world) {
-    const hero = heroOf(world);
-    if (hero === 0 || world.has(hero, Dead) || !world.has(hero, HeroStats)) return;
-    const sheet = world.read(hero, HeroStats);
-    regenLife(world, hero, sheet.lifeRegen);
-    regenMana(world, hero, sheet.manaRegen);
+    for (const hero of partyMembers(world)) {
+      if (world.has(hero, Dead) || !world.has(hero, HeroStats)) continue;
+      const sheet = world.read(hero, HeroStats);
+      regenLife(world, hero, sheet.lifeRegen);
+      regenMana(world, hero, sheet.manaRegen);
+    }
   },
 };

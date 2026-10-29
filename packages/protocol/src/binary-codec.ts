@@ -1,11 +1,13 @@
-import type {
-  ClientMessage,
-  Codec,
-  EntityKind,
-  EntityState,
-  Frame,
-  ServerMessage,
-  TilePos,
+import {
+  MAX_COMPANIONS,
+  type ClientMessage,
+  type Codec,
+  type CompanionPose,
+  type EntityKind,
+  type EntityState,
+  type Frame,
+  type ServerMessage,
+  type TilePos,
 } from "./messages.ts";
 
 /**
@@ -18,12 +20,23 @@ import type {
  * optional tag string follows. A pose client message (tag 4) carries a flags
  * byte too: bit 0 = appearance string follows, bit 1 = tag string follows.
  * Unknown flag bits are rejected, so a newer field can never be misread.
+ *
+ * Format v3 (party, docs/design/party.md §11.3): companions. An entity's flags
+ * bit 1 says a companion list follows its tag (after it, if both are set); a
+ * pose's flags bit 2 says the same for the pose message. The list is a u8 count
+ * (at most MAX_COMPANIONS, so a longer one is rejected), then per entry: the
+ * appearance string, the name string, and the offsets dx and dy, each one signed
+ * byte (int8, -128..127; the protocol keeps them to -4..4). An empty list (count 0)
+ * is not the same as no field: [] clears the server's list, an absent field leaves it.
+ * Frames without these bits decode exactly as before.
  */
 
 const CLIENT_TAG = { hello: 1, moveTo: 2, ping: 3, pose: 4 } as const;
 const ENTITY_FLAG_TAG = 0x01;
+const ENTITY_FLAG_COMPANIONS = 0x02;
 const POSE_FLAG_APPEARANCE = 0x01;
 const POSE_FLAG_TAG = 0x02;
+const POSE_FLAG_COMPANIONS = 0x04;
 const SERVER_TAG = { welcome: 1, delta: 2, pong: 3, error: 4 } as const;
 
 const KIND_CODE: Record<EntityKind, number> = { player: 0, ghost: 1, shopkeeper: 2 };
@@ -71,6 +84,14 @@ class Writer {
     this.pos += 4;
   }
 
+  i8(v: number): void {
+    if (!Number.isInteger(v) || v < -128 || v > 127) {
+      throw new RangeError(`binary codec: ${v} does not fit in int8`);
+    }
+    this.reserve(1);
+    this.view.setInt8(this.pos++, v);
+  }
+
   f64(v: number): void {
     this.reserve(8);
     this.view.setFloat64(this.pos, v, true);
@@ -99,6 +120,19 @@ class Writer {
     this.u16(p.y);
   }
 
+  companions(list: readonly CompanionPose[]): void {
+    if (list.length > MAX_COMPANIONS) {
+      throw new RangeError(`binary codec: ${list.length} companions exceed ${MAX_COMPANIONS}`);
+    }
+    this.u8(list.length);
+    for (const c of list) {
+      this.string(c.appearance);
+      this.string(c.name);
+      this.i8(c.dx);
+      this.i8(c.dy);
+    }
+  }
+
   entity(e: EntityState): void {
     this.string(e.id);
     this.u8(KIND_CODE[e.kind]);
@@ -109,8 +143,12 @@ class Writer {
     for (const step of e.path) this.tile(step);
     this.f64(e.pathStartedAt);
     this.f64(e.speed);
-    this.u8(e.tag === undefined ? 0 : ENTITY_FLAG_TAG);
+    this.u8(
+      (e.tag === undefined ? 0 : ENTITY_FLAG_TAG) |
+        (e.companions === undefined ? 0 : ENTITY_FLAG_COMPANIONS),
+    );
     if (e.tag !== undefined) this.string(e.tag);
+    if (e.companions !== undefined) this.companions(e.companions);
   }
 
   entities(list: EntityState[]): void {
@@ -160,6 +198,10 @@ class Reader {
     return this.view.getUint32(this.take(4), true);
   }
 
+  i8(): number {
+    return this.view.getInt8(this.take(1));
+  }
+
   f64(): number {
     return this.view.getFloat64(this.take(8), true);
   }
@@ -195,6 +237,23 @@ class Reader {
     return { x: this.u16(), y: this.u16() };
   }
 
+  companions(): CompanionPose[] {
+    const n = this.u8();
+    if (n > MAX_COMPANIONS) {
+      throw new Error(`binary codec: ${n} companions exceed ${MAX_COMPANIONS}`);
+    }
+    const list: CompanionPose[] = [];
+    for (let i = 0; i < n; i++) {
+      list.push({
+        appearance: this.string(),
+        name: this.string(),
+        dx: this.i8(),
+        dy: this.i8(),
+      });
+    }
+    return list;
+  }
+
   entity(): EntityState {
     const id = this.string();
     const kindCode = this.u8();
@@ -211,8 +270,11 @@ class Reader {
       speed: this.f64(),
     };
     const flags = this.u8();
-    if (flags & ~ENTITY_FLAG_TAG) throw new Error(`binary codec: unknown entity flags ${flags}`);
+    if (flags & ~(ENTITY_FLAG_TAG | ENTITY_FLAG_COMPANIONS)) {
+      throw new Error(`binary codec: unknown entity flags ${flags}`);
+    }
     if (flags & ENTITY_FLAG_TAG) state.tag = this.string();
+    if (flags & ENTITY_FLAG_COMPANIONS) state.companions = this.companions();
     return state;
   }
 
@@ -250,10 +312,12 @@ function encodeClient(msg: ClientMessage): Uint8Array {
       w.f64(msg.speed);
       w.u8(
         (msg.appearance === undefined ? 0 : POSE_FLAG_APPEARANCE) |
-          (msg.tag === undefined ? 0 : POSE_FLAG_TAG),
+          (msg.tag === undefined ? 0 : POSE_FLAG_TAG) |
+          (msg.companions === undefined ? 0 : POSE_FLAG_COMPANIONS),
       );
       if (msg.appearance !== undefined) w.string(msg.appearance);
       if (msg.tag !== undefined) w.string(msg.tag);
+      if (msg.companions !== undefined) w.companions(msg.companions);
       break;
     default:
       throw new Error(`binary codec: unknown client message ${(msg as { t: string }).t}`);
@@ -280,12 +344,13 @@ function decodeClient(frame: Frame | ArrayBuffer): ClientMessage {
       const path = Array.from({ length: r.count() }, () => r.tile());
       const speed = r.f64();
       const flags = r.u8();
-      if (flags & ~(POSE_FLAG_APPEARANCE | POSE_FLAG_TAG)) {
+      if (flags & ~(POSE_FLAG_APPEARANCE | POSE_FLAG_TAG | POSE_FLAG_COMPANIONS)) {
         throw new Error(`binary codec: unknown pose flags ${flags}`);
       }
       msg = { t: "pose", pos, path, speed };
       if (flags & POSE_FLAG_APPEARANCE) msg.appearance = r.string();
       if (flags & POSE_FLAG_TAG) msg.tag = r.string();
+      if (flags & POSE_FLAG_COMPANIONS) msg.companions = r.companions();
       break;
     }
     default:

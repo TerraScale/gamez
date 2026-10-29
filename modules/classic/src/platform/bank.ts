@@ -49,6 +49,7 @@ import { liveHero } from "../items/common.ts";
 import { placeItem, removeItem } from "../items/inventory.ts";
 import { withTab } from "../items/stash.ts";
 import { townOnly } from "../items/vendor.ts";
+import { purseOf } from "../party/shared.ts";
 import { nextUid, RES, type StashState } from "../resources.ts";
 import type { ItemInstance } from "../types.ts";
 import { itemToVault, vaultToItem } from "./vault-codec.ts";
@@ -209,21 +210,24 @@ const bankAction: ActionDef<ClassicBankPayload> = {
     switch (op.kind) {
       case "depositGold": {
         if (op.gold > proto.maxAmount) bad(`at most ${proto.maxAmount} gold per deposit`);
-        const wallet = world.get(hero, Wallet);
+        // Gold lives in the party purse (docs/design/party.md §2.2): the founder's Wallet.
+        const purse = purseOf(world);
+        const wallet = world.get(purse, Wallet);
         if (!wallet) throw new ActionError(ERR.noHero, "the hero has no wallet yet");
         if (op.gold > wallet.gold) throw new ActionError(ERR.noGold, "not enough gold");
         const credit = op.gold - bankFee(op.gold, proto);
         if (credit <= 0) throw new ActionError(ERR.empty, "the deposit does not cover the fee");
-        world.update(hero, Wallet, { gold: wallet.gold - op.gold });
+        world.update(purse, Wallet, { gold: wallet.gold - op.gold });
         ctx.emit(effect(p.opId, credit, null, op.gold));
         return;
       }
       case "withdrawCoin": {
         if (op.coin > proto.maxAmount) bad(`at most ${proto.maxAmount} coin per withdrawal`);
-        const wallet = world.get(hero, Wallet);
+        const purse = purseOf(world);
+        const wallet = world.get(purse, Wallet);
         if (!wallet) throw new ActionError(ERR.noHero, "the hero has no wallet yet");
         if (wallet.gold + op.coin > Number.MAX_SAFE_INTEGER) bad("too much gold");
-        world.update(hero, Wallet, { gold: wallet.gold + op.coin });
+        world.update(purse, Wallet, { gold: wallet.gold + op.coin });
         ctx.emit(effect(p.opId, null, null, -op.coin));
         return;
       }
@@ -257,7 +261,7 @@ const bankAction: ActionDef<ClassicBankPayload> = {
 
 export const classicPlatform = defineModule({
   id: MODULE.platform,
-  version: "1.0.0",
+  version: "1.1.0",
   deps: [MODULE.items, MODULE.progression],
   data(reg) {
     reg.define<BankProto>(KIND_BANK, BANK_ID, { ...BANK_DEFAULTS });
