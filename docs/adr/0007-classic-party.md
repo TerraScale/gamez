@@ -113,8 +113,11 @@ modules can patch):
 - A member death in a party is "downed": it costs that member's XP share, and gold is lost only
   on a wipe. A standing ally revives it by channelling 60 ticks within 1.5 tiles (35 % life), and
   the town revives downed members. A wipe is the solo respawn.
-- **Performance.** The core sim (core, combat, monsters and world) meets the 2 ms budget with
-  4 heroes and 300 awake monsters (1.78 ms). With every module and a sustained 300-monster melee
+- **Performance (budget amended, see party.md §12).** The core sim (core, combat, monsters and
+  world) meets the 2 ms budget with 4 heroes and 300 awake monsters (1.78 ms). With every module
+  the target is relative: the party's worst case within 1.25× the solo worst case (solo itself
+  is about 2.3 ms there), and normal 4-hero Idle under 2 ms. QA's 2.75–3.7 ms readings were
+  taken at load average 27; at load 9 the bench gives 2.42 ms solo and 2.60 ms for 4 heroes. With every module and a sustained 300-monster melee
   it measures about 2.3 ms for the best 25-tick window and 2.6 ms mean. Of that, the party AI is
   about 0.5 ms (leader 0.2–0.3 ms, three followers 0.25 ms). Normal Idle play with 4 heroes costs
   about 1.1 ms per tick. Monster think is throttled to every 2 ticks in a party of 2+
@@ -129,7 +132,9 @@ modules can patch):
 The touched modules were bumped once:
 
 - core 0.4.0, world 0.4.0, combat 0.4.0, monsters 0.4.0
-- items 1.3.0, progression 0.4.0, auto 0.4.0
+- items 1.3.0, progression 0.4.0, auto 0.4.1 (0.4.0, then 0.4.1 for the mid-fight revive
+  give-up, `lead.ts reviveRetreat`; with the version unchanged every pinned hash stayed green,
+  so only the content hash moved)
 - talents 1.1.0, crafting 1.1.0, rift 1.1.0, achievements 0.2.0
 - platform 1.1.0, party 1.0.0, debug 0.4.0
 

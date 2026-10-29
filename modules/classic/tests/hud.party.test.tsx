@@ -36,7 +36,7 @@ import {
   PARTY_BUTTON,
   buildMoreItems,
 } from "../src/client/hud/widgets/PanelButtons.tsx";
-import { ALL_PANEL_IDS, SLOT } from "../src/client/hud/layout.ts";
+import { ALL_PANEL_IDS, SLOT, deathBannerTop } from "../src/client/hud/layout.ts";
 import { DEFAULT_WIDGETS, PANEL_COMPONENTS } from "../src/client/hud/index.tsx";
 import { fmtInt } from "../src/client/hud/format.ts";
 import { DEFAULT_PARTY_CONFIG } from "../src/resources.ts";
@@ -188,14 +188,16 @@ describe("party frames", () => {
     expect(html.split(`border:2px solid ${PARTY_CYAN}`)).toHaveLength(3);
     expect(CONTROL_GOLD).toBe("#ffd24a");
     expect(PARTY_CYAN).toBe("#4fd8ff");
-    expect(html).toContain("Party: Auto");
+    // "Party: Auto" lives in the control bar only (one entry point for the setting).
+    expect(html).not.toContain("Party: Auto");
+    expect(html).toContain('aria-label="Open party panel"');
   });
 
   it("shows the hotkey of each frame and the Party header on the desktop", () => {
     const html = renderToStaticMarkup(<PartyFrames api={makeApi({ party: party({}, THREE) })} />);
     expect(html).toContain(">F1<");
     expect(html).toContain(">F3<");
-    expect(html).toContain("Party: Manual");
+    expect(html).not.toContain("Party: Manual");
     expect(html).toContain('aria-label="Open party panel"');
     expect(html).toContain("width:200px");
   });
@@ -251,6 +253,34 @@ describe("party frames", () => {
     expect(controlCall(THREE[1]!)).toBeNull();
     expect(controlCall(THREE[2]!)).toEqual({ name: ACTION.partyControl, payload: { hero: 3 } });
     expect(ACTION.partyControl).toBe("classic.party.control");
+  });
+
+  it("a frame click on a downed member revives it instead of taking control of the corpse", () => {
+    const downed = member({ ...THREE[2]!, dead: true });
+    const members = [THREE[0]!, THREE[1]!, downed];
+    expect(controlCall(downed, members)).toEqual({
+      name: ACTION.interact,
+      payload: { target: 3 },
+    });
+    const allDown = members.map((m) => member({ ...m, dead: true }));
+    expect(controlCall(allDown[2]!, allDown)).toBeNull();
+    const html = renderToStaticMarkup(<PartyFrames api={makeApi({ party: party({}, members) })} />);
+    expect(html).toContain("Downed: click or F3 to revive");
+  });
+
+  it("compact frames show each member's name and level (two Warriors stay apart)", () => {
+    const twins = [
+      member({ entity: 1, slot: 0, name: "Ada", controlled: true, founder: true, level: 7 }),
+      member({ entity: 2, slot: 1, name: "Warrior 3", level: 4 }),
+    ];
+    const html = renderToStaticMarkup(
+      <PartyFrames api={makeApi({ party: party({}, twins), compact: true })} />,
+    );
+    expect(html).toContain('data-party-name="0"');
+    expect(html).toContain(">Ada<");
+    expect(html).toContain(">Warrior 3<");
+    expect(html).toContain(">7<");
+    expect(html).toContain(">4<");
   });
 
   it("labels a frame with its state", () => {
@@ -422,6 +452,13 @@ describe("death views", () => {
     expect(html).toContain("F1 takes control");
     expect(html).toContain("Respawn party in town");
     expect(html).not.toContain('role="alertdialog"');
+    // QA: the banner sat at top:8 over the Manual / Party: Auto / Idle buttons.
+    expect(html).not.toContain("top:8px");
+  });
+
+  it("the slim banner sits under the measured top region (the control bar)", () => {
+    expect(deathBannerTop({ top: 52, bottom: 120 })).toBe(52 + 16);
+    expect(deathBannerTop({ top: 0, bottom: 0 })).toBeGreaterThan(8);
   });
 
   it("a wipe: the full screen says the party has fallen", () => {

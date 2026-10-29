@@ -10,7 +10,7 @@ import type { PointerInfo } from "@gamez/ui-host";
 import type { ControlMode, SimSpeed } from "../resources.ts";
 import { SUB } from "../fixed.ts";
 import { ACTION } from "../actions.ts";
-import type { PanelId, PartyView } from "./contract.ts";
+import type { PanelId, PartyMemberView, PartyView } from "./contract.ts";
 
 export type KeyCommand =
   | { kind: "cast"; slot: number }
@@ -113,30 +113,56 @@ export function isTypingTarget(target: unknown): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable === true;
 }
 
+/** The action a frame click or F-key on a party member sends (see memberCall). */
+export type MemberCall =
+  | { name: string; payload: { hero: number } }
+  | { name: string; payload: { target: number } };
+
 /**
- * Party control for a key command (docs/design/party.md §10.4), as the action to send: F1..F4 and
- * Tab/Shift+Tab take control of a member. Null when the command is not a party command, the target
- * is missing or already controlled, or there is no party of two or more for Tab.
+ * What picking party member `m` (frame click, F1..F4) does (docs/design/party.md §10.4):
+ * a standing member takes control; a DOWNED member is never given control (a corpse cannot act),
+ * the controlled hero walks over and revives it instead (classic.interact, as a tap on the body
+ * in the world). Null for the controlled member, or for a downed one while the controlled hero
+ * is down too.
  */
-export function partyKeyCall(
-  cmd: KeyCommand,
-  party: PartyView | null,
-): { name: string; payload: { hero: number } } | null {
+export function memberCall(
+  m: PartyMemberView,
+  members: readonly PartyMemberView[],
+): MemberCall | null {
+  if (m.controlled) return null;
+  if (m.dead) {
+    const self = members.find((x) => x.controlled);
+    if (!self || self.dead) return null;
+    return { name: ACTION.interact, payload: { target: m.entity } };
+  }
+  return { name: ACTION.partyControl, payload: { hero: m.entity } };
+}
+
+/**
+ * Party control for a key command (docs/design/party.md §10.4), as the action to send: F1..F4 pick
+ * a member (memberCall: control, or revive a downed one) and Tab/Shift+Tab take control of the next
+ * standing member. Null when the command is not a party command, the target is missing or already
+ * controlled, or there is no party of two or more for Tab.
+ */
+export function partyKeyCall(cmd: KeyCommand, party: PartyView | null): MemberCall | null {
   if (!party) return null;
   const members = party.members;
   if (cmd.kind === "control") {
     const m = members[cmd.slot];
-    if (!m || m.controlled) return null;
-    return { name: ACTION.partyControl, payload: { hero: m.entity } };
+    return m ? memberCall(m, members) : null;
   }
   if (cmd.kind === "cycleControl") {
     const n = members.length;
     if (n < 2) return null;
     const at = members.findIndex((m) => m.controlled);
     const from = at < 0 ? 0 : at;
-    const next = members[(from + cmd.delta + n) % n];
-    if (!next || next.controlled) return null;
-    return { name: ACTION.partyControl, payload: { hero: next.entity } };
+    // Downed members are skipped: Tab only ever hands control to a standing hero.
+    for (let i = 1; i < n; i++) {
+      const next = members[(from + cmd.delta * i + n * n) % n];
+      if (next && !next.controlled && !next.dead)
+        return { name: ACTION.partyControl, payload: { hero: next.entity } };
+    }
+    return null;
   }
   return null;
 }

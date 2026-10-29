@@ -13,41 +13,17 @@
  *
  * Logs one PARTYIDLE stats line (docs/bench/2026-10-party.md).
  */
-import { createSim, loadMode, type Entity, type Sim } from "@gamez/kernel";
+import type { Entity, Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
-import { AutoState, Dead, Level, Pos, Wallet } from "../src/components.ts";
-import { mode, modules } from "../src/index.ts";
-import { actingLeaderOf, partyMembers, purseOf } from "../src/party/shared.ts";
+import { AutoState, Dead, Level, Pos } from "../src/components.ts";
+import { actingLeaderOf, partyMembers } from "../src/party/shared.ts";
 import { currentDepth, dungeonOf, RES, type RunStats } from "../src/resources.ts";
 import { DEFAULT_PARTY_PROTO } from "../src/rules.ts";
+import { recruitParty } from "./support/party.ts";
 
-const loaded = loadMode(mode, modules);
 const CLASSES = ["classic.warrior", "classic.rogue", "classic.sorcerer", "classic.warrior"];
-const NAMES = ["Brannoc", "Ysolde", "Corvin", "Maelis"];
 const TICKS = 40_000;
 const SAMPLE = 10;
-
-function setPurse(sim: Sim, gold: number): void {
-  sim.world.update(purseOf(sim.world), Wallet, { gold });
-}
-
-/** Founder + recruits through the real actions (slots bought with cheat gold). */
-export function recruitParty(seed: number, classes: readonly string[]): Sim {
-  const sim = createSim(loaded, { seed });
-  expect(sim.dispatch("classic.newHero", { classId: classes[0], name: NAMES[0] }, null).ok).toBe(
-    true,
-  );
-  sim.step(2);
-  for (let i = 1; i < classes.length; i++) {
-    setPurse(sim, 1_000_000);
-    expect(sim.dispatch("classic.party.buySlot", {}, null).ok, `buySlot ${i}`).toBe(true);
-    const r = sim.dispatch("classic.party.recruit", { classId: classes[i], name: NAMES[i] }, null);
-    expect(r.ok, `recruit ${classes[i]}`).toBe(true);
-    sim.step(2);
-  }
-  setPurse(sim, 200);
-  return sim;
-}
 
 function gap(sim: Sim, a: Entity, b: Entity): number {
   const pa = sim.world.read(a, Pos);

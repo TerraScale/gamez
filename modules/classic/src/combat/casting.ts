@@ -131,23 +131,25 @@ export const castingSystem: SystemDef = {
     for (const e of casters) {
       if (!inArea(world, e, depth)) continue;
       // An earlier caster this tick may have stunned or killed this one.
-      const c = world.get(e, Casting);
-      if (!c) continue;
+      // Peeked: most casters are only waiting; get() (the rollback copy) only when due.
+      const peeked = world.peek(e, Casting);
+      if (!peeked) continue;
       if (world.has(e, Dead) || isStunned(world, ctx.registry, e, tick) || !world.has(e, Pos)) {
         world.remove(e, Casting);
         continue;
       }
-      const skill = skillOf(ctx.registry, c.skill);
+      const skill = skillOf(ctx.registry, peeked.skill);
       if (!skill) {
         world.remove(e, Casting);
         continue;
       }
       const due =
         skill.shape === "pulse"
-          ? c.pulses < Math.max(1, skill.pulse?.count ?? 1) &&
-            tick >= c.hitAt + c.pulses * Math.max(1, skill.pulse?.every ?? 1)
-          : !c.fired && tick >= c.hitAt;
+          ? peeked.pulses < Math.max(1, skill.pulse?.count ?? 1) &&
+            tick >= peeked.hitAt + peeked.pulses * Math.max(1, skill.pulse?.every ?? 1)
+          : !peeked.fired && tick >= peeked.hitAt;
       if (due) {
+        const c = world.get(e, Casting)!;
         grid ??= gridOf(world);
         map ??= getAreaMap(world, ctx.registry);
         const f = fireContext(world, ctx, grid, map, depth, e, c, skill);
@@ -161,7 +163,7 @@ export const castingSystem: SystemDef = {
         }
         exploderRule(world, ctx, e, c.skill);
       }
-      if (world.has(e, Casting) && tick >= c.endAt - 1) world.remove(e, Casting);
+      if (world.has(e, Casting) && tick >= peeked.endAt - 1) world.remove(e, Casting);
     }
   },
 };

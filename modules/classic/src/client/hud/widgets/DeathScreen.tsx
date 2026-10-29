@@ -6,7 +6,8 @@
  */
 import { ACTION } from "../../../actions.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, type SlotProps } from "../common.tsx";
+import { Btn, useHudInsets, type SlotProps } from "../common.tsx";
+import { deathBannerTop } from "../layout.ts";
 import { fmtDuration, fmtInt } from "../format.ts";
 import { C, panelStyle, titleStyle } from "../styles.ts";
 
@@ -50,6 +51,7 @@ export function deathInfoOf(s: {
 
 export function DeathScreen({ api }: SlotProps) {
   const info = useSelect(api.hud, deathInfoOf);
+  const insets = useHudInsets();
   if (!info) return null;
   const ready = info.respawnIn <= 0;
   const respawn = () => api.act(ACTION.respawn, {});
@@ -62,7 +64,8 @@ export function DeathScreen({ api }: SlotProps) {
         style={{
           ...panelStyle,
           position: "absolute",
-          top: 8,
+          // Under the top region (control bar), so the mode buttons stay clickable.
+          top: deathBannerTop(insets),
           left: "50%",
           transform: "translateX(-50%)",
           maxWidth: "calc(100% - 16px)",

@@ -6,11 +6,12 @@
  * a sustained worst-case fight). One sim.step(1) per tick, like the game.
  *
  * Budget: 2 ms mean per tick on an idle dev box for the core sim (party.perf
- * asserts it). With every module and this sustained 300-monster melee the idle
- * box measures about 2.3 ms best window and 2.6 ms mean (ADR 0007), so this
- * test asserts the best 25-tick window under 2x the budget times the measured
- * load scale (support/perf.ts), the auto systems under 1 ms times the scale,
- * and logs the real numbers:
+ * asserts it). With every module and this sustained 300-monster melee even a
+ * solo hero measures about 2.3 ms, so the budget there is relative (party.md
+ * §12, amended): this test asserts the party's best 25-tick window under 1.5x
+ * the same fight solo (target 1.25x) and under 2x the budget times the
+ * measured load scale (support/perf.ts), the auto systems under 1 ms times the
+ * scale, and logs the real numbers:
  * the mean over 400 ticks, the best 25-tick window, the time spent inside
  * the auto systems (kernel "wrap" overrides with a timer), and the same world
  * with the party brains disabled (heroes idle: no AI and no hero combat).
@@ -93,14 +94,14 @@ function setPurse(sim: Sim, gold: number): void {
   sim.world.update(purseOf(sim.world), Wallet, { gold });
 }
 
-/** Four heroes recruited in town, Idle until they stand in a dungeon level. */
-function partyInDungeon(seed: number): Sim {
+/** `size` heroes (default four) recruited in town, Idle until they stand in a dungeon level. */
+function partyInDungeon(seed: number, size = CLASSES.length): Sim {
   const sim = createSim(full, { seed });
   expect(sim.dispatch("classic.newHero", { classId: CLASSES[0], name: NAMES[0] }, null).ok).toBe(
     true,
   );
   sim.step(2);
-  for (let i = 1; i < CLASSES.length; i++) {
+  for (let i = 1; i < size; i++) {
     setPurse(sim, 1_000_000);
     expect(sim.dispatch("classic.party.buySlot", {}, null).ok).toBe(true);
     expect(
@@ -232,6 +233,25 @@ describe("party AI performance (all modules)", () => {
         `the same world with the brains disabled (heroes idle, so no hero combat either): ` +
         `mean ${b.mean.toFixed(3)} ms (best ${b.best.toFixed(3)} ms); load scale ${scale.toFixed(2)}`,
     );
+    // The amended budget (party.md §12): with every module the party's worst case is held
+    // to 1.25x the solo worst case (solo alone is above 2 ms here). Asserted at 1.5x on best
+    // windows taken in turn (party, solo, party, ...), so a load spike on the shared box hits
+    // both sides alike.
+    const solo = partyInDungeon(31, 1);
+    topUp(solo);
+    solo.step(60);
+    let pairParty = Infinity;
+    let pairSolo = Infinity;
+    for (let w = 0; w < 12; w++) {
+      pairParty = Math.min(pairParty, measure(sim, 1, 25).best);
+      pairSolo = Math.min(pairSolo, measure(solo, 1, 25).best);
+    }
+    console.log(
+      `PARTYPERF solo + ${areaMonsters(solo).length} monsters, interleaved best windows: ` +
+        `party ${pairParty.toFixed(3)} ms, solo ${pairSolo.toFixed(3)} ms, ` +
+        `ratio ${(pairParty / pairSolo).toFixed(2)}`,
+    );
+    expect(pairParty).toBeLessThan(pairSolo * 1.5);
     expect(stayed, "the party stayed in the fight").toBe(true);
     // The mean swings with the box's load, so the asserted figure is the best 25-tick
     // window against the budget scaled by the measured load (2x: every module, worst case).

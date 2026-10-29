@@ -7,7 +7,9 @@ import type { AnimVisual, Visuals } from "../../src/client/render/visuals.ts";
 import {
   fadeToward,
   localRadius,
+  DOWNED_OUTLINE_ALPHA,
   OUTLINE_FADE_MS,
+  outlineTarget,
   OUTLINE_PX,
   OUTLINE_STYLE,
   OUTLINE_TAPS,
@@ -261,25 +263,41 @@ describe("EntityLayer identity outline", () => {
     expect(o.root.parent).toBe(v.body);
   });
 
-  it("fades the outline and ring out on death and back on revive", () => {
+  it("dims a downed self or party outline (still marked) and restores it on revive", () => {
     const { layer, view } = setup();
     layer.upsert(hero());
     layer.tickPulse(0);
     const o = view().outline!;
     layer.upsert(hero({ action: "death", dead: true }));
-    layer.tickPulse(OUTLINE_FADE_MS / 2);
-    expect(o.fade).toBeCloseTo(0.5, 5);
-    expect(o.root.alpha).toBeCloseTo(0.5, 5);
+    layer.tickPulse(OUTLINE_FADE_MS / 4);
+    expect(o.fade).toBeCloseTo(0.75, 5);
+    expect(o.root.alpha).toBeCloseTo(0.75, 5);
     layer.tickPulse(OUTLINE_FADE_MS * 2);
-    expect(o.fade).toBe(0);
-    expect(o.root.visible).toBe(false);
-    expect(o.ring.visible).toBe(false);
-    expect(layer.outlineCensus().self).toBe(0);
+    // QA: a downed controlled hero lost its gold ring and was unmarked in the world.
+    expect(o.fade).toBe(DOWNED_OUTLINE_ALPHA);
+    expect(o.root.visible).toBe(true);
+    expect(o.ring.visible).toBe(true);
+    expect(layer.outlineCensus().self).toBe(1);
     layer.upsert(hero());
     layer.tickPulse(OUTLINE_FADE_MS * 3);
     expect(o.fade).toBe(1);
     expect(o.root.visible).toBe(true);
     expect(o.ring.visible).toBe(true);
+  });
+
+  it("fades an ally outline out on death", () => {
+    const { layer, view } = setup();
+    layer.upsert(hero({ isSelf: false, highlight: "ally" }));
+    layer.tickPulse(0);
+    const o = view().outline!;
+    layer.upsert(hero({ isSelf: false, highlight: "ally", action: "death", dead: true }));
+    layer.tickPulse(OUTLINE_FADE_MS * 2);
+    expect(o.fade).toBe(0);
+    expect(o.root.visible).toBe(false);
+    expect(o.ring.visible).toBe(false);
+    expect(layer.outlineCensus().ally).toBe(0);
+    expect(outlineTarget("party", true)).toBe(DOWNED_OUTLINE_ALPHA);
+    expect(outlineTarget("self", false)).toBe(1);
   });
 
   it("pulses the ring every frame and keeps the width under zoom", () => {

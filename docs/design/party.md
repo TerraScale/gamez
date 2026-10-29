@@ -224,8 +224,22 @@ changes:
   repair, buy potions, stash, craft, gamble) with its own `AutoState`, using the purse. The
   leader's `"return"` step waits until every standing follower's todo is empty and the
   followers are within 4 tiles. It waits at most 600 ticks, then goes anyway.
+- **Followers spend the shared purse like the leader does (intended).** There is no separate
+  per-follower budget: every spending step keeps the solo reserves of `auto/econ.ts` (the
+  potion reserve, plus 40 gold per hero level for crafting and again for gambling, at most 70 %
+  of the surplus per visit for crafting and 4 gambles per visit), computed per hero against
+  the one purse. A rich purse therefore drops quickly on the first town visit of a new party
+  (QA: 40 000 gold went to about 28 000 in one visit: slots, fees, belts, repairs and upgrades
+  for four heroes). That is the sink working; nothing is lost. An imported solo save keeps its
+  control mode, so on Auto the first town visit spends before the player acts.
 - **Never descend or take stairs while a member is downed**, unless it is a town trip:
   revive first. If no revive succeeds within 400 ticks, go to town, which revives them.
+  The 400-tick give-up also runs **in the middle of a fight** (`lead.ts reviveRetreat`,
+  through the retreat step): nobody can revive with foes near, so a long fight used to keep a
+  member down for 800+ ticks (QA, seed 77). With a town portal scroll and outside a rift the
+  party portals out; without one it fights on and the after-fight give-up takes over.
+  Regression: `tests/party.downed.test.ts` (seed 77: every downed episode outside a rift ends
+  within 450 ticks).
 - **The retreat check uses the party.** Leave when the leader is low, or when two or more
   members are below `retreatPct` with no potions.
 
@@ -420,7 +434,7 @@ All three return at once for solo or a party of one.
 | loot % (item rolls, gold)         | 100 | 140 | 175 | 210 |
 | density % (monsters per pack)     | 100 | 110 | 120 | 130 |
 
-Rationale:
+Rationale and measured effect:
 
 - Four heroes have about 3.5–4× the damage of one (followers are slightly worse players).
   Monsters with 2.8× life die about 1.3–1.4× as fast.
@@ -429,9 +443,16 @@ Rationale:
   above the 1.8× cap). Parties level a little faster per hero, but not 4×.
 - Loot rises with mouths to feed. Density adds danger and kills without growing the tick
   budget much.
+- Density is applied when a level is generated, as `floor(n × densityPct / 100)` per pack and
+  per unique escort (never fewer than solo). Small packs of 2–3 do not grow, so 130 % adds
+  about **11 %** monsters per level in practice (`tests/world.populate.test.ts`, 24 seeds at
+  depth 3: 1 052 vs 944). A party that grows mid-level gets the denser packs from the next
+  level on; monster life, damage, XP and loot scale at spawn time.
 - `tests/party.balance.test.ts` (T-auto) checks the target band with real content:
   - Four level-matched heroes on Auto clear depth 1–4 with kills per minute of 1.2–2.5× solo.
-  - Deaths per hour stay at or below solo.
+  - Deaths per hour stay at or below solo **plus a slack of 2** (`DEATH_SLACK`). With 15-minute
+    runs solo deaths are often 0, so this bound has little statistical power; it catches a
+    broken party, not a small balance shift. "≤ solo" is not verified.
   - XP per hero per minute is 0.8–1.8× solo.
 
 **Slots:**
@@ -490,13 +511,17 @@ level, fee and blocker, config, gold, `inTown` and `partyAuto`. Everything else 
 - Each frame has a portrait, name, level, life and mana bars, a downed skull or revive
   progress, the role glyph, an unspent-points badge and the hotkey label.
 - The controlled frame has a gold border (matching the "self" outline) and the others cyan.
-- Click or tap a frame to call `act("classic.party.control", {hero})`.
-- The header shows the "Party: Auto" toggle (`classic.setControl` auto ↔ manual) and opens
-  the panel.
+- Click or tap a frame to call `act("classic.party.control", {hero})`. On a **downed**
+  member the click (and its F-key) never hands control to the corpse: the controlled hero walks
+  over and revives it (`classic.interact`, the same as a tap on the body in the world), and does
+  nothing while the controlled hero is down too (`input.ts memberCall`).
+- The header is the Party panel button. "Party: Auto" is offered only in the control bar
+  (Manual / Party: Auto / Idle), so the setting has one entry point.
 - Desktop: a vertical stack at the top left above the quest tracker, 200 × 48 px per frame.
-- Compact (< 700 px): 44 × 44 portraits with thin bars in wrapping rows (the Party button first)
-  at the top of the bottom-anchored left column, so it never climbs into the control bar. Touch
-  targets are at least 44 px. It must work at 375 px width.
+- Compact (< 700 px): 44 × 44 portraits with a level badge, the name cut to the frame width and
+  thin bars, in wrapping rows (the Party button first) at the top of the bottom-anchored left
+  column, so it never climbs into the control bar. Two heroes of one class stay apart by name.
+  Touch targets are at least 44 px. It must work at 375 px width.
 
 ### 10.3 Party panel (`panels/PartyPanel.tsx`, key **P**)
 
@@ -509,9 +534,9 @@ level, fee and blocker, config, gold, `inTown` and `partyAuto`. Everything else 
 
 ### 10.4 Input (`client/input.ts`, `client/game.ts`)
 
-- **F1–F4**: take control of slot 1–4.
-- **Tab** / **Shift+Tab**: cycle control forward and back when the party has 2 or more
-  members. With one member, Tab keeps the automap. The **`** key (Backquote) always toggles
+- **F1–F4**: take control of slot 1–4 (a downed member: revive it, as a frame click).
+- **Tab** / **Shift+Tab**: cycle control forward and back over the **standing** members when
+  the party has 2 or more members. With one member, Tab keeps the automap. The **`** key (Backquote) always toggles
   the automap.
 - **P**: party panel.
 - Space still cycles Manual → Auto → Idle for the controlled hero.
@@ -529,7 +554,8 @@ level, fee and blocker, config, gold, `inTown` and `partyAuto`. Everything else 
   everyone.
 - **DeathScreen:**
   - With a party standing, the overlay is replaced by a slim banner: "<Name> is down – F2
-    takes control · revive by clicking them · Respawn party in town".
+    takes control · revive by clicking them · Respawn party in town". It sits under the
+    measured top region (`layout.ts deathBannerTop`), never over the control bar.
   - On a wipe, it shows the solo death screen ("Your party has fallen").
 
 ### 10.6 Rendering (`client/scene.ts`)
@@ -537,7 +563,12 @@ level, fee and blocker, config, gold, `inTown` and `partyAuto`. Everything else 
 - Every member is drawn. The controlled hero gets `highlight: "self"` (gold, the "Outline my
   hero" setting) and `isSelf`, and the others get `highlight: "party"` (cyan).
 - Name plates show for all members (`showLabel`).
-- Downed members use the dead pose and a pick `"ally"`.
+- Downed members use the dead pose and a pick `"ally"`. Their outline stays on, dimmed to
+  `DOWNED_OUTLINE_ALPHA` (0.45): a downed controlled hero keeps its gold mark and downed
+  members keep cyan, so the player finds them to revive. Remote `"ally"` outlines and dead
+  summons fade out.
+- Labels of units wholly outside the view are hidden (`label-layout.ts labelOffView`) instead of
+  being clamped to the screen edge, so followers off screen do not pile names in a corner.
 - Summons owned by any member get `highlight: "party"` (port of the `party-ink-alt` ownership
   idea onto the highlight system). Remote players in town keep `"ally"` (green).
 - The camera follows the controlled hero and pans smoothly on switch: `follow()`, not `snap`,
@@ -580,6 +611,27 @@ D1 schema does not change.
 Budget: **4 heroes + 300 monsters ≤ 2 ms mean per tick** on the dev box. Assertions allow 3×
 for load, because the shared box runs other workflows. Measure with
 `tools/bench` / `tests/party.perf.test.ts`.
+
+**Amended (2026-10-28, ADR 0007 §7), after QA measured 2.75–3.7 ms on a loaded box:**
+
+- The 2 ms budget holds for the **core sim** (core, combat, monsters, world): 1.78 ms with
+  4 heroes and 300 awake monsters (1.24 ms solo).
+- With **every module**, a sustained 300-monster melee costs about 2.3–2.4 ms (best 25-tick
+  window) **even for one hero**: the extra cost is the solo game's own systems, not the party.
+  The party adds 0.2–0.6 ms there (the follower brains, about 0.25–0.3 ms). That case is
+  therefore held to a relative target: **the party's worst case stays within 1.25× the solo
+  worst case** (measured 1.07–1.25×). `party.auto.perf` asserts 1.5× on interleaved best
+  windows (party, solo, party, …, so load hits both alike), `party.perf` its core-sim mean
+  under 2.5× solo, and the bench records both rows.
+- **Normal 4-hero Idle play stays under 2 ms** (it measures about 1.0 ms per tick).
+- Why accept it: 300 awake monsters in one melee is a synthetic stress (levels wake packs
+  gradually), and at 20 ticks per second 2.4 ms is 5 % of the tick. At Idle x8 (160 ticks per
+  second) it is about 40 % of one core during such a fight, so the next cuts belong to the solo
+  sim (the aggro resource and `AutoState` rollback copies, per-tick queries in the monster
+  systems); they are outside the party scope.
+- Cuts already made: `World.peek()` in hot read loops (ADR 0007 §6), casters that only wait
+  are peeked (no rollback copy), and `World.query()` runs without closures and skips the sort
+  when ids already come in order.
 
 - Kernel `world.peek()` (ADR 0007 §6): hot read-only loops take no rollback copy. This halved
   the tick for solo and party alike.

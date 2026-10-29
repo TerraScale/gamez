@@ -96,9 +96,13 @@ opens `?debug=1&cheats=1` (`--url` picks the server; `--viewport phone` works to
 1. Grants the party with `controls.cheat {party: ["classic.rogue", "classic.sorcerer", "classic.warrior"]}`.
    When the cheat is not there yet, the run falls back to `{bossesKilled: [4, 8, 12], gold: 100000}` and
    recruits the same three through `controls.act("classic.party.recruit")`. `data.party.grant` says which path ran
-   (`party-cheat` or `fallback`). Names are Brannoc, Celene and Oren.
+   (`party-cheat` or `fallback`). The cheat names its recruits `<Class> <n>` (Rogue 1, Sorcerer 2,
+   Warrior 3); only the fallback recruits as Brannoc, Celene and Oren. The frame-name check accepts both.
 2. Takes `town-party` (outlines, name plates, party frames). The HUD's `window.__gamez.render.outlines`
    census must show one gold `self` and cyan `party` outlines. Frame names are read from the page text.
+   The `ally` count is informational only: in town it includes the presence avatars (and their
+   companions) of every other live session on the shared dev server. Downed party members keep a
+   dimmed `self` / `party` outline, so they stay in the census.
 3. Presses F2, then Tab (`control-f2`, `control-tab`). The controlled hero's name (`sim.hero.name`) must change each time.
 4. Idles at x8 for 60 s, sampling every 2 s. Takes `downed` and `revived` shots the first time each happens, and
    `idle-party` at the end.

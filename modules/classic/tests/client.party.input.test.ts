@@ -195,6 +195,39 @@ describe("party key actions", () => {
   it("other commands are not party commands", () => {
     expect(partyKeyCall({ kind: "automap" }, party(3))).toBeNull();
   });
+
+  it("an F-key on a downed member revives it (interact), never hands control to the corpse", () => {
+    const p = party(3, 0);
+    p.members[1] = { ...p.members[1]!, dead: true };
+    expect(partyKeyCall({ kind: "control", slot: 1 }, p)).toEqual({
+      name: ACTION.interact,
+      payload: { target: 11 },
+    });
+    // The controlled hero is down too: nobody can walk over, nothing is sent.
+    p.members[0] = { ...p.members[0]!, dead: true };
+    expect(partyKeyCall({ kind: "control", slot: 1 }, p)).toBeNull();
+    // A standing member still takes control.
+    expect(partyKeyCall({ kind: "control", slot: 2 }, p)).toEqual({
+      name: ACTION.partyControl,
+      payload: { hero: 12 },
+    });
+  });
+
+  it("Tab skips downed members", () => {
+    const p = party(4, 0);
+    p.members[1] = { ...p.members[1]!, dead: true };
+    expect(partyKeyCall({ kind: "cycleControl", delta: 1 }, p)).toEqual({
+      name: ACTION.partyControl,
+      payload: { hero: 12 },
+    });
+    p.members[3] = { ...p.members[3]!, dead: true };
+    expect(partyKeyCall({ kind: "cycleControl", delta: -1 }, p)).toEqual({
+      name: ACTION.partyControl,
+      payload: { hero: 12 },
+    });
+    p.members[2] = { ...p.members[2]!, dead: true };
+    expect(partyKeyCall({ kind: "cycleControl", delta: 1 }, p)).toBeNull();
+  });
 });
 
 describe("pointer on a downed member", () => {

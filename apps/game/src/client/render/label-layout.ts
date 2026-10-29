@@ -213,6 +213,24 @@ export function underChrome(x: number, y: number, outer: LabelRect, inner: Label
 }
 
 /**
+ * True when a label at its natural place (centre x, from `top` to `bottom`,
+ * `w` wide) lies entirely outside the view `rect`: its entity is off screen
+ * and the label would only show because the view clamp pulled it in, stacked
+ * at the edge far from anything (QA: off-screen party members' names piled at
+ * the bottom-right corner). Such labels are hidden; partly visible ones are
+ * still clamped.
+ */
+export function labelOffView(
+  x: number,
+  w: number,
+  top: number,
+  bottom: number,
+  rect: LabelRect,
+): boolean {
+  return x + w / 2 < rect.x0 || x - w / 2 > rect.x1 || bottom < rect.y0 || top > rect.y1;
+}
+
+/**
  * Approximate rendered width (px) of a one-line label in the UI sans font plus
  * a 3 px stroke: about 0.6 em per character (wide fallbacks such as DejaVu
  * Sans included) plus a few px of air. Used for layout only, so text is never

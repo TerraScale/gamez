@@ -733,7 +733,7 @@ export class SceneSync {
         tint,
         scale: monsterScale(mon.rarity),
         labelColor: MONSTER_LABEL_COLOR[mon.rarity],
-        highlight: e === input.hovered ? true : partyOwned ? "party" : false,
+        highlight: e === input.hovered ? true : partyOwned && !dead ? "party" : false,
         statusTint: statusTintOf(world, registry, e),
       };
       decorateUnit(ent, a, world, registry, e, mover?.speed ?? 0);

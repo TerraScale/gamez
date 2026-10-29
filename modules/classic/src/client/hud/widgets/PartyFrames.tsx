@@ -2,18 +2,20 @@
  * Party frames (classic.hud.left, order 5; docs/design/party.md §10.2): one frame per
  * member with portrait, name, level, life and mana bars, downed and revive state,
  * role, unspent-points badge and hotkey. Click or tap a frame to take control of
- * that hero. With one member and a free slot, a "+ Party" button opens the panel.
- * The header holds the "Party: Auto" toggle and the Party panel button.
+ * that hero; on a DOWNED member the click sends the controlled hero to revive it
+ * instead (input.ts memberCall: a corpse is never given control). With one member
+ * and a free slot, a "+ Party" button opens the panel. The header is the Party panel
+ * button ("Party: Auto" lives in the control bar only).
  *
- * Desktop: a column of 200 x 48 px frames. Compact (phone): 44 px portraits with
- * thin bars in wrapping rows (the panel button first), so the bottom-anchored left
- * column stays short and never climbs into the control bar; every target is at
- * least 44 px.
+ * Desktop: a column of 200 x 48 px frames. Compact (phone): 44 px portraits with a
+ * level badge, the name cut to the frame and thin bars, in wrapping rows (the panel
+ * button first), so the bottom-anchored left column stays short and never climbs
+ * into the control bar; every target is at least 44 px.
  */
 import type { CSSProperties } from "react";
-import { ACTION } from "../../../actions.ts";
 import type { ClassicClientApi, PartyMemberView, PartyView } from "../../contract.ts";
 import { hex } from "../../contract.ts";
+import { memberCall, type MemberCall } from "../../input.ts";
 import { useSelect } from "../hooks.ts";
 import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
 import { fillPercent, fmtInt } from "../format.ts";
@@ -43,20 +45,25 @@ export function frameBorder(m: PartyMemberView): string {
   return m.controlled ? CONTROL_GOLD : PARTY_CYAN;
 }
 
-/** The action a frame click sends: take control of that member (null when it is already controlled). */
+/**
+ * The action a frame click sends (input.ts memberCall): take control of a standing member,
+ * revive a downed one (walk over and channel), nothing for the controlled member.
+ */
 export function controlCall(
   m: PartyMemberView,
-): { name: string; payload: { hero: number } } | null {
-  return m.controlled ? null : { name: ACTION.partyControl, payload: { hero: m.entity } };
+  members: readonly PartyMemberView[] = [],
+): MemberCall | null {
+  return memberCall(m, members);
 }
 
-/** Hotkey-based text for the frame's button: "F2 takes control" or "" when controlled. */
+/** Hotkey-based text for the frame's button: "F2 takes control", "F2 revives" or "" when controlled. */
 export function takeControlHint(m: PartyMemberView): string {
-  return m.controlled ? "" : `${m.key} takes control`;
+  if (m.controlled) return "";
+  return m.dead ? `Downed: click or ${m.key} to revive` : `${m.key} takes control`;
 }
 
 /** Portrait: the class colour with its initial. Downed members turn grey. */
-function Portrait({ m, size }: { m: PartyMemberView; size: number }) {
+function Portrait({ m, size, level }: { m: PartyMemberView; size: number; level?: boolean }) {
   const bg = m.dead ? "#3a3733" : hex(m.tint);
   const letter = (m.className || m.classId).charAt(0).toUpperCase();
   return (
@@ -81,9 +88,35 @@ function Portrait({ m, size }: { m: PartyMemberView; size: number }) {
       }}
     >
       {letter}
+      {level ? <LevelBadge level={m.level} /> : null}
       {m.reviving ? <ReviveRing pct={m.reviving.pct} size={size} /> : null}
       {m.dead ? <DownedMark size={size} /> : null}
     </div>
+  );
+}
+
+/** Compact frames: the level in the portrait's top-left corner. */
+function LevelBadge({ level }: { level: number }) {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        left: 1,
+        top: 1,
+        minWidth: 14,
+        padding: "0 2px",
+        borderRadius: 4,
+        background: "rgba(0,0,0,0.75)",
+        color: C.goldBright,
+        fontSize: 10,
+        fontWeight: 700,
+        lineHeight: "13px",
+        textAlign: "center",
+        textShadow: "none",
+      }}
+    >
+      {fmtInt(level)}
+    </span>
   );
 }
 
@@ -251,14 +284,33 @@ function CompactFrame({ m, onPick }: { m: PartyMemberView; onPick: (m: PartyMemb
         border: `2px solid ${frameBorder(m)}`,
       }}
     >
-      <Portrait m={m} size={PORTRAIT} />
+      <Portrait m={m} size={PORTRAIT} level />
+      <span
+        data-party-name={m.slot}
+        style={{
+          fontSize: 10,
+          lineHeight: "12px",
+          fontWeight: 700,
+          color: m.controlled ? C.goldBright : C.text,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          maxWidth: PORTRAIT,
+          textAlign: "center",
+        }}
+      >
+        {m.name}
+      </span>
       <Bar pct={fillPercent(m.life, m.lifeMax)} color={m.dead ? C.faint : C.life} height={3} />
       <Bar pct={fillPercent(m.mana, m.manaMax)} color={C.mana} height={2} />
     </button>
   );
 }
 
-/** Header row: "Party: Auto" toggle and the panel button (phones: the panel button alone). */
+/**
+ * Header: the Party panel button. "Party: Auto" is in the control bar (Manual / Party: Auto /
+ * Idle) and nowhere else, so the same setting is never offered twice.
+ */
 function Header({
   party,
   api,
@@ -268,52 +320,19 @@ function Header({
   api: ClassicClientApi;
   compact: boolean;
 }) {
-  const autoOn = party.partyAuto;
-  const toggle = () => api.act(ACTION.setControl, { mode: autoOn ? "manual" : "auto" });
   const panel = () => api.togglePanel("party");
-  if (compact) {
-    // Phones: one 44 px button. "Party: Auto" lives in the control bar, so the column stays short.
-    return (
-      <Btn
-        label="Open party panel"
-        title="Party (P)"
-        pressed={autoOn}
-        minWidth={44}
-        height={44}
-        fontSize={11}
-        style={{ padding: 0 }}
-        onClick={panel}
-      >
-        Party
-      </Btn>
-    );
-  }
   return (
-    <div style={{ display: "flex", gap: 6, pointerEvents: "auto", width: FRAME_W }}>
-      <Btn
-        label={autoOn ? "Party auto on, switch to manual" : "Party auto off, switch to auto"}
-        title="Party: Auto (run every member on the party AI)"
-        pressed={autoOn}
-        minWidth={0}
-        height={44}
-        fontSize={12}
-        style={{ flex: 1, padding: "0 8px" }}
-        onClick={toggle}
-      >
-        {autoOn ? "Party: Auto" : "Party: Manual"}
-      </Btn>
-      <Btn
-        label="Open party panel"
-        title="Party (P)"
-        minWidth={44}
-        height={44}
-        fontSize={12}
-        style={{ padding: "0 8px" }}
-        onClick={panel}
-      >
-        Party
-      </Btn>
-    </div>
+    <Btn
+      label="Open party panel"
+      title={party.partyAuto ? "Party (P): every member on the party AI" : "Party (P)"}
+      minWidth={compact ? 44 : FRAME_W}
+      height={44}
+      fontSize={compact ? 11 : 12}
+      style={{ padding: compact ? 0 : "0 8px", pointerEvents: "auto" }}
+      onClick={panel}
+    >
+      Party
+    </Btn>
   );
 }
 
@@ -344,7 +363,7 @@ export function PartyFrames({ api }: SlotProps) {
     return <AddButton api={api} compact={compact} />;
   }
   const pick = (m: PartyMemberView) => {
-    const call = controlCall(m);
+    const call = controlCall(m, party.members);
     if (call) api.act(call.name, call.payload);
   };
   return (

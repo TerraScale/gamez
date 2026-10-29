@@ -53,7 +53,7 @@ import { econOf, goldOf, hasCraftingSmith } from "./econ.ts";
 import { dungeonStep, giveUpFrontier, travel } from "./dungeon.ts";
 import { engagedFoes, fightStep, isStunned, scanFoes, type Foe } from "./fight.ts";
 import { pickEquip } from "./gear.ts";
-import { anyDowned, downedStep, gatherWait } from "./lead.ts";
+import { anyDowned, downedStep, gatherWait, reviveRetreat } from "./lead.ts";
 import { healAllyStep, otherMemberCtxs, partyInDanger } from "./party.ts";
 import { walkTo } from "./route.ts";
 import { restockPrice, skipTownStep, townFreesBag, townStep } from "./town.ts";
@@ -280,7 +280,7 @@ export function potionStep(
 export const EMERGENCY_PCT = 15;
 
 function retreatStep(c: AutoCtx): boolean {
-  return soloRetreat(c) || (c.party && partyRetreat(c));
+  return soloRetreat(c) || (c.party && (partyRetreat(c) || reviveRetreat(c)));
 }
 
 /**

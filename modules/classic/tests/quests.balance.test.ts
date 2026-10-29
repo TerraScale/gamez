@@ -294,6 +294,6 @@ describe("determinism", () => {
     const b = script();
     expect(a.hash()).toBe(b.hash());
     expect(a.world.read(heroOf(a.world), Level).level).toBeGreaterThanOrEqual(7);
-    expect(a.hash()).toBe("d236feaba18ee7f7");
+    expect(a.hash()).toBe("14620076615f9477");
   }, 120_000);
 });

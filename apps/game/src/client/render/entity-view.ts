@@ -36,6 +36,7 @@ import type { DebugTracker } from "./debug.ts";
 import { clamp01, entityTint, barFill, flashMatrix, flashMix, pulseAmount } from "./fx-math.ts";
 import {
   clampOffset,
+  labelOffView,
   deoverlapLabels,
   estimateLabelWidth,
   labelRank,
@@ -45,6 +46,7 @@ import {
 import { labelColour } from "./palette.ts";
 import {
   fadeToward,
+  outlineTarget,
   localRadius,
   OUTLINE_PX,
   OUTLINE_TAPS,
@@ -479,12 +481,25 @@ export class EntityLayer {
     }
   }
 
+  /** The label of `v` at its natural place lies wholly outside the view (label-layout labelOffView). */
+  private offView(v: EntityView, rect: ViewRect): boolean {
+    const w = Math.max(v.labelW, v.markerOn ? 12 : 0);
+    return labelOffView(
+      v.sx,
+      w,
+      v.sy + v.stackTop + v.labelDy,
+      v.sy + v.nameBottom + v.labelDy,
+      rect,
+    );
+  }
+
   /**
    * Label layout, run once per frame after culling. De-overlaps every visible
    * label (when a labelled entity changed or moved), then keeps each label
    * inside `inner` (the view minus the HUD insets; only when the camera or a
    * labelled entity moved). Labels whose entity stands under HUD chrome
-   * (outside `inner` on an inset edge) and duplicate names are hidden.
+   * (outside `inner` on an inset edge), labels wholly outside the view (an
+   * off-screen entity) and duplicate names are hidden.
    */
   layoutLabels(rect: ViewRect, inner: ViewRect = rect): void {
     const r = this.lastRect;
@@ -521,7 +536,7 @@ export class EntityLayer {
         b.dy = 0;
         b.hidden = false;
         if (!v.root.visible) continue;
-        if (!v.isSelf && underChrome(v.sx, v.sy, rect, inner)) continue;
+        if (!v.isSelf && (underChrome(v.sx, v.sy, rect, inner) || this.offView(v, rect))) continue;
         b.x = v.sx + v.clampX;
         b.bottom = v.sy + v.textBottom;
         b.w = Math.max(v.labelW, v.markerOn ? 12 : 0);
@@ -548,7 +563,9 @@ export class EntityLayer {
       const texts = v.texts;
       if (!texts) continue;
       if (!v.root.visible) continue;
-      const hide = v.dupHidden || (!v.isSelf && underChrome(v.sx, v.sy, rect, inner));
+      const hide =
+        v.dupHidden ||
+        (!v.isSelf && (underChrome(v.sx, v.sy, rect, inner) || this.offView(v, rect)));
       if (texts.visible === hide) texts.visible = !hide;
       if (hide) continue;
       const w = Math.max(v.labelW, v.markerOn ? 12 : 0);
@@ -1040,8 +1057,9 @@ export class EntityLayer {
   }
 
   /**
-   * Identity outline on or off, its kind (colour) and whether it is fading out
-   * (death). The per-frame part (frame sync, pulse, fade) is tickOutlines.
+   * Identity outline on or off, its kind (colour) and whether it is fading
+   * (death: self and party dim to DOWNED_OUTLINE_ALPHA, ally fades out). The
+   * per-frame part (frame sync, pulse, fade) is tickOutlines.
    */
   private updateOutline(v: EntityView, kind: EntityHighlight | null, dead: boolean): void {
     if (kind === null) {
@@ -1056,7 +1074,7 @@ export class EntityLayer {
       }
       return;
     }
-    const target = dead ? 0 : 1;
+    const target = outlineTarget(kind, dead);
     let o = v.outline;
     const fresh = v.outlineKind === null;
     if (!o) {

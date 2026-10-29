@@ -301,6 +301,14 @@ export function errorFlashStyle(
 }
 
 /**
+ * Top of the party's slim "<Name> is down" banner (DeathScreen): under the measured top region
+ * (the control bar), never over the Manual / Party: Auto / Idle buttons.
+ */
+export function deathBannerTop(insets: HudInsets): number {
+  return insets.top + HUD_EDGE * 2;
+}
+
+/**
  * Onboarding tip card (overlay). Above the measured bottom bar, never over a panel (hidden while
  * any panel is open), never over the phone toast column (hidden while toasts show), and clear of
  * the phone's left column. Null = hidden.

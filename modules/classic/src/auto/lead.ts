@@ -7,6 +7,9 @@
  *   reviver (party.ts reviverFor) revives it; the leader stays close. After
  *   REVIVE_GIVEUP_TICKS without a revive (at once with PartyConfig.revive
  *   off) the party goes to town, which revives every downed member.
+ * - reviveRetreat: the same give-up in the middle of a fight (downedStep
+ *   only runs once the fight is over): with a town portal scroll the party
+ *   leaves for town.
  * - gatherWait: in a dungeon, a short bounded wait while a follower lags
  *   more than GATHER_TILES behind (then a cooldown).
  * - partyReturnWait: the town "return" step waits until every standing
@@ -15,6 +18,7 @@
  *
  * Every wait is bounded, so the leader can never deadlock on its followers.
  */
+import type { Entity } from "@gamez/kernel";
 import { AutoState, Dead, Pos } from "../components.ts";
 import { aliveMembers } from "../party/shared.ts";
 import { RES, type AreaState } from "../resources.ts";
@@ -36,6 +40,7 @@ import {
   moveTo,
   nearestInteractable,
   purseScrolls,
+  REPLAN_TICKS,
   setIntent,
   setPlan,
   stopIntent,
@@ -59,6 +64,34 @@ export const GATHER_COOLDOWN_TICKS = 300;
 /** True when a member is downed (party only). */
 export function anyDowned(c: AutoCtx): boolean {
   return c.party && downedMembers(c.world).length > 0;
+}
+
+/** Tick the longest-downed member went down (c.tick when nobody is down). */
+function downedSince(c: AutoCtx, downed: readonly Entity[]): number {
+  let oldest = c.tick;
+  for (const e of downed) oldest = Math.min(oldest, c.world.read(e, Dead).at);
+  return oldest;
+}
+
+/**
+ * Mid-fight revive give-up (leader, "full" mode): a member has been down
+ * for REVIVE_GIVEUP_TICKS while the fight goes on (nobody can revive with
+ * foes near), so the party portals to town, which revives every downed
+ * member. Needs a scroll and no rift, like the other retreats; without one
+ * the fight goes on and downedStep takes over when it ends. True when the
+ * town portal went out.
+ */
+export function reviveRetreat(c: AutoCtx): boolean {
+  if (!c.party || c.depth === 0 || isRiftDepth(c.depth) || purseScrolls(c) <= 0) return false;
+  if (c.st.plan === "toTown") return false;
+  // A travel command went out less than REPLAN_TICKS ago.
+  if (c.st.thinkAt - c.tick > REPLAN_TICKS) return false;
+  const downed = downedMembers(c.world);
+  if (downed.length === 0 || c.tick - downedSince(c, downed) < REVIVE_GIVEUP_TICKS) return false;
+  c.due = true;
+  if (!travel(c, { op: "townPortal" })) return false;
+  setPlan(c, "toTown", "revive in town");
+  return true;
 }
 
 /** To town to revive the downed: a scroll, else this level's waypoint. False when neither works. */
@@ -91,8 +124,7 @@ export function downedStep(c: AutoCtx, allowTown: boolean): boolean {
   if (!c.party || c.depth === 0) return false;
   const downed = downedMembers(c.world);
   if (downed.length === 0) return false;
-  let oldest = c.tick;
-  for (const e of downed) oldest = Math.min(oldest, c.world.read(e, Dead).at);
+  const oldest = downedSince(c, downed);
   // PartyConfig.revive off: nobody revives in the field, the downed recover in town.
   const revive = partyConfigOf(c.world).revive;
   const giveUp = !revive || c.tick - oldest >= REVIVE_GIVEUP_TICKS;

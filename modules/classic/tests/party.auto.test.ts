@@ -434,7 +434,7 @@ describe("determinism", () => {
     const a = script();
     const b = script();
     expect(a.hash()).toBe(b.hash());
-    expect(a.hash()).toBe("13eb8ae48602c00c");
+    expect(a.hash()).toBe("1b5a160c59e34507");
   }, 300_000);
 });
 
