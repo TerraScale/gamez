@@ -81,6 +81,7 @@ describe("classic.auto.rate: measurement", () => {
       ticks: 1,
       kills: 0,
       xp: 0,
+      pool: 0,
       gold: 0,
       loot: 0,
       upkeep: 0,
@@ -103,6 +104,8 @@ describe("classic.auto.rate: measurement", () => {
     );
     expect(killXp).toBeGreaterThan(0);
     expect(r.xp).toBe(killXp);
+    // The raw pool (before the over-level penalty) is at least the hero's own XP.
+    expect(r.pool).toBeGreaterThanOrEqual(r.xp);
   }, 120_000);
 
   it("ignores manual pickups: the loot is dropped on the next manual tick", () => {
@@ -188,7 +191,7 @@ describe("classic.auto.rate: measurement", () => {
   }, 120_000);
 
   it("pins the hash after a fixed script", () => {
-    expect(rateScript().hash()).toBe("64c3ee190d900233");
+    expect(rateScript().hash()).toBe("bca52c4e7875dc05");
   }, 120_000);
 });
 

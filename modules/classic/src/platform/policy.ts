@@ -13,7 +13,7 @@ import { RES, type ControlState, type GameState } from "../resources.ts";
 import { classicAnalytics } from "./analytics.ts";
 import { BANK_ACTION, BANK_EVENT } from "./bank.ts";
 import { classicArenaBuild } from "./build.ts";
-import { classicReports } from "./reports.ts";
+import { classicReports, REPORT_TABLES } from "./reports.ts";
 import { classicSeasonTotal } from "./season.ts";
 
 /** Min absence before offline progress is granted (same as the local client). */
@@ -72,6 +72,9 @@ export const classicClientDriven: ClientDrivenPolicy = {
     payload: classicOfflinePayload,
   },
   reports: classicReports,
+  // One hero row per current member: a dismissed member's or a reset party's
+  // rows are tombstoned (party.md §7.4), so recruit/dismiss cannot pile up rows.
+  completeReportTables: [REPORT_TABLES.hero],
   // Admin dashboard hooks (docs/design/admin-dashboard.md §5, §11.3).
   analytics: classicAnalytics,
   // Wave C (docs/design/wave-C.md §2, §6, §7).

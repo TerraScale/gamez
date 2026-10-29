@@ -337,10 +337,12 @@ member**:
     the purse's pickups and upkeep), else the party model (the acting leader's strength and level,
     monsters scaled by `lifePct`, the damage of every standing member, travel per kill shortened by
     `densityPct`, gold and items scaled by `lootPct`). The same 3× model caps apply.
-  - XP is per standing member. `classic.auto.rate` measures the controlled hero's own share
-    (`partyKillXp` for the party size). Each member gets that rate scaled by its own model XP per
-    kill (its level), capped at 3× its model. The model path pays each member its model XP ×
-    `offlineModelXpPct`. **The offline XP factor (`offlineXpPct`, admin tunable
+  - XP is per standing member. `classic.auto.rate` measures the raw XP pool of the credited
+    kills (`AutoRate.pool`: `DeathRecord.xp`, before the over-level penalty and the party share),
+    which does not depend on which hero is controlled. Each member gets that pool rate × its own
+    model XP per kill (`partyKillXp` at its level) ÷ the model pool per kill, capped at 3× its
+    model, so a control switch before the grant changes nothing. A rate without a pool (measured
+    before the field) and the model path pay each member its model XP × `offlineModelXpPct`. **The offline XP factor (`offlineXpPct`, admin tunable
     `classic.offlineXpPct`) applies to every member.**
   - A dead controlled hero (a wipe, or downed while others stand) is respawned with every downed
     member first (§4.4 of offline-idle.md), so every member gets a share. A downed follower of a
@@ -426,7 +428,10 @@ All three return at once for solo or a party of one.
 - **platform:**
   - Reports have one `classic_hero` row per member: key `"hero"` for the founder, which keeps
     old rows, and `"hero:<uid>"` for the others. Rows use `PartyMember.kills/deaths` when they
-    exist. A dismissed hero's row stays as its last record.
+    exist. The hero table is a complete set (`ClientDrivenPolicy.completeReportTables`): when a
+    member is dismissed, or a new game replaces the party, the host tombstones its row at the
+    next compaction. The level and depth boards rank one row per account (its best member),
+    as the rift board does.
   - The season total uses the **founder's** level, so it stays monotonic.
   - The arena build uses the controlled hero.
   - Bank gold moves to and from the purse, and items come from the controlled hero's bag.

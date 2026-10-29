@@ -131,4 +131,4 @@ describe("after the first party action", () => {
 });
 
 /** Pinned hash of partyScript (seed 2026). Re-pin when classic.party changes on purpose. */
-const PINNED_HASH = "b5ad28aa196a526f";
+const PINNED_HASH = "d60d304c24d194bb";

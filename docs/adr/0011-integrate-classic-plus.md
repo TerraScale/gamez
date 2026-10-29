@@ -56,10 +56,14 @@ were updated. Code comments that say "ADR 0007 Rn" are the security fixes and ar
     acting leader's strength, monsters scaled by `lifePct`, the damage of every standing member,
     the travel term shortened by `densityPct`, gold and items scaled by `lootPct`). The 3× model
     caps apply as for a solo hero.
-  - `classic.auto.rate` measures the **controlled hero's own XP share** (`partyKillXp` for the party
-    size, as `progression/kills.ts` pays it). Solo is unchanged (`partyKillXp` at size 1 is
-    `xpForKill`). Each standing member gets that rate scaled by its own model XP per kill, capped at
-    3× its model. On the model path each member gets its model XP × `offlineModelXpPct`.
+  - `classic.auto.rate` also measures the **raw XP pool** of the credited kills (`AutoRate.pool`,
+    `DeathRecord.xp` before the over-level penalty and the party share). Each standing member gets
+    that pool rate × its own model XP per kill ÷ the model pool per kill, capped at 3× its model.
+    The pool does not depend on which hero is controlled, so switching control before the grant
+    changes nothing (review fix: the first merge scaled the controlled hero's own XP share by the
+    hero controlled at grant time, and a switch to a higher-level hero paid every member about 4×).
+    Solo still uses `AutoRate.xp`. On the model path each member gets its model XP ×
+    `offlineModelXpPct`, as does a rate measured before `pool` existed.
   - **`offlineXpPct` (the admin tunable) applies to every member.**
   - A dead controlled hero (a wipe, or downed while others stand) is respawned with every downed
     member before the grant, as a solo hero is (offline-idle.md §4.4). The party's old rule
@@ -86,9 +90,21 @@ were updated. Code comments that say "ADR 0007 Rn" are the security fixes and ar
   a companion only when its name is in the world's `tagWords` (`sanitiseCompanions(v, tagWords)`).
   A world without a vocabulary relays no companions. Remote players see "Rogue" next to a rogue
   companion. The owner still sees its own heroes' names in its HUD.
+- **Party rows in the read model.** A party reports one `classic_hero` row per member. The hero
+  table is a complete set (`ClientDrivenPolicy.completeReportTables`): when a member is dismissed
+  or a new game replaces the party, the verified host tombstones the row at the next compaction, so
+  recruit/dismiss loops cannot pile up rows. The level and depth boards rank one row per account
+  (its best member, as the rift board already did), because depth is party-wide.
+- **Admin stats and the quarantine.** The gameplay section's D1 panels (heroes, rift runs and the
+  rift histogram) skip imported rows, like the boards. A fresh game flushes the pending tally under
+  the outgoing record's quarantine before it replaces the record.
+- **Local analytics stub.** A production build with the AE binding no longer writes the MetricsDO
+  stub unless `ANALYTICS_LOCAL = "1"` (it was one ingest RPC to one global DO per request); a dev
+  build (`import.meta.env.DEV`) still does. The Worker no longer flushes per request, and the stub
+  keeps a running row count instead of a `COUNT(*)` per ingest.
 - **Outline.** Both sides changed the outline. The controlled hero keeps `self`, members are
   `party`, remote companions `ally`, and a downed self or party outline dims.
-- **Module versions.** Both sides bumped `classic.auto` (0.6.0), `classic.items` (1.3.1),
+- **Module versions.** Both sides bumped `classic.auto` (0.6.0, then 0.6.1 for `AutoRate.pool`), `classic.items` (1.3.1),
   `classic.crafting` (1.1.1) and `classic.monsters` (0.4.1). `contentHash` changes, so persisted
   instances carry over (or restart with `content_changed`) as usual. Pinned sim hashes were re-pinned
   where the merged content or behaviour changed. Determinism (same seed and script give the same

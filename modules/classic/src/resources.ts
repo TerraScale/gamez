@@ -63,6 +63,14 @@ export interface AutoRate {
    * quest/offline/debug XP.
    */
   xp: number;
+  /**
+   * The raw XP of those kills (DeathRecord.xp: before the over-level penalty
+   * and the party share), so it does not depend on which hero was controlled
+   * (docs/design/party.md §6.8: partyOfflineGrant pays each member from it).
+   * Halved with the window. Optional: rates from before this field read as
+   * unmeasured.
+   */
+  pool?: number;
   /** Gold picked up from the ground (no grants, sales, bank or quest gold). */
   gold: number;
   /** Gold picked up since the last classic.auto.rate run (folded into `gold` on an active tick, else dropped). */

@@ -283,6 +283,13 @@ export interface ClientDrivenPolicy {
    * whose content changed to its outbox (docs/design/wave-B.md §4).
    */
   reports?(world: World, registry: FrozenRegistry): InstanceReport[];
+  /**
+   * Report tables whose rows `reports` returns as the complete set: a key the
+   * host reported before that `reports` no longer returns (a dismissed party
+   * member, a reset hero) is tombstoned in the read model. Tables not listed
+   * keep their old rows (history that scrolls out of the world, e.g. old runs).
+   */
+  completeReportTables?: readonly string[];
   /** Wave C platform hooks (docs/design/wave-C.md §2): bank, arena builds, season progress. */
   platform?: PlatformHooks;
   /** Admin dashboard: how verified play folds into metrics (docs/design/admin-dashboard.md §5). */

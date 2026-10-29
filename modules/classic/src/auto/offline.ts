@@ -325,8 +325,11 @@ export interface PartyOfflineModel {
   shares: OfflineShare[];
   /** XP per kill of each share's hero (aligned with `shares`). */
   perKill: number[];
-  /** XP per kill of the controlled hero (GameState.hero), standing or not. */
-  heroPerKill: number;
+  /**
+   * Average raw XP pool per kill (Monster.xp x xpPct, before the over-level
+   * penalty and the party share): AutoRate.pool's unit, the same for every hero.
+   */
+  poolPerKill: number;
 }
 
 /**
@@ -367,7 +370,7 @@ export function computePartyOffline(
     levels: 0,
     depthIds,
   };
-  const out: PartyOfflineModel = { result, shares: [], perKill: [], heroPerKill: 0 };
+  const out: PartyOfflineModel = { result, shares: [], perKill: [], poolPerKill: 0 };
   if (!bal || minutes <= 0 || alive.length === 0) return out;
 
   const monsters = depthIds
@@ -377,15 +380,16 @@ export function computePartyOffline(
   for (const m of monsters) lifeSum += scaleMonster(m, mlvl, "normal", []).life;
   const n = Math.max(1, monsters.length);
   const avgLife = Math.max(1, Math.floor((Math.floor(lifeSum / n) * scale.lifePct) / 100));
+  const pools = monsters.map((m) =>
+    Math.floor((scaleMonster(m, mlvl, "normal", []).xp * scale.xpPct) / 100),
+  );
   /** Average XP per kill for a member of level `own` (its partyKillXp share). */
   const perKillAt = (own: number): number => {
     let xpSum = 0;
-    for (const m of monsters) {
-      const pool = Math.floor((scaleMonster(m, mlvl, "normal", []).xp * scale.xpPct) / 100);
-      xpSum += partyKillXp(bal, proto, size, own, mlvl, pool);
-    }
+    for (const pool of pools) xpSum += partyKillXp(bal, proto, size, own, mlvl, pool);
     return Math.floor(xpSum / n);
   };
+  out.poolPerKill = Math.floor(pools.reduce((a, b) => a + b, 0) / n);
 
   const atk = bestAttack(world, reg, leader);
   const effDmg = atk.dmg * bal.offlineEfficiencyPct * alive.length;
@@ -408,8 +412,6 @@ export function computePartyOffline(
     result.xp += xp;
     result.levels += levels;
   }
-  const hero = heroOf(world);
-  out.heroPerKill = perKillAt(world.get(hero, Level)?.level ?? leaderLevel);
 
   const goldFind = world.get(leader, HeroStats)?.goldFind ?? 0;
   const avgPile = Math.floor(
@@ -548,12 +550,14 @@ export function offlineGrant(
  * docs/design/party.md §6.8). Kills, gold, upkeep and items are party totals:
  * the measured rate (AutoRate counts every kill credited to the heroes' side,
  * the purse's pickups and upkeep) or the party model, with the same caps as
- * offlineGrant. XP is per standing member: the measured rate is the
- * controlled hero's own XP rate (rate.ts adds its partyKillXp share), and each
- * member gets it in proportion to its own model XP per kill (its level), capped
- * at 3x its model; the model path pays each member its model XP x
- * offlineModelXpPct. The factor xpPct (the admin tunable) applies to every
- * member's XP. `grant.xp` and `grant.levels` are the members' sums.
+ * offlineGrant. XP is per standing member: the measured rate is the raw XP
+ * pool of the party's kills (AutoRate.pool, the same whichever hero is
+ * controlled), and each member gets it times its own model XP per kill over the
+ * model pool per kill (its partyKillXp share at its level), capped at 3x its
+ * model; a rate without a pool (measured before the field) and the model path
+ * pay each member its model XP x offlineModelXpPct. The factor xpPct (the
+ * admin tunable) applies to every member's XP. `grant.xp` and `grant.levels`
+ * are the members' sums.
  */
 export function partyOfflineGrant(
   world: World,
@@ -604,14 +608,14 @@ export function partyOfflineGrant(
       m.kills * RATE_CAP_X,
       KILLS_PER_MIN_MAX * minutes,
     );
-    const heroXp = Math.min(
-      Math.floor((rate.xp * T) / rate.ticks),
-      fbXp(m.kills * model.heroPerKill) * RATE_CAP_X,
-    );
+    // The measured raw XP pool (no hero's level or control in it), turned into
+    // each member's own XP with its model share of a pool (partyKillXp at its
+    // level / pool per kill). A control switch before the grant changes nothing.
+    const poolXp = rate.pool === undefined ? -1 : Math.floor((rate.pool * T) / rate.ticks);
     baseXp = model.shares.map((sh, i) => {
+      if (poolXp < 0 || model.poolPerKill <= 0) return fbXp(sh.xp);
       const cap = fbXp(sh.xp) * RATE_CAP_X;
-      if (model.heroPerKill <= 0) return fbXp(sh.xp);
-      return Math.min(Math.floor((heroXp * model.perKill[i]!) / model.heroPerKill), cap);
+      return Math.min(Math.floor((poolXp * model.perKill[i]!) / model.poolPerKill), cap);
     });
     itemsB = Math.min(ITEM_KEEP_MAX, Math.floor((kills * ITEM_KEEP_PCT * lootPct) / 10000));
     const rateGold = Math.floor((rate.gold * T) / rate.ticks);

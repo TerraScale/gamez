@@ -314,6 +314,45 @@ export function poseState(old: EntityState, pose: CleanPose, now: number): Entit
   return state;
 }
 
+/**
+ * The pose a relay forwards when `next` replaces a still-queued `prev` of the
+ * same avatar (relay.ts #queuePose). Companions mean "absent = unchanged", so a
+ * list that `next` does not repeat (notably the one-shot [] sent when the party
+ * shrinks to one) is carried over instead of being lost with `prev`.
+ */
+export function coalescePose<P extends { companions?: CompanionPose[] }>(
+  prev: P | undefined,
+  next: P,
+): P {
+  if (next.companions !== undefined || prev?.companions === undefined) return next;
+  return { ...next, companions: prev.companions };
+}
+
+/**
+ * The relay's queue of client poses waiting for the next batch RPC to the
+ * chunk: one entry per avatar, the newest pose wins (coalesced, so a
+ * companions change survives being overwritten before it was sent).
+ */
+export class PoseQueue<E extends { pose: { companions?: CompanionPose[] } }> {
+  readonly #byId = new Map<string, E>();
+
+  get size(): number {
+    return this.#byId.size;
+  }
+
+  put(id: string, entry: E): void {
+    const prev = this.#byId.get(id)?.pose;
+    this.#byId.set(id, { ...entry, pose: coalescePose(prev, entry.pose) });
+  }
+
+  /** Every queued entry (in first-queued order); the queue is empty afterwards. */
+  drain(): E[] {
+    const out = [...this.#byId.values()];
+    this.#byId.clear();
+    return out;
+  }
+}
+
 /** Same companions to draw; an absent list and an empty one draw alike. */
 function sameCompanions(a: CompanionPose[] | undefined, b: CompanionPose[] | undefined): boolean {
   const x = a ?? [];

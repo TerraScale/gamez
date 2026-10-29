@@ -283,6 +283,46 @@ describe("MetricsStore pruning and reset", () => {
     expect(kinds).toEqual(["a", "b", "c"]);
   });
 
+  it("ingest never scans the whole table: the row cap uses a running count", () => {
+    const s = fakeSqlStore();
+    const scans: string[] = [];
+    const exec = s.sql.exec.bind(s.sql);
+    s.sql.exec = ((query: string, ...b: unknown[]) => {
+      if (/COUNT\(\*\)/i.test(query) && !/\bWHERE\b/i.test(query)) scans.push(query);
+      return exec(query, ...(b as never[]));
+    }) as typeof s.sql.exec;
+    const m = new MetricsStore(s, { now: () => NOW, maxRows: 5, keepMs: 10 * MIN });
+    for (let i = 0; i < 20; i++) {
+      m.ingest([
+        pt("ws.open", NOW - 20 * MIN, { kind: "old" }),
+        pt("ws.open", NOW - (i % 5) * MIN, { kind: `k${i}` }),
+      ]);
+    }
+    // At most one count, the first time (a table that predates the running count).
+    expect(scans.length).toBeLessThanOrEqual(1);
+    scans.length = 0;
+    expect(m.count()).toBe(5);
+    // The running count stays exact across age pruning, the cap and reset.
+    expect(Number(s.sql.exec("SELECT rows FROM metric_meta WHERE id = 1").one().rows)).toBe(5);
+    m.reset();
+    m.ingest([pt("ws.open", NOW - MIN, { kind: "a" }), pt("ws.open", NOW - MIN, { kind: "b" })]);
+    expect(Number(s.sql.exec("SELECT rows FROM metric_meta WHERE id = 1").one().rows)).toBe(2);
+    expect(m.count()).toBe(2);
+  });
+
+  it("an existing table without the running count is counted once, then kept", () => {
+    const s = fakeSqlStore();
+    const m = new MetricsStore(s, { now: () => NOW, maxRows: 3 });
+    m.ingest([pt("ws.open", NOW - MIN, { kind: "a" }), pt("ws.open", NOW - MIN, { kind: "b" })]);
+    s.sql.exec("DROP TABLE metric_meta");
+    const again = new MetricsStore(s, { now: () => NOW, maxRows: 3 });
+    again.ingest([
+      pt("ws.open", NOW - MIN, { kind: "c" }),
+      pt("ws.open", NOW - MIN, { kind: "d" }),
+    ]);
+    expect(again.count()).toBe(3);
+  });
+
   it("reset clears everything, or only seeded points", () => {
     const { m } = store();
     m.ingest([

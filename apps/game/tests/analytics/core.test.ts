@@ -144,8 +144,36 @@ describe("localSinkOn", () => {
       true,
     ],
     [{ ANALYTICS_LOCAL: "1" }, false],
-  ] as [AnalyticsEnv, boolean][])("%o -> %s", (env, want) => {
-    expect(localSinkOn(env)).toBe(want);
+  ] as [AnalyticsEnv, boolean][])("dev build: %o -> %s", (env, want) => {
+    expect(localSinkOn(env, true)).toBe(want);
+  });
+
+  // A production build with the AE binding never writes the global MetricsDO by default:
+  // every Worker request would be an ingest RPC to one DO.
+  const ae = fakeAe().binding;
+  it.each([
+    [{ METRICS: m, ANALYTICS: ae }, false],
+    [{ METRICS: m, ANALYTICS: ae, ANALYTICS_ACCOUNT_ID: "a" }, false],
+    [{ METRICS: m, ANALYTICS: ae, ANALYTICS_LOCAL: "1" }, true],
+    [{ METRICS: m, ANALYTICS: ae, ANALYTICS_LOCAL: "0" }, false],
+    // Nothing else records without an AE binding: the stub is the only sink.
+    [{ METRICS: m }, true],
+  ] as [AnalyticsEnv, boolean][])("production build: %o -> %s", (env, want) => {
+    expect(localSinkOn(env, false)).toBe(want);
+  });
+
+  it("a production writer with the AE binding sends nothing to MetricsDO", async () => {
+    const metrics = fakeMetrics();
+    const c = collector();
+    const w = createAnalytics({ ANALYTICS: fakeAe().binding, METRICS: metrics.ns }, c.waitUntil, {
+      dev: false,
+      state: newLocalSinkState(),
+      sleep: () => Promise.resolve(),
+    });
+    for (let i = 0; i < 60; i++) w.write("ws.open", { kind: "chat" });
+    await w.flush();
+    await c.settle();
+    expect(metrics.batches).toEqual([]);
   });
 });
 

@@ -115,7 +115,7 @@ Notes:
 Admin dashboard (`docs/design/admin-dashboard.md`, `docs/secrets.md` "Admin dashboard analytics"):
 
 - Set the build variable `VITE_BUILD_ID` (for example the commit SHA) in both the preview and production build settings, so client telemetry reports the build.
-- Optionally set `ANALYTICS_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` (Account Analytics: Read) so the dashboard reads Analytics Engine instead of the local stub. The `gamez_events` dataset is created on first write.
+- Set `ANALYTICS_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` (Account Analytics: Read) so the dashboard reads Analytics Engine. Without them a production build shows no Analytics Engine metrics: the local stub is written only by dev builds, or when `ANALYTICS_LOCAL = "1"` (one global DO, not a production write path). The `gamez_events` dataset is created on first write.
 - Apply migration `0010_admin.sql` with the others (step 3).
 
 ### 5d. Verify

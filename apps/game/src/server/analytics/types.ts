@@ -4,9 +4,9 @@
  *
  * Write path: `Analytics.write()` never throws and never awaits. It forwards
  * the point to the Analytics Engine binding (env.ANALYTICS) when bound, and to
- * the local stub (MetricsDO "local") when the local sink is on (no AE SQL
- * credentials and ANALYTICS_LOCAL !== "0"). Local points are buffered per
- * isolate and flushed through `waitUntil`.
+ * the local stub (MetricsDO "local") when the local sink is on (index.ts
+ * localSinkOn: ANALYTICS_LOCAL "1", or a dev build without AE SQL credentials;
+ * never "0"). Local points are buffered per isolate and flushed through `waitUntil`.
  *
  * Query path: `AnalyticsQuery` answers aggregate questions over the same
  * column layout, from the AE SQL API (ANALYTICS_ACCOUNT_ID + ANALYTICS_API_TOKEN)
@@ -121,6 +121,6 @@ export interface AnalyticsEnv {
   ANALYTICS_API_TOKEN?: string;
   /** AE dataset name for SQL queries (default "gamez_events"). */
   ANALYTICS_DATASET?: string;
-  /** "0": never write/read the local stub. "1": always write it (even with AE credentials). */
+  /** "0": never write/read the local stub. "1": always write it (even in production). Unset: dev builds only. */
   ANALYTICS_LOCAL?: string;
 }

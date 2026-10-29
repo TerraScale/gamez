@@ -312,6 +312,18 @@ function seedD1(d1: FakeD1): void {
     kills: 999,
     deaths: 999,
   });
+  // h6 is an imported (quarantined, ADR 0007 R1) forged hero: never in the stats.
+  insert(d1, "classic_hero", {
+    id: "h6",
+    account_id: "a6",
+    mode: "classic",
+    class_id: "classic.mage",
+    level: 999,
+    deepest_depth: 1_000_000_000,
+    kills: 1_000_000,
+    deaths: 0,
+    imported: 1,
+  });
   // leaderboard_rift: best completed in range is 1250; r4 is out of range, r5 is
   // another mode, r6 is a tombstone (all three would change the numbers).
   const rift = {
@@ -374,6 +386,16 @@ function seedD1(d1: FakeD1): void {
     score: 2000,
     _updated_at: DAY0 + DAY,
     _deleted: 1,
+  });
+  // r7: an imported hero's run would set the histogram width and squash the rest.
+  insert(d1, "leaderboard_rift", {
+    ...rift,
+    id: "r7",
+    mode: "classic",
+    completed: 1,
+    score: 99_999_999,
+    _updated_at: DAY0 + DAY,
+    imported: 1,
   });
 }
 
@@ -504,7 +526,7 @@ describe("readGameplay", () => {
     expect(out.party).toBeNull();
   });
 
-  it("reads heroes and rifts from D1, filtered by mode and without tombstones", async () => {
+  it("reads heroes and rifts from D1, filtered by mode, without tombstones or imported heroes", async () => {
     const d1 = new FakeD1();
     d1.migrate(MIGRATIONS);
     seedD1(d1);

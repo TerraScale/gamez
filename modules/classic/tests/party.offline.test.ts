@@ -14,12 +14,13 @@
  */
 import { createSim, loadMode, type GameEvent, type Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
-import { offlineGrant, partyOfflineGrant } from "../src/auto/offline.ts";
+import { computePartyOffline, offlineGrant, partyOfflineGrant } from "../src/auto/offline.ts";
 import { AUTO_RATE_MIN_TICKS } from "../src/auto/rate.ts";
 import { Dead, Level, Life, Wallet } from "../src/components.ts";
 import { mode, modules } from "../src/index.ts";
 import { partyGold, partyMembers, purseOf } from "../src/party/shared.ts";
-import { heroOf, RES, type AutoRate } from "../src/resources.ts";
+import { heroOf, RES, type AutoRate, type GameState } from "../src/resources.ts";
+import { xpAtLevel } from "../src/rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../src/types.ts";
 
 const loaded = loadMode(mode, modules);
@@ -150,14 +151,16 @@ describe("party offline progress", () => {
     members.forEach((e, i) => expect(xpOf(sim, e)).toBe(xp0[i]));
   }, 120_000);
 
-  it("with a measured rate, the controlled hero gets its own rate and each member scales it by its XP per kill", () => {
+  it("with a measured rate, each member gets the measured pool times its own share of a kill", () => {
     const sim = recruitParty(7);
-    const model = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 100);
-    // A measured online rate: the party's kills and the controlled hero's own XP share.
+    const model = computePartyOffline(sim.world, sim.loaded.registry, HOUR);
+    const plain = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 100);
+    // A measured online rate: the party's kills and their raw XP pool.
     const rate: AutoRate = {
       ticks: AUTO_RATE_MIN_TICKS * 2,
       kills: 200,
       xp: 2_000,
+      pool: 2_400,
       gold: 3_000,
       loot: 0,
       upkeep: 600,
@@ -168,19 +171,59 @@ describe("party offline progress", () => {
     expect(plan.grant.source).toBe("rate");
     const T = 60 * 1200;
     expect(plan.grant.kills).toBe(
-      Math.min(Math.floor((rate.kills * T) / rate.ticks), model.grant.kills * 3),
+      Math.min(Math.floor((rate.kills * T) / rate.ticks), plain.grant.kills * 3),
     );
-    const hero = heroOf(sim.world);
-    const mine = plan.shares.find((s) => s.hero === hero)!;
-    // The controlled hero's base is its measured XP rate (below the 3x model cap here).
-    expect(mine.xp).toBe(Math.floor((rate.xp * T) / rate.ticks));
-    // Same-level members get the same share (recruits start at the founder's level - 3 or 1).
-    const level = (e: number) => sim.world.read(e, Level).level;
-    for (const s of plan.shares) {
-      if (level(s.hero) === level(hero)) expect(s.xp).toBe(mine.xp);
+    const poolXp = Math.floor((rate.pool! * T) / rate.ticks);
+    expect(model.poolPerKill).toBeGreaterThan(0);
+    plan.shares.forEach((s, i) => {
+      const cap = Math.floor((model.shares[i]!.xp * bal.offlineModelXpPct) / 100) * 3;
+      expect(s.xp).toBe(
+        Math.min(Math.floor((poolXp * model.perKill[i]!) / model.poolPerKill), cap),
+      );
       expect(s.xp).toBeGreaterThan(0);
-    }
+    });
+    // Same-level members get the same share.
+    const level = (e: number) => sim.world.read(e, Level).level;
+    for (const a of plan.shares)
+      for (const b of plan.shares) if (level(a.hero) === level(b.hero)) expect(a.xp).toBe(b.xp);
     expect(plan.grant.upkeep).toBe(Math.floor((600 * T) / rate.ticks));
+    // A rate measured before the pool existed pays the model.
+    const { pool: _pool, ...old } = rate;
+    sim.world.setResource(RES.autoRate, old);
+    const legacy = partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 100);
+    legacy.shares.forEach((s, i) =>
+      expect(s.xp).toBe(Math.floor((model.shares[i]!.xp * bal.offlineModelXpPct) / 100)),
+    );
+  }, 120_000);
+
+  it("the same measured rate pays every member the same whichever member is controlled", () => {
+    // Founder L12 and two L9 recruits (finding: switching control to the
+    // founder before the grant multiplied every member's offline XP).
+    const sim = recruitParty(9);
+    const members = partyMembers(sim.world);
+    const levels = [12, 9, 9];
+    members.forEach((e, i) =>
+      sim.world.update(e, Level, { level: levels[i]!, xp: xpAtLevel(bal, levels[i]!) }),
+    );
+    sim.world.setResource(RES.autoRate, {
+      ticks: 12_000,
+      kills: 300,
+      xp: 300 * 4,
+      pool: 300 * 6,
+      gold: 0,
+      loot: 0,
+      upkeep: 0,
+      spent: 0,
+    } satisfies AutoRate);
+    const grantWith = (controlled: number): number[] => {
+      const game = sim.world.getResource<GameState>(RES.game)!;
+      sim.world.setResource(RES.game, { ...game, hero: controlled });
+      return partyOfflineGrant(sim.world, sim.loaded.registry, HOUR, 20).shares.map((s) => s.xp);
+    };
+    const onRecruit = grantWith(members[1]!);
+    const onFounder = grantWith(members[0]!);
+    expect(onRecruit.every((x) => x > 0)).toBe(true);
+    expect(onFounder).toEqual(onRecruit);
   }, 120_000);
 
   it("a downed follower gets no share; a wiped party respawns and every member gets one", () => {

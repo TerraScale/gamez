@@ -425,7 +425,7 @@ describe("determinism", () => {
   it("same seed and script give the same hash, pinned", () => {
     const a = script();
     expect(script().hash()).toBe(a.hash());
-    expect(a.hash()).toBe("15b1cc50d627e2e0");
+    expect(a.hash()).toBe("1747be8492f3c640");
   }, 120_000);
 });
 

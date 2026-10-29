@@ -185,4 +185,50 @@ describe("VerifiedHost analytics (admin-dashboard.md §11.2)", () => {
     expect(env.analytics.of("sim.offline")).toHaveLength(0);
     expect(env.analytics.of("verify.segment").some((p) => p.blobs.outcome === "ok")).toBe(true);
   }, 120_000);
+
+  it("a fresh game (Reset progress) does not leak the imported hero's pending tally into sim.tally", async () => {
+    const env = setup();
+    const sock = env.connect();
+    const c = new Client();
+    await c.adopt(vstateOf(await env.send(sock, { t: "join", token: "t", mode: "classic" })));
+    const local = createSim(loaded, { seed: 7 });
+    expect(
+      local.dispatch(
+        classic.ACTION.newHero,
+        { classId: "classic.warrior", name: "Forged" },
+        VERIFIED_ACTOR,
+      ).ok,
+    ).toBe(true);
+    expect(local.dispatch(classic.ACTION.setControl, { mode: "idle" }, VERIFIED_ACTOR).ok).toBe(
+      true,
+    );
+    local.step(40);
+    const imported = vstateOf(
+      await env.send(sock, {
+        t: "import",
+        snapshot: { enc: "json", data: local.snapshot() },
+        savedAt: 1,
+      }),
+    );
+    expect(imported.imported).toBe(true);
+    await c.adopt(imported);
+    // Verified play below the compaction thresholds (1200 ticks, 30 s): the tally stays pending.
+    for (let i = 0; i < 2; i++) {
+      env.clock.now += 200 * MS_PER_TICK;
+      const out = await env.send(sock, c.segment(200));
+      expect(out.map((m) => m.t)).toEqual(["verified"]);
+    }
+    expect(env.analytics.of("verify.segment")).toHaveLength(0);
+
+    // Reset progress: a fresh join replaces the imported record with an honest one.
+    const fresh = vstateOf(
+      await env.send(sock, { t: "join", token: "t", mode: "classic", fresh: true }),
+    );
+    expect(fresh.imported).toBe(false);
+    await env.host.handleClose(Object.assign(sock, { open: false }));
+
+    // The imported hero's kills and XP never reach the balance metrics; its verify health does.
+    expect(env.analytics.of("sim.tally")).toHaveLength(0);
+    expect(env.analytics.of("verify.segment").some((p) => p.blobs.outcome === "ok")).toBe(true);
+  }, 120_000);
 });

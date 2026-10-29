@@ -59,8 +59,9 @@ export default {
       return response;
     } finally {
       // A thrown handler is recorded as a 500 and the error still propagates.
+      // No flush per request: the writer sends at flushAt points and shortly after
+      // the first buffered point (through waitUntil), batching across requests.
       recordRequest(analytics, request, url, response, Date.now() - started);
-      ctx.waitUntil(analytics.flush());
     }
   },
 

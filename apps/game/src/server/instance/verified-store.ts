@@ -84,6 +84,10 @@ export interface VerifiedStore {
   /** Last stored report hash of a read-model row. */
   reportHash(table: string, key: string): string | null;
   setReportHash(table: string, key: string, hash: string): void;
+  /** Keys of `table` that have a stored report hash, sorted. */
+  reportKeys(table: string): string[];
+  /** Forgets a row's report hash (after its tombstone was appended). */
+  deleteReportHash(table: string, key: string): void;
   /** Runs fn atomically (all writes or none). */
   transaction<T>(fn: () => T): T;
 }
@@ -355,6 +359,17 @@ export class SqlVerifiedStore implements VerifiedStore {
       key,
       hash,
     );
+  }
+
+  reportKeys(table: string): string[] {
+    return this.#db.sql
+      .exec<{ key: string }>("SELECT key FROM report_state WHERE tbl = ? ORDER BY key", table)
+      .toArray()
+      .map((r) => r.key);
+  }
+
+  deleteReportHash(table: string, key: string): void {
+    this.#db.sql.exec("DELETE FROM report_state WHERE tbl = ? AND key = ?", table, key);
   }
 
   transaction<T>(fn: () => T): T {

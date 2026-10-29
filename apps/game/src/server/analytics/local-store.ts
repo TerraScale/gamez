@@ -281,6 +281,27 @@ export class MetricsStore {
     sql.exec("CREATE INDEX IF NOT EXISTS metric_point_idx_t ON metric_point (idx, t)");
     // Not in the design's index list: keeps the time prune and the row cap O(log n).
     sql.exec("CREATE INDEX IF NOT EXISTS metric_point_t ON metric_point (t)");
+    // Running row count, so the row cap never needs a COUNT(*) scan per ingest.
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS metric_meta (id INTEGER PRIMARY KEY CHECK (id = 1), rows INTEGER NOT NULL)",
+    );
+  }
+
+  /** The stored running row count; counted once (old tables) when missing. */
+  #rowCount(): number {
+    const sql = this.#store.sql;
+    const row = sql.exec("SELECT rows FROM metric_meta WHERE id = 1").toArray()[0];
+    if (row) return Number(row.rows);
+    const n = this.count();
+    this.#setRows(n);
+    return n;
+  }
+
+  #setRows(n: number): void {
+    this.#store.sql.exec(
+      "INSERT INTO metric_meta (id, rows) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET rows = excluded.rows",
+      Math.max(0, n),
+    );
   }
 
   /** Inserts valid points in one transaction, then prunes. Returns the rows inserted. */
@@ -290,30 +311,47 @@ export class MetricsStore {
       const row = toRow(p);
       if (row) rows.push(row);
     }
-    if (rows.length > 0) {
-      this.#store.transactionSync(() => {
+    this.#store.transactionSync(() => {
+      if (rows.length > 0) {
+        const before = this.#rowCount();
         for (const row of rows) this.#store.sql.exec(INSERT_SQL, ...row);
-      });
-    }
-    this.prune();
+        this.#setRows(before + rows.length);
+      }
+      this.#prune();
+    });
     return rows.length;
   }
 
-  /** Drops rows older than keepMs, then the oldest rows beyond maxRows. */
+  /**
+   * Drops rows older than keepMs, then the oldest rows beyond maxRows. Only
+   * index lookups (t) and the running count: never a full-table scan, so it
+   * is cheap enough to run on every ingest.
+   */
   prune(): void {
+    this.#store.transactionSync(() => this.#prune());
+  }
+
+  /** prune() inside the caller's transaction. */
+  #prune(): void {
     const sql = this.#store.sql;
     const cutoff = this.#now() - this.#keepMs;
+    let count = this.#rowCount();
     const min = sql.exec("SELECT MIN(t) AS m FROM metric_point").one().m;
     if (typeof min === "number" && min < cutoff) {
+      const old = Number(
+        sql.exec("SELECT COUNT(*) AS n FROM metric_point WHERE t < ?", cutoff).one().n,
+      );
       sql.exec("DELETE FROM metric_point WHERE t < ?", cutoff);
+      count -= old;
     }
-    const count = Number(sql.exec("SELECT COUNT(*) AS n FROM metric_point").one().n);
     if (count > this.#maxRows) {
       sql.exec(
         "DELETE FROM metric_point WHERE id IN (SELECT id FROM metric_point ORDER BY t ASC, id ASC LIMIT ?)",
         count - this.#maxRows,
       );
+      count = this.#maxRows;
     }
+    this.#setRows(count);
   }
 
   /** Row count (tests, dev tools). */
@@ -326,7 +364,9 @@ export class MetricsStore {
     const before = this.count();
     if (seedOnly) this.#store.sql.exec("DELETE FROM metric_point WHERE idx LIKE 'seed%'");
     else this.#store.sql.exec("DELETE FROM metric_point");
-    return before - this.count();
+    const after = this.count();
+    this.#setRows(after);
+    return before - after;
   }
 
   #where(base: BasePlan): WhereSql {

@@ -6,11 +6,12 @@
  * "manual" (dead heroes and town visits included):
  *  - ticks += 1;
  *  - every credited death (the same filter as progression/kills.ts) adds one
- *    kill, and its XP (xpForKill at the hero's current level) when d.xp > 0;
+ *    kill, and its XP (xpForKill at the hero's current level) when d.xp > 0,
+ *    and its raw XP d.xp to pool (the party grant's hero-independent measure);
  *  - the gold picked up from the ground since the last run is added to gold;
  *  - the upkeep paid since the last run (alchemist potions and scrolls, smith
  *    repairs: noteUpkeepGold) is added to upkeep.
- * When ticks exceed AUTO_RATE_WINDOW_TICKS, ticks, kills, xp, gold and upkeep
+ * When ticks exceed AUTO_RATE_WINDOW_TICKS, ticks, kills, xp, pool, gold and upkeep
  * are halved (floor), a decaying window of about 30 minutes at x1.
  *
  * Ineligible ticks only drop the pending loot and upkeep, so manual pickups
@@ -61,6 +62,7 @@ export const rateSystem: SystemDef = {
       ticks: 0,
       kills: 0,
       xp: 0,
+      pool: 0,
       gold: 0,
       loot: 0,
       upkeep: 0,
@@ -77,6 +79,7 @@ export const rateSystem: SystemDef = {
       rate.ticks = Math.floor(rate.ticks / 2);
       rate.kills = Math.floor(rate.kills / 2);
       rate.xp = Math.floor(rate.xp / 2);
+      if (rate.pool !== undefined) rate.pool = Math.floor(rate.pool / 2);
       rate.gold = Math.floor(rate.gold / 2);
       rate.upkeep = Math.floor(rate.upkeep / 2);
     }
@@ -88,7 +91,8 @@ export const rateSystem: SystemDef = {
  * Adds this tick's credited kills and their XP to the rate. In a party
  * (docs/design/party.md §6.8) kills are the whole party's, and the XP is the
  * controlled hero's own share of each kill (partyKillXp for the party size,
- * as progression/kills.ts pays it); partyOfflineGrant scales it per member.
+ * as progression/kills.ts pays it). `pool` adds the kill's raw XP, which no
+ * hero's level or control changes; partyOfflineGrant pays each member from it.
  */
 function accumulateKills(world: World, ctx: SimContext, hero: number, rate: AutoRate): void {
   const size = partySize(world);
@@ -96,6 +100,8 @@ function accumulateKills(world: World, ctx: SimContext, hero: number, rate: Auto
     if (!isCreditedKill(d)) continue;
     rate.kills += 1;
     if (d.xp > 0) {
+      // Old rates have no pool: it is measured from now on.
+      rate.pool = (rate.pool ?? 0) + d.xp;
       const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
       const heroLevel = world.get(hero, Level)?.level ?? 1;
       rate.xp +=

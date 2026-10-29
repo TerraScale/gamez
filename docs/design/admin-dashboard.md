@@ -306,9 +306,12 @@ T-sim-analytics reads `modules/classic/src/events.ts` for the exact payloads and
 1. **AE**: when `env.ANALYTICS` is bound, `writeDataPoint({ blobs, doubles, indexes: [index] })`
    with the `toStoredPoint` layout. Never awaited, wrapped in try/catch.
 2. **Local stub**: when `localSinkOn(env)` (MetricsDO bound, `ANALYTICS_LOCAL !== "0"`, and either
-   `ANALYTICS_LOCAL === "1"` or no AE SQL credentials), the point is appended to a per-isolate
-   buffer. The buffer flushes to `METRICS.getByName("local").ingest(points)` via `waitUntil` when it
-   holds `LOCAL_LIMITS.flushAt` (50) points or at the end of the invocation (`flush()`). Above
+   `ANALYTICS_LOCAL === "1"`, or no AE SQL credentials in a dev build (`import.meta.env.DEV`, i.e.
+   `vp dev`) or without an AE binding), the point is appended to a per-isolate buffer. A production
+   build with the AE binding never writes the stub unless `ANALYTICS_LOCAL = "1"`. The buffer flushes
+   to `METRICS.getByName("local").ingest(points)` via `waitUntil` when it holds
+   `LOCAL_LIMITS.flushAt` (50) points, 100 ms after its first point, or on `flush()`. The Worker's
+   fetch handler does not flush per request, so requests batch across the isolate. Above
    `LOCAL_LIMITS.perSecond` (200) points per second per isolate, points are sampled 1-in-N and the
    kept point's `sample` is N, so sums stay right.
 
@@ -338,14 +341,15 @@ per point, ≤ 250 points per invocation (SimTally flushes at most 150; the HTTP
 SQLite table created in `blockConcurrencyWhile`. Indexes `(b1, t)`, `(idx, t)` and `(t)` (cheap
 pruning by age and by row count). On ingest:
 insert in one transaction, then prune rows older than 14 days and keep at most 200 000 rows (oldest
-first). Used on dev hosts and as a production fallback only when `ANALYTICS_LOCAL = "1"` (a single
+first). The row count is kept in a one-row `metric_meta` table, so pruning only does index lookups
+on `t` and never a `COUNT(*)` scan per ingest. Used on dev hosts and as a production fallback only when `ANALYTICS_LOCAL = "1"` (a single
 DO is not a production write path; the per-isolate buffer and sampler keep it survivable).
 
 ### 4.4 Local dev story
 
 - `vp dev` has the AE binding (Miniflare accepts it; writes go nowhere) and no AE SQL credentials
-  (undeclared secrets do not reach `env` locally, `docs/secrets.md`), so **the local sink is on by
-  default** and the dashboard reads MetricsDO. Real dev traffic (requests, sockets, verified play,
+  (undeclared secrets do not reach `env` locally, `docs/secrets.md`). It is a dev build
+  (`import.meta.env.DEV`), so **the local sink is on by default** and the dashboard reads MetricsDO. Real dev traffic (requests, sockets, verified play,
   client telemetry) fills it.
 - `POST /api/dev/admin/seed-metrics?days=7` (dev hosts + admin only) writes synthetic points for
   every metric in `schema.ts` across the last N days into the local stub (never into AE or D1), so

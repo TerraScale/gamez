@@ -278,6 +278,49 @@ describe("VerifiedHost with a party", () => {
     expect(keys.has("classic:acc/hero:1")).toBe(true);
   }, 120_000);
 
+  it("tombstones a dismissed member's classic_hero row (no recruit/dismiss board flooding)", async () => {
+    const env = setup();
+    const sock = env.connect();
+    const c = new Client();
+    await c.adopt((await env.send(sock, { t: "join", token: "t", mode: "classic" }))[0] as VState);
+    const imp = await env.send(sock, {
+      t: "import",
+      snapshot: await packSnapshot(partyBase().snapshot()),
+      savedAt: 1,
+    });
+    await c.adopt(imp[0] as VState);
+    c.act(classic.ACTION.partyRecruit, { classId: "classic.rogue", name: "Shade" });
+    await play(env, sock, c, 100, 100);
+    sock.open = false;
+    await env.host.handleClose(sock);
+
+    const ops = (pk: string) =>
+      env.outbox
+        .pending()
+        .filter((r) => r.table === "classic_hero" && r.pk === pk)
+        .map((r) => r.op);
+    expect(ops("classic:acc/hero:1")).toEqual(["upsert"]);
+
+    // Dismiss the recruit and recruit another one: hero:1 leaves, hero:2 arrives.
+    const again = env.connect();
+    const c2 = new Client();
+    await c2.adopt(
+      (await env.send(again, { t: "join", token: "t", mode: "classic" }))[0] as VState,
+    );
+    const recruit = classic.partyStateOf(c2.sim.world)!.members[1]!;
+    c2.act(classic.ACTION.partyDismiss, { hero: recruit });
+    c2.act(classic.ACTION.partyRecruit, { classId: "classic.sorcerer", name: "Wisp" });
+    await play(env, again, c2, 100, 100);
+    again.open = false;
+    await env.host.handleClose(again);
+
+    expect(ops("classic:acc/hero:1")).toEqual(["upsert", "delete"]);
+    expect(ops("classic:acc/hero:2")).toEqual(["upsert"]);
+    // Only the live members keep a report hash; the founder row was never tombstoned.
+    expect(env.store.reportKeys("classic_hero")).toEqual(["hero", "hero:2"]);
+    expect(ops("classic:acc/hero")).not.toContain("delete");
+  }, 120_000);
+
   it("a solo save carried over to new content reports 'carried' and keeps its hero", async () => {
     const env = setup();
     const sock = env.connect();

@@ -46,11 +46,24 @@ export const NOOP_ANALYTICS: Analytics = {
   flush: () => Promise.resolve(),
 };
 
-/** True when points should also go to MetricsDO "local". */
-export function localSinkOn(env: AnalyticsEnv): boolean {
+/**
+ * True in a `vp dev` server (Vite's import.meta.env.DEV), false in a production
+ * build, where Vite replaces it with false. Guarded for runtimes without it.
+ */
+export const DEV_BUILD: boolean = import.meta.env?.DEV === true;
+
+/**
+ * True when points should also go to MetricsDO "local": "1" always (when
+ * bound), "0" never. Unset, the stub is only a dev convenience: on in a dev
+ * build without AE SQL credentials, or when there is no Analytics Engine
+ * binding at all. A production build with the AE binding never writes it by
+ * default, because every write is an RPC to one global DO.
+ */
+export function localSinkOn(env: AnalyticsEnv, dev: boolean = DEV_BUILD): boolean {
   if (env.ANALYTICS_LOCAL === "0" || !env.METRICS) return false;
   if (env.ANALYTICS_LOCAL === "1") return true;
-  return !(env.ANALYTICS_ACCOUNT_ID && env.ANALYTICS_API_TOKEN);
+  if (env.ANALYTICS_ACCOUNT_ID && env.ANALYTICS_API_TOKEN) return false;
+  return dev || !env.ANALYTICS;
 }
 
 /** AE limit on index1. */
@@ -130,6 +143,8 @@ export function admitLocal(
 }
 
 export interface AnalyticsOptions {
+  /** Dev build (localSinkOn); DEV_BUILD by default. */
+  dev?: boolean;
   now?: () => number;
   /** Per-isolate state by default; tests pass a fresh one. */
   state?: LocalSinkState;
@@ -149,7 +164,9 @@ export function createAnalytics(
   opts: AnalyticsOptions = {},
 ): Analytics {
   const ae = env.ANALYTICS;
-  const ns = localSinkOn(env) ? (env.METRICS as unknown as MetricsNamespaceLike) : null;
+  const ns = localSinkOn(env, opts.dev ?? DEV_BUILD)
+    ? (env.METRICS as unknown as MetricsNamespaceLike)
+    : null;
   if (!ae && !ns) return NOOP_ANALYTICS;
   const now = opts.now ?? Date.now;
   const state = opts.state ?? ISOLATE_STATE;

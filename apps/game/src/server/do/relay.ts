@@ -11,6 +11,7 @@ import { codec } from "../../shared/codec.ts";
 import { presenceEntityId, presenceWorld, type PresenceWorldSpec } from "../../shared/worlds.ts";
 import { SocketLimiter, type LimitedKind } from "../rate-limit.ts";
 import { defaultWorld } from "../presence/world.ts";
+import { PoseQueue } from "../presence/pose.ts";
 import { analyticsFor } from "../analytics/index.ts";
 import { markDoActive } from "../analytics/do-active.ts";
 import { WS_ABNORMAL_CLOSE, wsClosed, wsOpened } from "../analytics/ws.ts";
@@ -55,7 +56,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
    * of the same character is superseded). One batch is in flight at a time, so
    * a quiet relay forwards each pose at once and a busy one coalesces.
    */
-  readonly #poseBatch = new Map<string, { ws: WebSocket; info: SocketInfo; pose: PoseUpdate }>();
+  readonly #poseBatch = new PoseQueue<{ ws: WebSocket; info: SocketInfo; pose: PoseUpdate }>();
   #posesInFlight = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -218,7 +219,8 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
 
   /** Queues a client-reported pose for the chunk (which checks and sanitises it). */
   #queuePose(ws: WebSocket, info: SocketInfo, msg: Extract<ClientMessage, { t: "pose" }>): void {
-    this.#poseBatch.set(info.characterId, { ws, info, pose: msg });
+    // A newer pose replaces a queued one, but keeps its companions change (pose.ts coalescePose).
+    this.#poseBatch.put(info.characterId, { ws, info, pose: msg });
     if (!this.#posesInFlight) void this.#sendPoses();
   }
 
@@ -227,8 +229,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     this.#posesInFlight = true;
     try {
       while (this.#poseBatch.size > 0) {
-        const batch = [...this.#poseBatch.values()];
-        this.#poseBatch.clear();
+        const batch = this.#poseBatch.drain();
         try {
           await this.#forwardPoses(batch);
         } catch (err) {

@@ -25,7 +25,7 @@ optional, and leaving it out disables or stubs the feature it enables. Never com
 | `ANALYTICS_ACCOUNT_ID`  | secret or var | no       | Admin dashboard: account id for the Analytics Engine SQL API (needs the token too)                       |
 | `ANALYTICS_API_TOKEN`   | secret        | no       | Admin dashboard: API token with **Account Analytics: Read**. Absent = the dashboard reads the local stub |
 | `ANALYTICS_DATASET`     | var           | no       | Analytics Engine dataset queried by the dashboard (default `gamez_events`)                               |
-| `ANALYTICS_LOCAL`       | var           | no       | Local analytics stub (MetricsDO): `"0"` never, `"1"` always also write it, unset = on without AE SQL     |
+| `ANALYTICS_LOCAL`       | var           | no       | Local analytics stub (MetricsDO): `"0"` never, `"1"` always also write it, unset = dev builds only       |
 | `VITE_BUILD_ID`         | build env     | no       | Client build id in client telemetry (version adoption in Tech health). Unset = `"dev"`                   |
 
 "secret" = set with `cf workers secrets …` (encrypted, write-only). "var" = a plain text binding
@@ -306,8 +306,11 @@ Reading them back needs the SQL API, which is not a binding:
 3. Leave `ANALYTICS_LOCAL` unset. With both credentials present the local stub turns off and the
    dashboard's source chips say "Analytics Engine" instead of "local stub".
 
-Without the credentials (every local `vp dev`, and production until they are set) the points also
-go to the MetricsDO "local" stub (14 days, 200 000 rows) and the dashboard reads that. The SQL
+Without the credentials, a local `vp dev` (a dev build) also writes the points to the MetricsDO
+"local" stub (14 days, 200 000 rows) and the dashboard reads that. A production build never writes
+the stub by default (every write would be an RPC to one global DO); set `ANALYTICS_LOCAL = "1"` to
+force it, for example for a short test without AE credentials. Without credentials and without the
+stub, the dashboard's Analytics Engine sections read the (empty) stub. The SQL
 dialect the dashboard sends (`FORMAT JSON`, `quantileExactWeighted`, `intDiv(toUInt32(timestamp))`)
 is **unverified against the live API** until it runs with real credentials (ADR 0008).
 

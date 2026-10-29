@@ -22,6 +22,7 @@ import {
   replaySegment,
   stableHash,
   type ClientDrivenPolicy,
+  type InstanceReport,
   type LoadedMode,
   type Sim,
   type SimSnapshot,
@@ -1462,6 +1463,9 @@ export class VerifiedHost {
   /** Replaces memory with a new game (not yet written); lifetime fields carry over from `prior`. */
   #newGame(prior: VerifiedRecord | null): void {
     const now = this.#d.now();
+    // The pending tally is the outgoing hero's: flush it under that hero's
+    // quarantine (ADR 0007 R1) before the new, unquarantined record replaces it.
+    this.#flushTally(now, this.#rec ?? prior);
     const seed = this.#d.randomSeed() >>> 0;
     const sim = createSim(this.#d.loaded, { seed });
     this.#sim = sim;
@@ -1531,12 +1535,12 @@ export class VerifiedHost {
    * game-wide balance metrics. They are dropped; verification health
    * (verify.*) is still written.
    */
-  #flushTally(now: number): void {
+  #flushTally(now: number, owner: VerifiedRecord | null = this.#rec): void {
     const analytics = this.#d.analytics;
     if (!analytics) return;
-    const accountId = this.#rec?.accountId || accountOfInstance(this.#d.name);
+    const accountId = owner?.accountId || accountOfInstance(this.#d.name);
     this.#tally.flush(
-      this.#rec?.imported ? quarantinedAnalytics(analytics) : analytics,
+      owner?.imported ? quarantinedAnalytics(analytics) : analytics,
       accountId,
       now,
     );
@@ -1546,7 +1550,12 @@ export class VerifiedHost {
   #appendReports(sim: Sim): number {
     const { outbox, policy, store, loaded } = this.#d;
     if (!outbox || !policy.reports) return 0;
-    const rows = this.#safe(() => policy.reports?.(sim.world, loaded.registry) ?? [], []);
+    const rows = this.#safe<InstanceReport[] | null>(
+      () => policy.reports?.(sim.world, loaded.registry) ?? [],
+      null,
+    );
+    // A failing hook reports nothing: never tombstone rows because of it.
+    if (rows === null) return 0;
     const rec = this.#rec!;
     let n = 0;
     for (const row of rows) {
@@ -1567,6 +1576,17 @@ export class VerifiedHost {
       outbox.append(row.table, `${this.#d.name}/${row.key}`, "upsert", envelope);
       store.setReportHash(row.table, row.key, hash);
       n++;
+    }
+    // Rows that left a complete table (a dismissed member, a reset party) are
+    // tombstoned, so they stop being ranked and the table stays bounded.
+    for (const table of policy.completeReportTables ?? []) {
+      const live = new Set(rows.filter((r) => r.table === table).map((r) => r.key));
+      for (const key of store.reportKeys(table)) {
+        if (live.has(key)) continue;
+        outbox.append(table, `${this.#d.name}/${key}`, "delete", null);
+        store.deleteReportHash(table, key);
+        n++;
+      }
     }
     return n;
   }

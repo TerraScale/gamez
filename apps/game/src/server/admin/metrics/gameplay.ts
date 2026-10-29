@@ -22,6 +22,12 @@ import {
   type MetricsDeps,
 } from "./util.ts";
 
+/**
+ * Live, verified read-model rows: not tombstoned and not imported (ADR 0007
+ * R1: a forged local save would dominate the hero and rift stats). The same
+ * rule as the leaderboards (leaderboards/query.ts RANKED).
+ */
+const LIVE = "_deleted = 0 AND COALESCE(imported, 0) = 0";
 const TALLY = "sim.tally" as const;
 const OFFLINE = "sim.offline" as const;
 /** Top-N cap for every ranked list in this section. */
@@ -84,26 +90,26 @@ async function readHeroes(db: D1Database, mode: string): Promise<HeroStats> {
     db,
     `SELECT COUNT(*) AS total, COALESCE(MAX(deepest_depth), 0) AS deepest,
             COALESCE(SUM(kills), 0) AS kills, COALESCE(SUM(deaths), 0) AS deaths
-     FROM classic_hero WHERE _deleted = 0 AND mode = ?`,
+     FROM classic_hero WHERE ${LIVE} AND mode = ?`,
     mode,
   );
   const byClass = await rows<{ label: string; n: number }>(
     db,
     `SELECT COALESCE(class_id, 'unknown') AS label, COUNT(*) AS n
-     FROM classic_hero WHERE _deleted = 0 AND mode = ? GROUP BY label`,
+     FROM classic_hero WHERE ${LIVE} AND mode = ? GROUP BY label`,
     mode,
   );
   const byLevel = await rows<{ label: string; n: number }>(
     db,
     `SELECT ${levelBandSql("level")} AS label, COUNT(*) AS n
-     FROM classic_hero WHERE _deleted = 0 AND mode = ? GROUP BY label`,
+     FROM classic_hero WHERE ${LIVE} AND mode = ? GROUP BY label`,
     mode,
   );
   const byDepth = await rows<{ label: string; n: number }>(
     db,
     `SELECT CASE WHEN deepest_depth >= 21 THEN '21+' WHEN deepest_depth <= 0 THEN '0'
                  ELSE CAST(deepest_depth AS TEXT) END AS label, COUNT(*) AS n
-     FROM classic_hero WHERE _deleted = 0 AND mode = ? GROUP BY label`,
+     FROM classic_hero WHERE ${LIVE} AND mode = ? GROUP BY label`,
     mode,
   );
   return {
@@ -147,7 +153,7 @@ async function readRifts(db: D1Database, mode: string, range: AdminRange): Promi
             COALESCE(SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END), 0) AS completed,
             COALESCE(MAX(CASE WHEN completed = 1 THEN score END), 0) AS best
      FROM leaderboard_rift
-     WHERE _deleted = 0 AND mode = ? AND _updated_at >= ? AND _updated_at < ?`,
+     WHERE ${LIVE} AND mode = ? AND _updated_at >= ? AND _updated_at < ?`,
     mode,
     range.from,
     range.to,
@@ -168,7 +174,7 @@ async function readRifts(db: D1Database, mode: string, range: AdminRange): Promi
     db,
     `SELECT CAST(score / ? AS INTEGER) AS b, COUNT(*) AS n
      FROM leaderboard_rift
-     WHERE _deleted = 0 AND mode = ? AND completed = 1 AND _updated_at >= ? AND _updated_at < ?
+     WHERE ${LIVE} AND mode = ? AND completed = 1 AND _updated_at >= ? AND _updated_at < ?
      GROUP BY b`,
     width,
     mode,

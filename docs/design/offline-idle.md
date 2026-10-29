@@ -95,7 +95,8 @@ tick:
 2. Otherwise (Auto or Idle, alive, dead or in town alike): `ticks += 1`. For each credited death
    in `busOf(world).deaths` (`creditTeam === "hero" && !isHero && rarity !== "summon"`, the same
    filter as `progression/kills.ts`): `kills += 1`, and `xp += xpForKill(bal, heroLevel,
-   d.level, d.xp)` when `d.xp > 0` (heroLevel = the current `Level.level`). Then `gold += loot`,
+   d.level, d.xp)` and `pool += d.xp` (the raw XP, used by the party grant) when `d.xp > 0`
+   (heroLevel = the current `Level.level`). Then `gold += loot`,
    `loot = 0`, `upkeep = (upkeep ?? 0) + (spent ?? 0)`, `spent = 0`. A new resource starts with
    `upkeep: 0, spent: 0`; a rate saved before the second pass reads both as 0 and gets them
    written on its next eligible tick.

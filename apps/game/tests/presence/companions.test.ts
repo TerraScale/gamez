@@ -3,6 +3,7 @@ import { PRESENCE_TAG_WORDS } from "@gamez/mode-classic";
 import { MAX_COMPANIONS, type CompanionPose, type EntityState } from "@gamez/protocol";
 import {
   MAX_COMPANION_NAME,
+  PoseQueue,
   poseState,
   sameStanding,
   sanitiseCompanions,
@@ -214,5 +215,44 @@ describe("sameStanding: companions count as a change", () => {
     expect(
       sameStanding(standing(), poseState(standing(), pose({ companions: [] }), NOW), NOW),
     ).toBe(true);
+  });
+});
+
+describe("PoseQueue (the relay's pose batch)", () => {
+  type Entry = {
+    tag: string;
+    pose: { pos: { x: number; y: number }; companions?: CompanionPose[] };
+  };
+  const at = (x: number, companions?: CompanionPose[]) =>
+    companions === undefined ? { pos: { x, y: 0 } } : { pos: { x, y: 0 }, companions };
+
+  it("keeps a one-shot companions [] that a newer pose without the field replaces", () => {
+    const q = new PoseQueue<Entry>();
+    q.put("c1", { tag: "a", pose: at(1, []) });
+    q.put("c1", { tag: "b", pose: at(2) });
+    const out = q.drain();
+    expect(out).toEqual([{ tag: "b", pose: { pos: { x: 2, y: 0 }, companions: [] } }]);
+    expect(q.size).toBe(0);
+  });
+
+  it("the chunk then clears the stale companions (poseState)", () => {
+    const q = new PoseQueue<Entry>();
+    q.put("c1", { tag: "a", pose: at(1, []) });
+    q.put("c1", { tag: "b", pose: at(2) });
+    const [sent] = q.drain();
+    const next = poseState(standing([lyra]), pose({ companions: sent!.pose.companions }), NOW);
+    expect(next.companions).toEqual([]);
+  });
+
+  it("a newer list wins, other avatars are separate, and an absent field stays absent", () => {
+    const q = new PoseQueue<Entry>();
+    q.put("c1", { tag: "a", pose: at(1, [lyra]) });
+    q.put("c1", { tag: "b", pose: at(2, [mira]) });
+    q.put("c2", { tag: "c", pose: at(3) });
+    q.put("c2", { tag: "d", pose: at(4) });
+    expect(q.drain()).toEqual([
+      { tag: "b", pose: { pos: { x: 2, y: 0 }, companions: [mira] } },
+      { tag: "d", pose: { pos: { x: 4, y: 0 } } },
+    ]);
   });
 });
