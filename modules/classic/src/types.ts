@@ -55,10 +55,14 @@ export const KIND = {
   rift: "classic.rift",
   /** AchievementProto. Ids: "classic.achievement.<name>". */
   achievement: "classic.achievement",
+  // ---- party (docs/design/party.md)
+  /** PartyProto, single id PARTY_ID (defined by classic.party). Read with rules.partyProtoOf (falls back to DEFAULT_PARTY_PROTO). */
+  party: "classic.party",
 } as const;
 
 export const ECONOMY_ID = "classic.economy";
 export const RIFT_ID = "classic.rift";
+export const PARTY_ID = "classic.party";
 
 export const BALANCE_ID = "classic.balance";
 export const NAMES_UNIQUE_MONSTER = "classic.names.uniqueMonster";
@@ -335,7 +339,16 @@ export interface ClassProto {
   starterPotions: { base: string; count: number }[];
   /** Base move speed, sub per tick (hero default 51 = 4 tiles/s). */
   moveSpeed: number;
+  /**
+   * Party (docs/design/party.md §6.3): where the party AI places this class.
+   * "front" = melee line next to the leader's facing, "back" = ranged/caster
+   * line behind. Optional: absent = "front". Patched in by classic.party.
+   */
+  partyRole?: PartyRole;
 }
+
+/** Formation line of a party member (ClassProto.partyRole, PartyMember.role). */
+export type PartyRole = "front" | "back";
 
 export type SkillShape =
   /** Single target in reach (basic melee, monster bites). */
@@ -421,7 +434,12 @@ export interface SkillProto {
   status?: { id: string; chancePct: number; duration: number; power: number; powerPerRank: number };
   dash?: { speed: number; maxRange: number };
   summon?: { monster: string; count: number; duration: number; max: number };
-  heal?: { pct: number; pctPerRank: number; flat: number };
+  /**
+   * Heals the caster. Party (docs/design/party.md §6.5): with `allyRadius`
+   * (sub) the same amount also heals every living hero-team unit within that
+   * radius of the caster (party members, never monsters). Optional field.
+   */
+  heal?: { pct: number; pctPerRank: number; flat: number; allyRadius?: number };
   /** Status applied to the caster (and hero-team allies in radius when `radius` is set). */
   buff?: { status: string; duration: number; power: number; powerPerRank: number };
   pulse?: { count: number; every: number };
@@ -950,4 +968,48 @@ export interface AchievementProto {
   hidden: boolean;
   /** Panel sort order. */
   order: number;
+}
+
+// ---------------------------------------------------------------------------
+// Party (docs/design/party.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Party rules (KIND.party, id PARTY_ID), defined by classic.party. Every
+ * "per size" table has PARTY_MAX entries indexed by party size - 1, and its
+ * first entry is the identity (100 / 0) so a party of one plays exactly like
+ * the solo game. Read through rules.partyProtoOf / rules.partyScale.
+ */
+export interface PartyProto {
+  /** Hard cap of party members (4). */
+  maxMembers: number;
+  /** Slot k+2 (k = 0, 1, 2) unlocks for free once the boss of unlockBossDepths[k] is killed (DungeonState.bossesKilled). */
+  unlockBossDepths: number[];
+  /** Gold price of slot k+2 when bought before its boss (classic.party.buySlot, town). */
+  slotPrices: number[];
+  /** A recruit starts at max(1, highest member level - recruitLevelGap). */
+  recruitLevelGap: number;
+  /** Recruit fee = recruitFeePerLevel x the recruit's start level (level 1 recruits cost this much). */
+  recruitFeePerLevel: number;
+  /** Monster life %, by party size (applied at spawn). */
+  monsterLifePct: number[];
+  /** Monster damage % (CombatStats dmgMin/dmgMax and flat element adds), by party size. */
+  monsterDamagePct: number[];
+  /** Monster.xp % (the pool a kill is worth), by party size. */
+  monsterXpPct: number[];
+  /** Share of a kill's XP (after xpForKill for the member's own level) each living member gets, by party size. */
+  xpSharePct: number[];
+  /** Item drop count % and gold pile % (classic.items.drops), by party size. */
+  lootPct: number[];
+  /** Monsters per pack % (classic.world population), by party size. */
+  densityPct: number[];
+  /** Ticks a reviver channels next to a downed ally (60 = 3 s). */
+  reviveTicks: number;
+  /** Max distance (sub) between reviver and the downed ally while channelling. */
+  reviveRange: number;
+  /** Life and mana % a revived member comes back with. */
+  reviveLifePct: number;
+  /** Followers farther than this (sub) from the leader drop what they do and regroup; farther than leashTeleport they are placed next to the leader. */
+  leashRange: number;
+  leashTeleport: number;
 }

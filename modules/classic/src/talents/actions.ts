@@ -1,11 +1,13 @@
 /**
  * Player actions of classic.talents (wave A §3): classic.learnTalent and
  * classic.resetTalents. parse() is strict; both call noteManual() and then
- * run the shared execX function, which throws ActionError when it fails.
+ * run the shared execX function for the CONTROLLED hero (heroOf), which
+ * throws ActionError when it fails.
  */
 import { ActionError, type ActionDef, type SimContext, type World } from "@gamez/kernel";
 import { ACTION, ERR, type OpResult } from "../actions.ts";
 import { noteManual } from "../control.ts";
+import { heroOf } from "../resources.ts";
 import { execLearnTalent, execResetTalents } from "./ops.ts";
 
 function fields(payload: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -32,7 +34,7 @@ const learnTalent: ActionDef<{ node: string }> = {
   },
   apply(world, p, ctx: SimContext) {
     noteManual(world, ctx);
-    unwrap(execLearnTalent(world, ctx, p.node));
+    unwrap(execLearnTalent(world, ctx, heroOf(world), p.node));
   },
 };
 
@@ -45,7 +47,7 @@ const resetTalents: ActionDef<Record<string, never>> = {
   },
   apply(world, _p, ctx) {
     noteManual(world, ctx);
-    unwrap(execResetTalents(world, ctx));
+    unwrap(execResetTalents(world, ctx, heroOf(world)));
   },
 };
 

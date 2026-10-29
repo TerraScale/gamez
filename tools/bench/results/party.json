@@ -1,0 +1,64 @@
+{
+  "idle": [
+    {
+      "heroes": 1,
+      "ticks": 6000,
+      "meanMs": 0.7482794423333333,
+      "kills": 135,
+      "deepest": 2
+    },
+    {
+      "heroes": 2,
+      "ticks": 6000,
+      "meanMs": 1.0058816886666668,
+      "kills": 125,
+      "deepest": 2
+    },
+    {
+      "heroes": 3,
+      "ticks": 6000,
+      "meanMs": 1.265316417333333,
+      "kills": 191,
+      "deepest": 2
+    },
+    {
+      "heroes": 4,
+      "ticks": 6000,
+      "meanMs": 1.1841283006666665,
+      "kills": 161,
+      "deepest": 2
+    }
+  ],
+  "fight": [
+    {
+      "case": "solo hero + 300 monsters",
+      "heroes": 1,
+      "monsters": 300,
+      "meanMs": 3.1792405425000836,
+      "bestWindowMs": 2.0909210000000895,
+      "thinkMs": 0.2576565699999355,
+      "followersMs": 0.0008400999998957559,
+      "allocateMs": 0.001633164999939254
+    },
+    {
+      "case": "4 heroes + 300 monsters",
+      "heroes": 4,
+      "monsters": 300,
+      "meanMs": 3.15156439499995,
+      "bestWindowMs": 2.396753199999803,
+      "thinkMs": 0.24519893500001672,
+      "followersMs": 0.27097680750005565,
+      "allocateMs": 0.003051132499876985
+    },
+    {
+      "case": "4 heroes + 300 monsters, party brains disabled",
+      "heroes": 4,
+      "monsters": 300,
+      "meanMs": 1.9127147799999966,
+      "bestWindowMs": 1.804842679999856,
+      "thinkMs": 0,
+      "followersMs": 0,
+      "allocateMs": 0
+    }
+  ]
+}

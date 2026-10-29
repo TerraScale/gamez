@@ -26,9 +26,22 @@ export const LOSE_CONTACT_TICKS = 100;
 /** Think throttle of monsters out of attack range: every N ticks, staggered by entity id. */
 export const THINK_EVERY = 4;
 
+/**
+ * Party threat (docs/design/party.md §7.1): after a member's hit turns a
+ * monster on it, the monster keeps that target at least this many ticks
+ * (no other threat switch, no "3 tiles closer" switch).
+ */
+export const THREAT_HOLD = 40;
+
 export interface AggroState {
   /** Last tick each engaged monster had contact, keyed by entity id (string). */
   last: Record<string, number>;
+  /**
+   * Party only (absent in solo games): tick until which a monster's threat
+   * target is locked, keyed by entity id (string). Created by the first
+   * threat switch of a party of 2+.
+   */
+  threat?: Record<string, number>;
 }
 
 /** The aggro memory of this world (created on first use when setup did not run). */
@@ -37,6 +50,40 @@ export function aggroOf(world: World): AggroState {
   if (a !== undefined) return a;
   world.setResource<AggroState>(AGGRO_KEY, { last: {} });
   return world.getResource<AggroState>(AGGRO_KEY)!;
+}
+
+/**
+ * Records a threat switch of `monster` at `tick` unless one is still locked.
+ * Returns true when the caller may retarget the monster now.
+ */
+export function noteThreat(world: World, monster: Entity, tick: number): boolean {
+  const aggro = aggroOf(world);
+  const key = String(monster);
+  const until = aggro.threat?.[key];
+  if (until !== undefined && until > tick) return false;
+  if (aggro.threat === undefined) aggro.threat = {};
+  aggro.threat[key] = tick + THREAT_HOLD;
+  return true;
+}
+
+/** True while `monster`'s threat target is locked (party only). Drops an expired lock. */
+export function threatLocked(aggro: AggroState, monster: Entity, tick: number): boolean {
+  const t = aggro.threat;
+  if (t === undefined) return false;
+  const key = String(monster);
+  const until = t[key];
+  if (until === undefined) return false;
+  if (until > tick) return true;
+  delete t[key];
+  return false;
+}
+
+/** Forgets the aggro memory of a destroyed monster. */
+export function forgetAggro(world: World, monster: Entity): void {
+  const aggro = aggroOf(world);
+  const key = String(monster);
+  delete aggro.last[key];
+  if (aggro.threat !== undefined && aggro.threat[key] !== undefined) delete aggro.threat[key];
 }
 
 export function skillOf(ctx: SimContext, id: string): Readonly<SkillProto> | undefined {
@@ -107,14 +154,14 @@ export function liveMinionsOf(world: World, owner: Entity): number {
 
 /** Stops a unit: clears its direct goal and path (no write when already stopped). */
 export function stopMover(world: World, e: Entity): void {
-  const m = world.read(e, Mover);
+  const m = world.peek(e, Mover)!;
   if (m.goalX < 0 && m.path.length === 0) return;
   world.update(e, Mover, { goalX: -1, goalY: -1, path: [] });
 }
 
 /** Direct steering toward a sub position (clears any path). No write when unchanged. */
 export function steerDirect(world: World, e: Entity, x: number, y: number): void {
-  const m = world.read(e, Mover);
+  const m = world.peek(e, Mover)!;
   if (m.goalX === x && m.goalY === y && m.path.length === 0) return;
   // Only the goal changes when there is no path (avoids cloning an empty path).
   if (m.path.length === 0) world.update(e, Mover, { goalX: x, goalY: y });

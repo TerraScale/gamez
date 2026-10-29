@@ -11,16 +11,16 @@
  * gold earned kept after an hour).
  */
 import type { Entity, FrozenRegistry } from "@gamez/kernel";
-import { Level, Npc, Wallet } from "../components.ts";
+import { Level, Npc } from "../components.ts";
 import { ECONOMY_ID, KIND, type EconomyProto, type NpcProto } from "../types.ts";
-import { npcsByRole, type AutoCtx } from "./util.ts";
+import { npcsByRole, purseGold, type AutoCtx } from "./util.ts";
 
 export function econOf(reg: FrozenRegistry): EconomyProto | undefined {
   return reg.get<EconomyProto>(KIND.economy, ECONOMY_ID);
 }
 
 export function goldOf(c: AutoCtx): number {
-  return c.world.get(c.hero, Wallet)?.gold ?? 0;
+  return purseGold(c);
 }
 
 export function heroLevel(c: AutoCtx): number {

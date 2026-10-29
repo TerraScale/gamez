@@ -23,6 +23,9 @@ import {
 } from "@gamez/kernel";
 import { busOf, pushCommand, pushSpawn } from "../bus.ts";
 import { ERR } from "../actions.ts";
+import { ensureParty, partySize } from "../party/shared.ts";
+import { execRecruit } from "../party/recruit.ts";
+import { cleanHeroName } from "../progression/hero.ts";
 import { AreaTag, Body, Dead, Level, Life, Monster, Pos, Talents } from "../components.ts";
 import { tileCenter, type TilePos } from "../fixed.ts";
 import {
@@ -33,7 +36,13 @@ import {
   type DungeonState,
   type RiftState,
 } from "../resources.ts";
-import { bossDisplayName, MAIN_DUNGEON_DEPTH, monsterLevel, xpAtLevel } from "../rules.ts";
+import {
+  bossDisplayName,
+  MAIN_DUNGEON_DEPTH,
+  monsterLevel,
+  PARTY_MAX,
+  xpAtLevel,
+} from "../rules.ts";
 import { MODULE } from "../ids.ts";
 import {
   BALANCE_ID,
@@ -42,6 +51,7 @@ import {
   KIND,
   RIFT_ID,
   type BalanceProto,
+  type ClassProto,
   type ItemCategory,
   type ItemRarity,
   type MonsterProto,
@@ -82,6 +92,11 @@ export interface GrantPayload {
    * it spawns on the next step.
    */
   woundBosses?: number;
+  /**
+   * Builds a party: one recruit per class id (classic.<class>, at most 3), free of
+   * charge and in any place. Unlocks the slots they need. Named "<Class> <n>".
+   */
+  party?: string[];
 }
 
 const FIELDS = [
@@ -97,10 +112,13 @@ const FIELDS = [
   "riftProgress",
   "spawnBoss",
   "woundBosses",
+  "party",
 ] as const;
 
 /** Content ids in payloads: namespaced, short, plain characters. */
 const ID_RE = /^classic\.[a-z_]+\.[a-z0-9_]+$/;
+/** Class ids (classic.warrior ...). */
+const CLASS_RE = /^classic\.[a-z_]+$/;
 
 function idOf(v: unknown, what: string): string {
   if (typeof v !== "string" || v.length > 80 || !ID_RE.test(v)) bad(`${what} must be a content id`);
@@ -144,6 +162,16 @@ export function parseGrant(payload: unknown): GrantPayload {
   if (p.set !== undefined) out.set = idOf(p.set, "set");
   if (p.spawnBoss !== undefined) out.spawnBoss = idOf(p.spawnBoss, "spawnBoss");
   if (p.woundBosses !== undefined) out.woundBosses = intIn(p.woundBosses, 1, 99, "woundBosses");
+  if (p.party !== undefined) {
+    if (!Array.isArray(p.party)) bad("party must be an array of class ids");
+    if (p.party.length < 1 || p.party.length > 3) bad("party must hold 1..3 class ids");
+    out.party = p.party.map((c) => {
+      if (typeof c !== "string" || c.length > 80 || !CLASS_RE.test(c)) {
+        bad("party entries must be class ids");
+      }
+      return c as string;
+    });
+  }
   if (p.riftProgress !== undefined)
     out.riftProgress = intIn(p.riftProgress, 1, 100, "riftProgress");
   if (p.unlockRift !== undefined) {
@@ -417,6 +445,7 @@ export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void
   if (g.spawnBoss !== undefined && world.has(hero, Pos))
     spawnBossNear(world, ctx, hero, g.spawnBoss);
   if (g.woundBosses !== undefined) woundBosses(world, g.woundBosses);
+  if (g.party !== undefined) grantParty(world, ctx, g.party);
   if (g.talentPoints !== undefined) {
     const t = world.get(hero, Talents);
     if (t) world.update(hero, Talents, { points: t.points + g.talentPoints });
@@ -431,6 +460,27 @@ export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void
   }
 }
 
+/**
+ * Builds a party (QA): ensures it, unlocks the slots the new members need
+ * (slotsBought), then recruits each class with the recruit flow, free of
+ * charge and in any place, named "<Class> <n>".
+ */
+function grantParty(world: World, ctx: SimContext, classIds: readonly string[]): void {
+  const party = ensureParty(world, ctx);
+  if (!party) throw new ActionError(ERR.noHero, "no hero");
+  const total = partySize(world) + classIds.length;
+  if (total > PARTY_MAX) throw new ActionError(ERR.partyFull, `a party holds ${PARTY_MAX} heroes`);
+  world.setResource(RES.party, { ...party, slotsBought: Math.max(party.slotsBought, total - 1) });
+  classIds.forEach((classId, i) => {
+    const cls = ctx.registry.get<ClassProto>(KIND.class, classId);
+    if (!cls) throw new ActionError(ERR.unknownId, `unknown class "${classId}"`);
+    const name = cleanHeroName(`${cls.name} ${i + 1}`);
+    if (name === null) throw new ActionError(ERR.badPayload, "class name is not a hero name");
+    const r = execRecruit(world, ctx, { classId, name, free: true });
+    if (!r.ok) throw new ActionError(r.code, r.message);
+  });
+}
+
 const grant: ActionDef<GrantPayload> = {
   name: DEBUG_GRANT,
   parse(_world, payload) {
@@ -443,7 +493,7 @@ const grant: ActionDef<GrantPayload> = {
 
 export const classicDebug = defineModule({
   id: MODULE.debug,
-  version: "0.3.0",
+  version: "0.4.0",
   deps: [MODULE.content, MODULE.core],
   optionalDeps: [MODULE.items, MODULE.progression, MODULE.world, MODULE.rift, MODULE.talents],
   systems: [pendingWoundSystem],

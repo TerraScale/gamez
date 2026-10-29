@@ -110,7 +110,7 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 | **Registry**    | Prototype tables (items, spells, creatures…) built in 3 stages, then frozen                                            | `reg.define / patch / remove / get / all`                                                               |
 | **Data stages** | `data` (define) → `dataUpdates` (patch others) → `dataFinal` (last fixes), each run across _all_ modules in load order | Factorio model                                                                                          |
 | **Component**   | Plain-JSON data attached to an entity                                                                                  | `defineComponent<T>("steps.health")`                                                                    |
-| **World**       | ECS store with sorted queries and resources                                                                            | `world.create / add / update / read / query / setResource`                                              |
+| **World**       | ECS store with sorted queries and resources                                                                            | `world.create / add / update / read / peek / query / setResource`                                       |
 | **System**      | Runs every tick (fixed) or after each action (event), ordered by stage → order → load order → id                       | `{ id, stage, order, run(world, ctx) }`                                                                 |
 | **Action**      | A validated player intent; atomic, so any throw rolls everything back                                                  | `{ name, parse(world, payload, ctx), apply(world, p, ctx) }`                                            |
 | **Override**    | Change another module's runtime behaviour                                                                              | `{ kind: "system" \| "action", target, op: "disable" \| "replace" \| "wrap" }`                          |
@@ -119,6 +119,8 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 | **contentHash** | Hash of the module set and the frozen registry; client and server must match                                           | `loaded.contentHash`                                                                                    |
 
 Load order comes from `deps` and `optionalDeps`, with ties broken by id. Patching, wrapping and overriding apply in that order, so a later module wraps an earlier one.
+
+`get()`/`read()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only loops (every monster, every tick) use `world.peek(e, C)`: same value, no copy. Never mutate what `peek()` returns; `update()` after a `peek()` is fine (ADR 0007 §6).
 
 ---
 
@@ -371,15 +373,15 @@ Add a file in `apps/game/src/server/routes/` that returns `null` for paths it do
 
 ## 12. Testing and quality gates
 
-| Layer        | Required                                                                                                                                                                                                                   |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                                                                                                                           |
-| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                                                                                                                                 |
-| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes.                                                                                                       |
-| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                                                                                                                      |
-| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph, then the platform features (`E2eFeature`s in `tools/e2e/src/features.ts`: `run`, optional `afterRestart`) |
-| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                                                                                                                                 |
-| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`                                                                                                                                         |
+| Layer        | Required                                                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                                                                                                                                |
+| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                                                                                                                                      |
+| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes.                                                                                                            |
+| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                                                                                                                           |
+| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph, then the platform features (`E2eFeature`s in `tools/e2e/src/features.ts`: `run`, optional `afterRestart`)      |
+| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                                                                                                                                      |
+| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`. Timing asserts in tests scale with the measured machine load (`modules/classic/tests/support/perf.ts` `loadScale()`), never a bare ms bound |
 
 Before saying something is done: `node_modules/.bin/vp check`, `node_modules/.bin/vp run -r test`, `node_modules/.bin/vp -C apps/game build` and `node_modules/.bin/vp run e2e`, all green. Report failures honestly, with output.
 
@@ -420,7 +422,14 @@ Worktrees start from the last commit, so commit contracts first if you use `isol
 - [ ] Original names and art only, with licences recorded
 - [ ] Gates are green: check, tests, build, e2e. An ADR exists if a real decision was made.
 
-## 15. Don'ts
+## 15. Classic party conventions (docs/design/party.md)
+
+- `heroOf(world)` is the **controlled** hero. Every other member is a follower driven by the party AI. Iterate members with `partyMembers(world)` (slot order); a world without `RES.party` is a party of one, so solo code paths stay bit-identical.
+- Gold and town portal scrolls live on the founder only: read and write them through `purseOf()` / `partyGold()`, never `Wallet` on "the hero".
+- Ops take an explicit hero. A `HeroCommand` sets `hero` **only for followers** (owners resolve it with `commandHero()`); events carry `hero` only while a party exists.
+- Party size 1 must not touch the RNG or state differently from solo. Prove it with the existing pinned hashes before you bump versions.
+
+## 16. Don'ts
 
 - Don't add game rules to `packages/kernel`, `apps/game/src/server` or `apps/game/src/client`. Put them in modules.
 - Don't read D1 to make gameplay decisions, and don't write to D1 except through the sync pipeline.

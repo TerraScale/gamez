@@ -15,7 +15,6 @@
  * attacking it, and step 6 only picks up loot within LEAVE_LOOT_RANGE.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
-import { pushCommand } from "../bus.ts";
 import {
   Belt,
   Casting,
@@ -31,16 +30,13 @@ import {
   Monster,
   Pos,
   AreaTag,
-  Supplies,
-  Wallet,
+  Reviving,
   type AutoPlan,
 } from "../components.ts";
 import { PICKUP_RANGE } from "../actions.ts";
 import { autoActive } from "../control.ts";
 import { SYSTEM } from "../ids.ts";
-import { emit } from "../events.ts";
 import {
-  currentDepth,
   heroOf,
   lootFilterOf,
   RES,
@@ -51,13 +47,15 @@ import {
 import { lootVisible } from "../loot.ts";
 import { isRiftDepth, rarityRank, repairCost } from "../rules.ts";
 import { KIND, type ItemBaseProto, type NpcProto, type QuestProto } from "../types.ts";
-import { getAreaMap } from "../world/maps.ts";
+import { actingLeaderOf, leaderMode, partyWiped } from "../party/shared.ts";
 import { brokenGear, wornGear } from "./craft.ts";
 import { dodgeStep } from "./dodge.ts";
 import { econOf, goldOf, hasCraftingSmith } from "./econ.ts";
 import { dungeonStep, giveUpFrontier, liveBoss, travel } from "./dungeon.ts";
 import { engagedFoes, fightStep, isStunned, scanFoes, type Foe } from "./fight.ts";
 import { pickEquip } from "./gear.ts";
+import { anyDowned, downedStep, gatherWait, reviveRetreat } from "./lead.ts";
+import { healAllyStep, otherMemberCtxs, partyInDanger } from "./party.ts";
 import { walkTo } from "./route.ts";
 import { restockPrice, skipTownStep, townFreesBag, townStep } from "./town.ts";
 import { tileDist } from "./route.ts";
@@ -68,13 +66,13 @@ import {
   balanceOf,
   beltCount,
   beltHasRoom,
-  configOf,
   currentIntent,
   d2To,
-  ensureAutoState,
+  emitFor,
   FIGHT_LINGER_TICKS,
-  heroClass,
   inReach,
+  isParty,
+  makeAutoCtx,
   isIgnored,
   LEAVE_LOOT_RANGE,
   leaving,
@@ -82,10 +80,13 @@ import {
   LOOT_RANGE,
   LOOT_SAFE_RANGE,
   manaPct,
-  noteRetreat,
   nearestInteractable,
+  noteRetreat,
   potionAmount,
   potionOf,
+  purseGold,
+  purseScrolls,
+  pushCmd,
   REPLAN_TICKS,
   setIntent,
   setPlan,
@@ -105,28 +106,6 @@ import {
 const WALKING: readonly AutoPlan[] = ["explore", "loot", "town", "toDungeon", "descend", "toTown"];
 /** Plans whose order is finished when the intent goes back to idle (re-plan at once). */
 const REACTIVE: readonly AutoPlan[] = ["explore", "loot", "town"];
-
-export function makeAutoCtx(world: World, ctx: SimContext, hero: Entity): AutoCtx {
-  const st = ensureAutoState(world, hero, ctx.tick);
-  const p = world.read(hero, Pos);
-  return {
-    world,
-    ctx,
-    reg: ctx.registry,
-    tick: ctx.tick,
-    hero,
-    st,
-    cfg: configOf(world),
-    map: getAreaMap(world, ctx.registry),
-    depth: currentDepth(world),
-    hx: p.x,
-    hy: p.y,
-    tx: p.x >> 8,
-    ty: p.y >> 8,
-    classProto: heroClass(world, ctx.registry, hero),
-    due: ctx.tick >= st.thinkAt,
-  };
-}
 
 /** Fresh area: forget per-area memory; start the town routine in town. */
 function onAreaEntered(c: AutoCtx): void {
@@ -189,7 +168,7 @@ function watchdog(c: AutoCtx): void {
   st.frontierX = -1;
   st.frontierY = -1;
   st.focus = 0;
-  emit(c.ctx, {
+  emitFor(c, {
     type: "classic.auto.notice",
     code: loop ? "travel_loop" : "no_kills",
     message: loop
@@ -267,7 +246,7 @@ function deadStep(c: AutoCtx): void {
   c.st.focus = 0;
   const dead = c.world.read(c.hero, Dead);
   const since = c.tick - (dead.at + balanceOf(c.reg).respawnDelay);
-  if (since >= 0 && since % TRAVEL_RETRY_TICKS === 0) pushCommand(c.world, { op: "respawn" });
+  if (since >= 0 && since % TRAVEL_RETRY_TICKS === 0) pushCmd(c, { op: "respawn" });
 }
 
 /** Belt slot of the potion to drink for `kind`, or -1. Prefers the biggest one that is not wasted. */
@@ -309,20 +288,24 @@ export function choosePotion(c: AutoCtx, kind: "life" | "mana"): number {
   return slot >= 0 ? slot : pick(true);
 }
 
-function potionStep(c: AutoCtx, foes: readonly Foe[]): void {
+export function potionStep(
+  c: AutoCtx,
+  foes: readonly Foe[],
+  inFight: boolean = foes.length > 0,
+): void {
   if (c.depth === 0) return;
   const belt = c.world.get(c.hero, Belt);
   if (!belt || belt.readyAt > c.tick) return;
   if (lifePct(c) < c.cfg.lifePotionPct) {
     const slot = choosePotion(c, "life");
     if (slot >= 0) {
-      pushCommand(c.world, { op: "drink", slot });
+      pushCmd(c, { op: "drink", slot });
       return;
     }
   }
-  if (foes.length > 0 && manaPct(c) < c.cfg.manaPotionPct) {
+  if (inFight && manaPct(c) < c.cfg.manaPotionPct) {
     const slot = choosePotion(c, "mana");
-    if (slot >= 0) pushCommand(c.world, { op: "drink", slot });
+    if (slot >= 0) pushCmd(c, { op: "drink", slot });
   }
 }
 
@@ -346,9 +329,37 @@ export const BOSS_RETREAT_PCT = 50;
 /**
  * Step 4. Runs before the busy check and before dodging: the town portal is
  * instant and the area change cancels a cast, while a 6-tick spell or a
- * dodge at 20 % life without a potion ended in deaths at the boss.
+ * dodge at 20 % life without a potion ended in deaths at the boss. A party
+ * also leaves when two members are in danger or a downed member could not
+ * be revived (docs/design/party.md §6.1).
  */
 function retreatStep(c: AutoCtx, foes: readonly Foe[]): boolean {
+  return soloRetreat(c, foes) || (c.party && (partyRetreat(c) || reviveRetreat(c)));
+}
+
+/** Life of this level's living boss for AutoRetreats (boss retreat loops), or -1. */
+function retreatBossHp(c: AutoCtx): number {
+  const boss = liveBoss(c);
+  return boss === 0 ? -1 : (c.world.get(boss, Life)?.hp ?? -1);
+}
+
+/**
+ * Party retreat (docs/design/party.md §6.1): two or more standing members
+ * below retreatPct with no life potion left. Same rules for scrolls, rifts
+ * and recent travel commands as the solo retreat.
+ */
+function partyRetreat(c: AutoCtx): boolean {
+  if (c.depth === 0 || isRiftDepth(c.depth) || purseScrolls(c) <= 0) return false;
+  if (c.st.thinkAt - c.tick > REPLAN_TICKS) return false;
+  if (!partyInDanger(c)) return false;
+  c.due = true;
+  if (!travel(c, { op: "townPortal" })) return false;
+  setPlan(c, "toTown", "party retreat");
+  noteRetreat(c, retreatBossHp(c));
+  return true;
+}
+
+function soloRetreat(c: AutoCtx, foes: readonly Foe[]): boolean {
   if (c.depth === 0) return false;
   const life = lifePct(c);
   const noPotion = beltCount(c, "life") === 0;
@@ -361,14 +372,13 @@ function retreatStep(c: AutoCtx, foes: readonly Foe[]): boolean {
   const potionLate = (belt?.readyAt ?? 0) > c.tick + 2;
   const emergency = life < Math.min(EMERGENCY_PCT, c.cfg.retreatPct) && potionLate;
   if (!noPotion && !emergency) return false;
-  if ((c.world.get(c.hero, Supplies)?.tpScrolls ?? 0) <= 0) return false;
+  if (purseScrolls(c) <= 0) return false;
   // A travel command went out less than REPLAN_TICKS ago (travel sets thinkAt 20 ahead).
   if (c.st.thinkAt - c.tick > REPLAN_TICKS) return false;
   c.due = true;
   if (!travel(c, { op: "townPortal" })) return false;
   setPlan(c, "toTown", "retreat");
-  const boss = liveBoss(c);
-  noteRetreat(c, boss === 0 ? -1 : (c.world.get(boss, Life)?.hp ?? -1));
+  noteRetreat(c, retreatBossHp(c));
   return true;
 }
 
@@ -428,7 +438,7 @@ function pickupInReach(c: AutoCtx): boolean {
   if (e === 0 || !c.world.has(e, Loot)) return false;
   const p = c.world.read(e, Pos);
   if (d2To(c, p.x, p.y) > PICK_REACH * PICK_REACH) return false;
-  pushCommand(c.world, { op: "pickup", target: e });
+  pushCmd(c, { op: "pickup", target: e });
   stopIntent(c);
   return true;
 }
@@ -455,10 +465,10 @@ function lootStep(c: AutoCtx, foes: readonly Foe[]): boolean {
   return true;
 }
 
-function equipStep(c: AutoCtx): void {
+export function equipStep(c: AutoCtx): void {
   if (!c.cfg.autoEquip) return;
   const eq = pickEquip(c);
-  if (eq) pushCommand(c.world, { op: "equip", uid: eq.uid, slot: eq.slot });
+  if (eq) pushCmd(c, { op: "equip", uid: eq.uid, slot: eq.slot });
 }
 
 /**
@@ -521,16 +531,21 @@ export function townTripReason(c: AutoCtx): "" | "bag full" | "quest" | "restock
   if (isRiftDepth(c.depth)) return "";
   // A broken weapon or armor piece adds nothing: repair it (wave A), even near the stairs.
   if (repairDue(c)) return "repair";
+  const others = c.party ? otherMemberCtxs(c) : [];
+  if (others.some((m) => repairDue(m))) return "repair";
   if (nearStairsDown(c)) return "";
   if (!bagFits(c, 2, 3) && townFreesBag(c)) return "bag full";
+  if (others.some((m) => !bagFits(m, 2, 3) && townFreesBag(m))) return "bag full";
   if (questTurnInWaiting(c) || questAcceptWaiting(c)) return "quest";
-  const gold = c.world.get(c.hero, Wallet)?.gold ?? 0;
+  const gold = purseGold(c);
   const life = beltCount(c, "life");
   const price = restockPrice(c);
   if (life === 0 && gold >= price) return "restock";
   // Running low with gold to spare: restock before the belt is empty.
   if (life <= RESTOCK_LOW && price < Number.MAX_SAFE_INTEGER && gold >= RESTOCK_LOW_GOLD * price)
     return "restock";
+  // Party: a member with an empty belt (or one below its retreat % without a life potion).
+  if (others.some((m) => beltCount(m, "life") === 0 && gold >= restockPrice(m))) return "restock";
   return "";
 }
 /** Life potions left that count as running low. */
@@ -562,7 +577,7 @@ export const KEEP_SCROLLS = 1;
 function toTownStep(c: AutoCtx): boolean {
   const note = townTripReason(c);
   if (note === "") return false;
-  const scrolls = c.world.get(c.hero, Supplies)?.tpScrolls ?? 0;
+  const scrolls = purseScrolls(c);
   const keep = note === "restock" || note === "repair" ? 0 : KEEP_SCROLLS;
   if (scrolls > keep) {
     if (!travel(c, { op: "townPortal" })) return false;
@@ -628,18 +643,26 @@ function plan(c: AutoCtx, foes: readonly Foe[]): void {
     if (c.st.todo.length === 0 && c.st.plan !== "town" && c.st.plan !== "toDungeon")
       c.st.todo = [...TOWN_STEPS];
     if (townStep(c)) return;
-  } else if (dungeonStep(c)) return;
+  } else if (c.party && (downedStep(c, true) || gatherWait(c))) return;
+  else if (dungeonStep(c)) return;
   setPlan(c, "none", "idle");
   stopIntent(c);
 }
 
-export function think(world: World, ctx: SimContext, hero: Entity): void {
+/**
+ * What the leader brain may do (docs/design/party.md §3): "full" = the whole
+ * controller; "defend" (party: Manual while the controlled hero is down) =
+ * potions, dodge, heals, fights and revives only (no loot, travel, explore).
+ */
+export type LeadMode = "full" | "defend";
+
+export function think(world: World, ctx: SimContext, hero: Entity, mode: LeadMode = "full"): void {
   const c = makeAutoCtx(world, ctx, hero);
-  thinkTick(c);
+  thinkTick(c, mode);
   syncLeave(c);
 }
 
-function thinkTick(c: AutoCtx): void {
+function thinkTick(c: AutoCtx, mode: LeadMode): void {
   const { world, ctx, hero, st } = c;
   const area = world.getResource<AreaState>(RES.area);
   if (area && area.enteredAt === ctx.tick) onAreaEntered(c);
@@ -653,7 +676,8 @@ function thinkTick(c: AutoCtx): void {
   const foes = scanFoes(c);
   potionStep(c, foes);
   // Leaving comes first: the portal is instant and cancels a cast (see retreatStep).
-  if (retreatStep(c, foes)) return;
+  // Party "defend" mode (Manual, the controlled hero down) never leaves.
+  if (mode === "full" && retreatStep(c, foes)) return;
   if (world.has(hero, Casting) || world.has(hero, Dash) || isStunned(c)) {
     // Acting (or unable to act) is not being stuck.
     st.stuck = 0;
@@ -664,6 +688,13 @@ function thinkTick(c: AutoCtx): void {
   trackStuck(c);
   // Telegraphs fire on a fixed tick: stepping out comes before everything but potions.
   if (dodgeStep(c)) return;
+  // Party: channelling a revive (classic.party cancels it on any move or cast).
+  if (c.party && world.has(hero, Reviving)) {
+    st.stuck = 0;
+    return;
+  }
+  // Party: Mend (allyRadius) on an ally below half life.
+  if (c.party && healAllyStep(c)) return;
   // While leaving the level only close foes and attackers are fought (see engagedFoes).
   const targets = engagedFoes(c, foes);
   if (targets.length > 0) {
@@ -677,6 +708,13 @@ function thinkTick(c: AutoCtx): void {
     // Combat is over: re-plan right away.
     st.focus = 0;
     c.due = true;
+  }
+  if (mode === "defend") {
+    // Party, Manual, the controlled hero is down: revive it, never wander off.
+    if (downedStep(c, false)) return;
+    setPlan(c, "none", "defend");
+    stopIntent(c);
+    return;
   }
   const intent = currentIntent(c);
   // A finished order (intent back to idle) re-plans at once; travel plans wait for the transition.
@@ -695,6 +733,8 @@ function thinkTick(c: AutoCtx): void {
 
 /** Takes the focused stairs (descend) or waypoint (to town) as soon as they are within reach. */
 function arriveAt(c: AutoCtx): void {
+  // Party: never take the stairs down while a member is downed (revive first).
+  if (c.st.plan === "descend" && anyDowned(c)) return;
   const e = c.st.focus;
   if (e === 0 || !inReach(c, e)) return;
   const kind = c.world.get(e, Interactable)?.kind;
@@ -704,12 +744,39 @@ function arriveAt(c: AutoCtx): void {
   else if (c.st.plan === "toTown" && kind === "riftExit") travel(c, { op: "leaveRift" });
 }
 
+/**
+ * Party (two or more members): the leader brain drives the acting leader
+ * when leaderMode is "full" or "defend"; on a wipe the controlled hero runs
+ * the solo death flow (auto respawn, which revives the whole party).
+ */
+function partyThink(world: World, ctx: SimContext): void {
+  if (partyWiped(world)) {
+    if (!autoActive(world, ctx.tick)) return;
+    const hero = heroOf(world);
+    if (hero === 0 || !world.has(hero, Pos) || !world.has(hero, Intent)) return;
+    think(world, ctx, hero);
+    return;
+  }
+  const mode = leaderMode(world, ctx.tick);
+  if (mode === "off") return;
+  const leader = actingLeaderOf(world);
+  if (leader === 0 || world.has(leader, Dead)) return;
+  if (!world.has(leader, Pos) || !world.has(leader, Intent)) return;
+  think(world, ctx, leader, mode);
+}
+
 export const thinkSystem: SystemDef = {
   ...SYSTEM.autoThink,
   run(world, ctx) {
+    if (isParty(world)) {
+      partyThink(world, ctx);
+      return;
+    }
     if (!autoActive(world, ctx.tick)) return;
     const hero = heroOf(world);
     if (hero === 0 || !world.has(hero, Pos) || !world.has(hero, Intent)) return;
     think(world, ctx, hero);
   },
 };
+
+export { makeAutoCtx } from "./util.ts";

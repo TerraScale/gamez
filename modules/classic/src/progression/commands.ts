@@ -9,6 +9,7 @@ import { emit } from "../events.ts";
 import { SYSTEM } from "../ids.ts";
 import type { HeroCommand } from "../actions.ts";
 import type { OpResult } from "../actions.ts";
+import { commandActor } from "../items/common.ts";
 import {
   execAcceptQuest,
   execAllocate,
@@ -31,24 +32,27 @@ const OPS = [
   "grantXp",
 ] as const;
 
+/** Runs one progression command for the hero it names (HeroCommand.hero, else the controlled hero). */
 function runCommand(world: World, ctx: SimContext, c: HeroCommand): OpResult {
+  const hero = commandActor(world, c);
+  if (typeof hero !== "number") return hero;
   switch (c.op) {
     case "allocate":
-      return execAllocate(world, ctx, c.attr, c.points);
+      return execAllocate(world, ctx, hero, c.attr, c.points);
     case "learn":
-      return execLearn(world, ctx, c.skill);
+      return execLearn(world, ctx, hero, c.skill);
     case "setBar":
-      return execSetBar(world, ctx, c.slot, c.skill);
+      return execSetBar(world, ctx, hero, c.slot, c.skill);
     case "respawn":
-      return execRespawn(world, ctx);
+      return execRespawn(world, ctx, hero);
     case "heal":
-      return execHeal(world, ctx, c.npc);
+      return execHeal(world, ctx, hero, c.npc);
     case "acceptQuest":
-      return execAcceptQuest(world, ctx, c.quest);
+      return execAcceptQuest(world, ctx, hero, c.quest);
     case "completeQuest":
-      return execCompleteQuest(world, ctx, c.quest);
+      return execCompleteQuest(world, ctx, hero, c.quest);
     case "grantXp":
-      return execGrantXp(world, ctx, c.amount, c.reason);
+      return execGrantXp(world, ctx, hero, c.amount, c.reason);
     default:
       return { ok: false, code: "unhandled", message: "not a progression op" };
   }
@@ -61,7 +65,13 @@ export const progressionCommands: SystemDef = {
     for (const c of takeCommands(world, OPS)) {
       const r = runCommand(world, ctx, c);
       if (!r.ok) {
-        emit(ctx, { type: "classic.command.failed", op: c.op, code: r.code, message: r.message });
+        emit(ctx, {
+          type: "classic.command.failed",
+          op: c.op,
+          code: r.code,
+          message: r.message,
+          ...(c.hero !== undefined ? { hero: c.hero } : {}),
+        });
       }
     }
   },

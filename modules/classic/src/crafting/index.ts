@@ -22,7 +22,7 @@ import { craftingActions, craftingCommandsSystem } from "./actions.ts";
 
 export const classicCrafting = defineModule({
   id: MODULE.crafting,
-  version: "1.0.1",
+  version: "1.1.1",
   deps: [MODULE.core, MODULE.items],
   optionalDeps: [MODULE.content],
   systems: [craftingCommandsSystem],

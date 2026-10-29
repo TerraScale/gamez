@@ -2,12 +2,13 @@
  * Player actions of classic.progression (docs/design/classic.md §3.7). parse()
  * is strict: unknown fields, wrong types and unknown ids throw ActionError.
  * Manual actions call noteManual() so auto/idle yields to the player. Shared
- * logic lives in hero.ts and ops.ts; apply() throws when an op fails.
+ * logic lives in hero.ts and ops.ts; apply() throws when an op fails. Every
+ * action acts for the CONTROLLED hero (heroOf; docs/design/party.md §4.1).
  */
 import { ActionError, type ActionDef, type SimContext, type World } from "@gamez/kernel";
 import { ACTION, ERR, type OpResult } from "../actions.ts";
 import { noteManual } from "../control.ts";
-import { type GameState, RES } from "../resources.ts";
+import { type GameState, heroOf, RES } from "../resources.ts";
 import { ATTRS, type Attr, KIND } from "../types.ts";
 import { cleanHeroName, execNewHero } from "./hero.ts";
 import {
@@ -78,7 +79,7 @@ const allocateStat: ActionDef<{ attr: Attr; points: number }> = {
   },
   apply(world: World, p, ctx: SimContext) {
     noteManual(world, ctx);
-    unwrap(execAllocate(world, ctx, p.attr, p.points));
+    unwrap(execAllocate(world, ctx, heroOf(world), p.attr, p.points));
   },
 };
 
@@ -93,7 +94,7 @@ const learnSkill: ActionDef<{ skill: string }> = {
   },
   apply(world, p, ctx) {
     noteManual(world, ctx);
-    unwrap(execLearn(world, ctx, p.skill));
+    unwrap(execLearn(world, ctx, heroOf(world), p.skill));
   },
 };
 
@@ -118,7 +119,7 @@ const setSkillBar: ActionDef<{ slot: number; skill: string | null }> = {
   },
   apply(world, p, ctx) {
     noteManual(world, ctx);
-    unwrap(execSetBar(world, ctx, p.slot, p.skill));
+    unwrap(execSetBar(world, ctx, heroOf(world), p.slot, p.skill));
   },
 };
 
@@ -131,7 +132,7 @@ const respawn: ActionDef<Record<string, never>> = {
   },
   apply(world, _p, ctx) {
     noteManual(world, ctx);
-    unwrap(execRespawn(world, ctx));
+    unwrap(execRespawn(world, ctx, heroOf(world)));
   },
 };
 
@@ -146,7 +147,7 @@ const acceptQuest: ActionDef<{ quest: string }> = {
   },
   apply(world, p, ctx) {
     noteManual(world, ctx);
-    unwrap(execAcceptQuest(world, ctx, p.quest));
+    unwrap(execAcceptQuest(world, ctx, heroOf(world), p.quest));
   },
 };
 
@@ -161,7 +162,7 @@ const completeQuest: ActionDef<{ quest: string }> = {
   },
   apply(world, p, ctx) {
     noteManual(world, ctx);
-    unwrap(execCompleteQuest(world, ctx, p.quest));
+    unwrap(execCompleteQuest(world, ctx, heroOf(world), p.quest));
   },
 };
 

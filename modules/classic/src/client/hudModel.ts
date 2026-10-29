@@ -36,6 +36,7 @@ import {
   type HeroStatsValue,
 } from "../components.ts";
 import { itemScore } from "../auto/score.ts";
+import { partyMembers } from "../party/shared.ts";
 import { SUB } from "../fixed.ts";
 import { INTERACT_RANGE } from "../actions.ts";
 import { requiredOf } from "../progression/quests.ts";
@@ -74,6 +75,7 @@ import {
 } from "./model/craft.ts";
 import { buildDpsView } from "./model/dps.ts";
 import { extendItemView } from "./model/items.ts";
+import { buildPartyView } from "./model/party.ts";
 import { buildRiftView } from "./model/rift.ts";
 import { buildTalentsView } from "./model/talents.ts";
 import {
@@ -802,6 +804,7 @@ export function buildHud(world: World, registry: FrozenRegistry, ctx: HudContext
   snapshot.lootFilter = buildLootFilterView(mc);
   snapshot.stashTabs = buildStashTabs(mc);
   snapshot.dps = buildDpsView(mc);
+  snapshot.party = buildPartyView(world, registry, ctx.tick);
   return shareStructure(ctx.prev, snapshot);
 }
 
@@ -824,6 +827,14 @@ export function minimapData(world: World, registry: FrozenRegistry): MinimapData
   };
   const hero = heroOfWorld(world);
   const heroPos = hero ? world.get(hero, Pos) : undefined;
+  // Party (docs/design/party.md §10.5): every other member on this depth, downed ones hollow.
+  const party: { x: number; y: number; dead: boolean }[] = [];
+  for (const e of partyMembers(world)) {
+    if (e === hero || !world.exists(e)) continue;
+    if (world.read(e, AreaTag).depth !== depth) continue;
+    const p = world.read(e, Pos);
+    party.push({ x: p.x >> 8, y: p.y >> 8, dead: world.has(e, Dead) });
+  }
   const dots: MinimapData["dots"] = [];
   for (const e of world.query(Monster, Pos, AreaTag)) {
     if (world.read(e, AreaTag).depth !== depth || world.has(e, Dead)) continue;
@@ -864,6 +875,7 @@ export function minimapData(world: World, registry: FrozenRegistry): MinimapData
     explored,
     heroX: heroPos ? heroPos.x / SUB : 0,
     heroY: heroPos ? heroPos.y / SUB : 0,
+    party,
     dots,
   };
 }

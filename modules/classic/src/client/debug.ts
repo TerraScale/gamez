@@ -23,7 +23,10 @@ import {
   AreaTag,
   AutoState,
   Dead,
+  Hero,
   Interactable,
+  Level,
+  Life,
   Loot,
   Monster,
   Npc,
@@ -44,6 +47,7 @@ import {
   type RunStats,
 } from "../resources.ts";
 import { KIND, type NpcProto } from "../types.ts";
+import { actingLeaderOf, partyMembers, partyOf } from "../party/shared.ts";
 import type { ClassicClientApi, PanelId, Settings } from "./contract.ts";
 import { heroOfWorld } from "./hudModel.ts";
 import type { ClassicGame } from "./game.ts";
@@ -332,6 +336,36 @@ export function waveASummary(world: World): Record<string, unknown> {
   };
 }
 
+/**
+ * Party members for QA (docs/design/party.md §15): slot order, tile positions, life and status.
+ * Null for a solo game without party state.
+ */
+function partySummary(world: World): unknown {
+  if (partyOf(world) === null) return null;
+  const controlled = heroOf(world);
+  const leader = actingLeaderOf(world);
+  return {
+    leader,
+    members: partyMembers(world).map((e) => {
+      const pos = world.get(e, Pos);
+      const life = world.get(e, Life);
+      return {
+        entity: e,
+        name: world.get(e, Hero)?.name ?? "",
+        class: world.get(e, Hero)?.classId ?? "",
+        level: world.get(e, Level)?.level ?? 0,
+        x: pos ? pos.x / SUB : 0,
+        y: pos ? pos.y / SUB : 0,
+        life: life?.hp ?? 0,
+        lifeMax: life?.max ?? 0,
+        dead: world.has(e, Dead),
+        controlled: e === controlled,
+        leader: e === leader,
+      };
+    }),
+  };
+}
+
 /** JSON-friendly sim summary for window.__gamez.sim. */
 export function simSummary(
   world: World,
@@ -438,6 +472,7 @@ export function simSummary(
           caution: auto.caution,
         }
       : null,
+    party: partySummary(world),
     eventCounts: probe.counts,
     casts: probe.casts,
     effects: probe.effects,

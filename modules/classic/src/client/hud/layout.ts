@@ -48,8 +48,15 @@ export const PANEL_IDS: readonly PanelId[] = [
  */
 export const WAVE_C_PANEL_IDS: readonly PanelId[] = ["bank"];
 
-/** Every panel the HUD renders: PANEL_IDS, then the wave C panels. */
-export const ALL_PANEL_IDS: readonly PanelId[] = [...PANEL_IDS, ...WAVE_C_PANEL_IDS];
+/** Party panel id (docs/design/party.md §10.3). Kept apart from PANEL_IDS for the same reason. */
+export const PARTY_PANEL_IDS: readonly PanelId[] = ["party"];
+
+/** Every panel the HUD renders: PANEL_IDS, then the wave C and party panels. */
+export const ALL_PANEL_IDS: readonly PanelId[] = [
+  ...PANEL_IDS,
+  ...WAVE_C_PANEL_IDS,
+  ...PARTY_PANEL_IDS,
+];
 
 export function panelSlot(id: PanelId): string {
   return `classic.panel.${id}`;
@@ -295,6 +302,14 @@ export function errorFlashStyle(
 
 /** Desktop tip card width (its right edge sits HUD_EDGE from the viewport edge). */
 export const TIP_WIDTH = { desktop: 300, short: 240 } as const;
+
+/**
+ * Top of the party's slim "<Name> is down" banner (DeathScreen): under the measured top region
+ * (the control bar), never over the Manual / Party: Auto / Idle buttons.
+ */
+export function deathBannerTop(insets: HudInsets): number {
+  return insets.top + HUD_EDGE * 2;
+}
 
 /**
  * Onboarding tip card (overlay). It never sits over the centre of the playfield: desktop puts it in

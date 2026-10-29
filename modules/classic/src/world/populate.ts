@@ -6,6 +6,11 @@
  * Uses ctx.rng (sim randomness). Pack ids come from GameState.nextPack, which
  * is advanced here. Nothing is placed within 12 tiles of the arrival point,
  * and the arrival room (rooms[0]) is never populated.
+ *
+ * Party (docs/design/party.md §7.1, §8): `densityPct` (the party's
+ * PartyScale.densityPct; 100 = solo) grows every normal/champion pack and
+ * every unique pack's escort count to floor(n x densityPct / 100), never
+ * below the solo count. At 100 nothing changes (same RNG calls, same plan).
  */
 import type { FrozenRegistry, SimContext } from "@gamez/kernel";
 import type { SpawnRequest } from "../bus.ts";
@@ -53,8 +58,11 @@ export function planPopulation(
   map: ClassicMap,
   depth: number,
   game: GameState,
+  densityPct = 100,
 ): SpawnRequest[] {
   if (depth <= 0) return [];
+  const dense = (n: number): number =>
+    densityPct === 100 ? n : Math.max(n, Math.floor((n * densityPct) / 100));
   const bal = balanceOf(registry);
   const packs = bal?.packs ?? FALLBACK.packs;
   const cap = bal?.maxMonstersPerLevel ?? FALLBACK.maxMonstersPerLevel;
@@ -129,7 +137,7 @@ export function planPopulation(
     const leader = freeLeader();
     if (!leader) break;
     const kindPick = pick();
-    const escorts = ctx.rng.int(3, 6);
+    const escorts = dense(ctx.rng.int(3, 6));
     if (out.length + 1 + escorts > cap) break;
     const packId = game.nextPack++;
     const mods = pickMods(
@@ -174,7 +182,9 @@ export function planPopulation(
     const leader = freeLeader();
     if (!leader) break;
     const kindPick = pick();
-    const size = Math.max(1, ctx.rng.int(kindPick.proto.packSize[0], kindPick.proto.packSize[1]));
+    const size = dense(
+      Math.max(1, ctx.rng.int(kindPick.proto.packSize[0], kindPick.proto.packSize[1])),
+    );
     const champion = ctx.rng.int(1, 100) <= champPct;
     if (out.length + size > cap) break;
     const packId = game.nextPack++;

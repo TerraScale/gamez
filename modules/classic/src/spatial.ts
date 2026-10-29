@@ -36,8 +36,8 @@ export class SpatialGrid {
     this.where.clear();
     const depth = currentDepth(world);
     for (const e of world.query(Pos, Body, AreaTag)) {
-      if (world.read(e, AreaTag).depth !== depth || world.has(e, Dead)) continue;
-      const p = world.read(e, Pos);
+      if (world.peek(e, AreaTag)!.depth !== depth || world.has(e, Dead)) continue;
+      const p = world.peek(e, Pos)!;
       this.insert(e, p.x, p.y);
     }
     this.builtTick = tick;

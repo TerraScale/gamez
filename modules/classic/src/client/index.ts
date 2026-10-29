@@ -35,7 +35,7 @@ import { labelInsetsFor } from "./scene.ts";
 import { awayStore } from "./hudModel.ts";
 import type { ClassicClientApi, Settings } from "./contract.ts";
 import { createClassicGame, type ClassicGame } from "./game.ts";
-import { bindKeyboard, nextMode, stepSpeed, type KeyCommand } from "./input.ts";
+import { bindKeyboard, nextMode, partyKeyCall, stepSpeed, type KeyCommand } from "./input.ts";
 import {
   browserStorage,
   CHEATS_SAVE_KEY,
@@ -213,6 +213,14 @@ function onKey(api: ClassicClientApi, cmd: KeyCommand): void {
     case "automap":
       api.togglePanel("map");
       return;
+    case "control":
+    case "cycleControl": {
+      // Party control (docs/design/party.md §10.4): F1-F4 and Tab / Shift+Tab.
+      if (!playing) return;
+      const call = partyKeyCall(cmd, hud.party ?? null);
+      if (call) api.act(call.name, call.payload);
+      return;
+    }
   }
 }
 
@@ -468,7 +476,11 @@ export const classicView: ClientModeView = {
         });
       }
       autostart(api, params);
-      unbindKeys = bindKeyboard(window, (cmd) => onKey(api, cmd));
+      unbindKeys = bindKeyboard(
+        window,
+        (cmd) => onKey(api, cmd),
+        () => api.hud.getSnapshot().party?.members.length ?? 1,
+      );
       saveTimer = window.setInterval(() => {
         game?.save();
       }, SAVE_EVERY_MS);

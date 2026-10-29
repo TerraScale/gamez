@@ -248,6 +248,111 @@ function outlinesSection(
   return { ...unitSection(id, title, headers, cells, 4, 3), ground };
 }
 
+/** Summon of a party member (the hero summon of Spark Sentry) drawn in the party ink. */
+export const GALLERY_PARTY_SUMMON = "classic.monster.sentry";
+
+/**
+ * Party identity on the town grass (docs/design/party.md §10.6): the controlled
+ * hero ("self", gold), a follower ("party", cyan), a downed follower (the dead
+ * pose, "party"), another player in town ("ally", green) and a summon owned by a
+ * party member ("party"). Every action, so each outline reads on every clip.
+ */
+function partySection(reg: FrozenRegistry): GallerySection {
+  const cells: GalleryCell[] = [];
+  const headers: string[] = [];
+  const classes = reg.all<ClassProto>(KIND.class);
+  if (classes.length > 0) {
+    const cls = (i: number): ClassProto => classes[i % classes.length]![1];
+    const summon = reg.get<MonsterProto>(KIND.monster, GALLERY_PARTY_SUMMON);
+    const rows: {
+      header: string;
+      name: string;
+      appearance: string;
+      tint: number;
+      highlight: EntityHighlight;
+      isSelf: boolean;
+      dead: boolean;
+    }[] = [
+      {
+        header: "self (controlled)",
+        ...member(cls(0)),
+        highlight: "self",
+        isSelf: true,
+        dead: false,
+      },
+      {
+        header: "party follower",
+        ...member(cls(1)),
+        highlight: "party",
+        isSelf: false,
+        dead: false,
+      },
+      {
+        header: "downed (dead pose)",
+        ...member(cls(2)),
+        highlight: "party",
+        isSelf: false,
+        dead: true,
+      },
+      {
+        header: "other player (ally)",
+        ...member(cls(3)),
+        highlight: "ally",
+        isSelf: false,
+        dead: false,
+      },
+      {
+        header: "summon of a party member",
+        name: summon?.name ?? "Summon",
+        appearance: summon?.appearance ?? "unit.monster",
+        tint: tintOf(summon?.tint),
+        highlight: "party",
+        isSelf: false,
+        dead: false,
+      },
+    ];
+    for (const row of rows) {
+      headers.push(`${row.header}\n${row.appearance}`);
+      for (const action of GALLERY_ACTIONS) {
+        // A downed member is in the death clip for good (unitAnim), so every column shows it.
+        const act: EntityAction = row.dead ? "death" : action;
+        const entity: Template = {
+          name: `${row.name} (${row.highlight})`,
+          appearance: row.appearance,
+          fallbackAppearance: "unit.hero",
+          kind: "unit",
+          moving: act === "walk",
+          isSelf: row.isSelf,
+          tint: row.tint,
+          scale: 100,
+          highlight: row.highlight,
+          showLabel: true,
+        };
+        if (act === "death") entity.dead = true;
+        if (act === "hit") {
+          entity.bar = 0.55;
+          entity.hitFlash = 0.6;
+        }
+        if (row.dead) entity.subtitle = "Downed";
+        cells.push({
+          key: `party:${row.highlight}:${row.header}:${action}`,
+          kind: "unit",
+          title: act,
+          ref: row.appearance,
+          action: act,
+          entity,
+        });
+      }
+    }
+  }
+  return { ...unitSection("party", "Party", headers, cells, 4, 3), ground: "tile.grass" };
+}
+
+/** Name, appearance and tint of a class row (party section). */
+function member(p: ClassProto): { name: string; appearance: string; tint: number } {
+  return { name: p.name, appearance: p.appearance, tint: tintOf(p.tint) };
+}
+
 function unitSection(
   id: string,
   title: string,
@@ -928,6 +1033,7 @@ export function buildGallerySections(
     heroesSection(reg),
     outlinesSection(reg, "outlines", "Outlines (town)", "tile.grass"),
     outlinesSection(reg, "outlines-dungeon", "Outlines (dungeon)", "tile.crypt.floor"),
+    partySection(reg),
     monstersSection(reg, false),
     monstersSection(reg, true),
     npcsSection(reg),

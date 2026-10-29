@@ -15,6 +15,11 @@
  *   loot:        Loot, Pos, AreaTag
  *   npc:         Npc, Pos, AreaTag(0), Body
  *   interactable: Interactable, Pos, AreaTag (stairs, waypoint, portal, stash)
+ *
+ * Party (docs/design/party.md): every party hero has the full hero set above
+ * EXCEPT Wallet and Supplies, which only the founder (PartyState.founder,
+ * the purse) carries; read gold through party/shared.ts purseOf(). Party
+ * heroes also get PartyMember (+ Reviving while channelling a revive).
  */
 import { defineComponent, type Entity } from "@gamez/kernel";
 import type { Facing, TilePos } from "./fixed.ts";
@@ -26,6 +31,7 @@ import type {
   EquipSlot,
   ItemInstance,
   MonsterRarity,
+  PartyRole,
   SkillModifier,
   StatMod,
   Team,
@@ -514,3 +520,34 @@ export interface BonusSource {
   skills: SkillModifier[];
 }
 export const BonusStats = defineComponent<{ sources: BonusSource[] }>("classic.bonusStats");
+
+// ---------------------------------------------------------------------------
+// Party (docs/design/party.md §2). Owner: classic.party.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-hero party record. Added to the founder and every recruit when the
+ * party resource is created (never on a solo save). Writers: classic.party
+ * (uid, joinedTick, role), classic.progression (kills: hero-credited kills
+ * by this hero or its summons; deaths), nobody else.
+ */
+export const PartyMember = defineComponent<{
+  /** Stable id within the save (founder 0): leaderboard key "hero:<uid>" (founder: "hero"). */
+  uid: number;
+  joinedTick: number;
+  /** Formation line, from ClassProto.partyRole at recruit time. */
+  role: PartyRole;
+  kills: number;
+  deaths: number;
+}>("classic.partyMember");
+
+/**
+ * A revive in progress on the REVIVER (owner classic.party). Cancelled when
+ * the reviver moves, casts, takes damage, dies, or the target is no longer a
+ * downed member within PartyProto.reviveRange; completes at `until`.
+ */
+export const Reviving = defineComponent<{
+  target: Entity;
+  startedAt: number;
+  until: number;
+}>("classic.reviving");

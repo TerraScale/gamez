@@ -8,7 +8,7 @@ import { Belt, HeroStats, Life, Mana } from "../components.ts";
 import { emit } from "../events.ts";
 import { pct } from "../fixed.ts";
 import { RES, type RunStats } from "../resources.ts";
-import { balanceOf, baseOf, liveHero } from "./common.ts";
+import { balanceOf, baseOf, heroTag, liveHero } from "./common.ts";
 
 export interface BeltSlot {
   base: string | null;
@@ -51,11 +51,10 @@ export function beltAccept(
 /** Error code of a drink that restores nothing (the potion is kept). */
 export const POTION_USELESS = ERR.potionUseless;
 
-/** Drinks the potion of a belt slot (heal / mana / rejuvenation). */
-export function execDrink(world: World, ctx: SimContext, slot: number): OpResult {
-  const h = liveHero(world);
+/** `hero` drinks the potion of one of its belt slots (heal / mana / rejuvenation). */
+export function execDrink(world: World, ctx: SimContext, hero: Entity, slot: number): OpResult {
+  const h = liveHero(world, hero);
   if (!("hero" in h)) return h;
-  const hero: Entity = h.hero;
   const belt = world.get(hero, Belt);
   if (!belt) return fail(ERR.noHero, "the hero has no belt yet");
   if (!Number.isInteger(slot) || slot < 0 || slot >= belt.slots.length) {
@@ -116,6 +115,7 @@ export function execDrink(world: World, ctx: SimContext, slot: number): OpResult
     lifeAfter: lifeBefore + lifeGain,
     manaBefore,
     manaAfter: manaBefore + manaGain,
+    ...heroTag(world, hero),
   });
   return OK;
 }

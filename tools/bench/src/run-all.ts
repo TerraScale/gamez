@@ -12,6 +12,7 @@ const steps: { file: string; flags: string[] }[] = [
   { file: "ecs.ts", flags: ["--expose-gc"] },
   { file: "kernel.ts", flags: [] },
   { file: "sync.ts", flags: [] },
+  { file: "party.ts", flags: [] },
 ];
 
 for (const step of steps) {

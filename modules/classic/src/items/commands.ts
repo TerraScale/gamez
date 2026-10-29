@@ -16,6 +16,7 @@ import { execGamble } from "./gamble.ts";
 import { execDrink } from "./belt.ts";
 import { execEquip, execUnequip } from "./equip.ts";
 import { execDrop, execGrantGold, execGrantItems, execPickup } from "./ground.ts";
+import { commandActor } from "./common.ts";
 
 export const ITEM_OPS = [
   "pickup",
@@ -33,33 +34,38 @@ export const ITEM_OPS = [
   "stashMove",
 ] as const;
 
-/** Runs one item command. */
+/**
+ * Runs one item command for the hero it names (HeroCommand.hero, else the
+ * controlled hero; not_member when `hero` is not in the party).
+ */
 export function runItemCommand(world: World, ctx: SimContext, c: HeroCommand): OpResult {
+  const hero = commandActor(world, c);
+  if (typeof hero !== "number") return hero;
   switch (c.op) {
     case "pickup":
-      return execPickup(world, ctx, c.target);
+      return execPickup(world, ctx, hero, c.target);
     case "equip":
-      return execEquip(world, ctx, c.uid, c.slot);
+      return execEquip(world, ctx, hero, c.uid, c.slot);
     case "unequip":
-      return execUnequip(world, ctx, c.slot);
+      return execUnequip(world, ctx, hero, c.slot);
     case "drink":
-      return execDrink(world, ctx, c.slot);
+      return execDrink(world, ctx, hero, c.slot);
     case "buy":
-      return execBuy(world, ctx, c);
+      return execBuy(world, ctx, hero, c);
     case "sell":
-      return execSell(world, ctx, c.npc, c.uid);
+      return execSell(world, ctx, hero, c.npc, c.uid);
     case "stashPut":
-      return execStashPut(world, ctx, c.uid, c.tab);
+      return execStashPut(world, ctx, hero, c.uid, c.tab);
     case "stashMove":
-      return execStashMove(world, ctx, c.uid, c.tab);
+      return execStashMove(world, ctx, hero, c.uid, c.tab);
     case "gamble":
-      return execGamble(world, ctx, c.npc, c.category);
+      return execGamble(world, ctx, hero, c.npc, c.category);
     case "drop":
-      return execDrop(world, ctx, c.uid);
+      return execDrop(world, ctx, hero, c.uid);
     case "grantGold":
-      return execGrantGold(world, ctx, c.amount, c.reason);
+      return execGrantGold(world, ctx, hero, c.amount, c.reason);
     case "grantItems":
-      return execGrantItems(world, ctx, c);
+      return execGrantItems(world, ctx, hero, c);
     default:
       return fail(ERR.badPayload, "not an item command");
   }
@@ -72,7 +78,13 @@ export const commandsSystem: SystemDef = {
     for (const c of takeCommands(world, ITEM_OPS)) {
       const r = runItemCommand(world, ctx, c);
       if (!r.ok) {
-        emit(ctx, { type: "classic.command.failed", op: c.op, code: r.code, message: r.message });
+        emit(ctx, {
+          type: "classic.command.failed",
+          op: c.op,
+          code: r.code,
+          message: r.message,
+          ...(c.hero !== undefined ? { hero: c.hero } : {}),
+        });
       }
     }
   },

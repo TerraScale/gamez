@@ -5,6 +5,12 @@
  * - setup: VendorState (empty stocks), StashState (empty).
  * - classic.items.heroInit (pre -900): starter kit for a hero without Inventory;
  *   restocks the town vendors when due (see vendor.ts).
+ *
+ * Party (docs/design/party.md §4.3, §7.4): every execX takes the acting
+ * hero; actions pass the controlled hero, the command system the hero the
+ * command names (commandActor). Gold and town portal scrolls always live in
+ * the purse (party/shared.ts purseOf; common.ts purseWallet / purseScrolls).
+ * Events about one hero carry `hero` while a party exists (heroTag).
  * - classic.items.commands (update 50): pickup, equip, unequip, drink, buy,
  *   sell, stashPut, drop, grantGold, grantItems.
  * - classic.items.drops (post 100): loot for hero kills (Bus.deaths).
@@ -30,7 +36,7 @@ import { wearSystem } from "./wear.ts";
 
 export const classicItems = defineModule({
   id: MODULE.items,
-  version: "1.2.4",
+  version: "1.3.1",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   setup(world) {
@@ -61,7 +67,7 @@ export {
 } from "./generate.ts";
 export { findSpace, placeItem, removeItem, sortEntries, type GridBag } from "./inventory.ts";
 export { beltAccept, execDrink, type BeltSlot } from "./belt.ts";
-export { emptyEquipment, execEquip, execUnequip } from "./equip.ts";
+export { emptyEquipment, execEquip, execUnequip, requirementsFail } from "./equip.ts";
 export { execDrop, execGrantGold, execGrantItems, execMoveItem, execPickup } from "./ground.ts";
 export {
   execBuy,
@@ -92,13 +98,25 @@ export { applyWear, clearWarned, wearOf, WEAR_RES, type WearState } from "./wear
 export { activeBonuses, emitSetChanges, equippedItems, setSnapshot } from "./sets.ts";
 export {
   addRunStat,
+  addToBag,
+  anyHero,
+  bagHasRoom,
+  bagOf,
   balanceOf,
   baseOf,
+  commandActor,
+  creditedHero,
   economyOf,
+  followerTag,
+  heroFind,
+  heroTag,
   liveHero,
   noteFound,
+  purseScrolls,
+  purseWallet,
+  setPurseGold,
   type RunCounter,
 } from "./common.ts";
-export { initHeroKit } from "./heroInit.ts";
-export { freeSpot, potionFor } from "./drops.ts";
+export { initHeroKit, STARTING_GOLD, STARTING_SCROLLS } from "./heroInit.ts";
+export { extraItemRolls, freeSpot, potionFor } from "./drops.ts";
 export { runItemCommand, ITEM_OPS } from "./commands.ts";

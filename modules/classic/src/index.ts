@@ -19,6 +19,7 @@ import { classicRift } from "./rift/index.ts";
 import { classicTalents } from "./talents/index.ts";
 import { classicClientDriven } from "./platform/policy.ts";
 import { classicPlatform } from "./platform/bank.ts";
+import { classicParty } from "./party/index.ts";
 
 export const modules: ModuleSpec[] = [
   classicContent,
@@ -36,6 +37,8 @@ export const modules: ModuleSpec[] = [
   classicAchievements,
   // wave C (docs/design/wave-C.md §2)
   classicPlatform,
+  // party (docs/design/party.md)
+  classicParty,
 ];
 
 /**
@@ -78,3 +81,5 @@ export * from "./platform/vault-codec.ts";
 export * from "./platform/build.ts";
 export * from "./platform/season.ts";
 export * from "./presence-tag.ts";
+export * from "./party/shared.ts";
+export { CLASS_ROLES, MEND_ALLY_RADIUS } from "./party/content.ts";

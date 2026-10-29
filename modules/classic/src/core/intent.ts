@@ -12,10 +12,17 @@
  * - pickup / interact: walk until within APPROACH_RANGE, then queue the
  *   owner command or emit the panel event, then idle.
  * Busy heroes (Casting, Dash, Dead, stun) do not start anything.
+ *
+ * Party (docs/design/party.md §4.2, §7.1): EVERY member's Intent runs, in
+ * slot order (party/shared.ts partyMembers; solo: just the hero). Commands
+ * pushed for a follower carry `hero`; the controlled hero's never do (solo
+ * producers unchanged). Panel events (npc / waypoint / stash / rift panels)
+ * only open for the controlled hero. `interact` on a DOWNED party member
+ * walks to APPROACH_RANGE and pushes `{op:"revive", target}`.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { findPath } from "@gamez/world";
-import { APPROACH_RANGE } from "../actions.ts";
+import { APPROACH_RANGE, type HeroCommand, type HeroCommandBody } from "../actions.ts";
 import { pushCommand } from "../bus.ts";
 import {
   Body,
@@ -37,6 +44,7 @@ import {
 import { emit } from "../events.ts";
 import { chebyshev, dist2, toTile, type TilePos } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
+import { isPartyHero, partyMembers } from "../party/shared.ts";
 import { currentDepth, heroOf } from "../resources.ts";
 import { effectiveRank, skillManaCost } from "../rules.ts";
 import { KIND, type NpcProto, type SkillProto } from "../types.ts";
@@ -100,31 +108,58 @@ function setIdle(world: World, hero: Entity, intent: HeroIntentValue, ctx: SimCo
 export const intentSystem: SystemDef = {
   ...SYSTEM.coreIntent,
   run(world, ctx) {
-    const hero = heroOf(world);
-    if (hero === 0) return;
-    const intent = world.get(hero, Intent);
-    if (!intent || !world.has(hero, Pos)) return;
-    if (!inArea(world, hero, currentDepth(world))) return;
-    const mover = world.get(hero, Mover);
-    // A freshly written intent drops whatever the previous one was walking.
-    if (intent.at === ctx.tick) stop(mover);
-    if (intent.kind === "idle") return;
-    if (isBusy(world, ctx.registry, hero, ctx.tick)) return;
-    const map = getAreaMap(world, ctx.registry);
-    switch (intent.kind) {
-      case "move":
-        runMove(world, ctx, hero, intent, mover, map);
-        break;
-      case "skill":
-        runSkill(world, ctx, hero, intent, mover, map);
-        break;
-      case "pickup":
-      case "interact":
-        runUse(world, ctx, hero, intent, mover, map);
-        break;
-    }
+    const members = partyMembers(world);
+    if (members.length === 0) return;
+    const controlled = heroOf(world);
+    const depth = currentDepth(world);
+    for (const hero of members) runIntent(world, ctx, hero, hero !== controlled, depth);
   },
 };
+
+/** Executes one member's Intent (`follower`: commands carry `hero`). */
+function runIntent(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  follower: boolean,
+  depth: number,
+): void {
+  const intent = world.get(hero, Intent);
+  if (!intent || !world.has(hero, Pos)) return;
+  if (!inArea(world, hero, depth)) return;
+  const mover = world.get(hero, Mover);
+  // A freshly written intent drops whatever the previous one was walking.
+  if (intent.at === ctx.tick) stop(mover);
+  if (intent.kind === "idle") return;
+  if (isBusy(world, ctx.registry, hero, ctx.tick)) return;
+  const map = getAreaMap(world, ctx.registry);
+  switch (intent.kind) {
+    case "move":
+      runMove(world, ctx, hero, intent, mover, map);
+      break;
+    case "skill":
+      runSkill(world, ctx, hero, intent, mover, map);
+      break;
+    case "pickup":
+    case "interact":
+      runUse(world, ctx, hero, intent, mover, map, follower);
+      break;
+  }
+}
+
+/**
+ * Queues a command for `hero`: followers' commands carry `hero`, the
+ * controlled hero's never do (leftover commands are part of the snapshot).
+ */
+function commandFor(world: World, hero: Entity, follower: boolean, body: HeroCommandBody): void {
+  const cmd: HeroCommand = follower ? { ...body, hero } : body;
+  pushCommand(world, cmd);
+}
+
+/** True when `t` is a downed party member other than `hero` (an interact target: revive). */
+export function isDownedAlly(world: World, hero: Entity, t: Entity): boolean {
+  return t !== hero && t !== 0 && world.has(t, Dead) && isPartyHero(world, t);
+}
 
 function heroTile(world: World, hero: Entity): TilePos {
   const p = world.read(hero, Pos);
@@ -283,6 +318,7 @@ function runUse(
   intent: IntentOf<"pickup"> | IntentOf<"interact">,
   mover: MoverValue | undefined,
   map: ClassicMap,
+  follower: boolean,
 ): void {
   const t = intent.target;
   const valid =
@@ -291,7 +327,7 @@ function runUse(
     world.has(t, Pos) &&
     (intent.kind === "pickup"
       ? world.has(t, Loot)
-      : world.has(t, Npc) || world.has(t, Interactable));
+      : world.has(t, Npc) || world.has(t, Interactable) || isDownedAlly(world, hero, t));
   if (!valid) return setIdle(world, hero, intent, ctx);
   const p = world.read(hero, Pos);
   const tp = world.read(t, Pos);
@@ -303,20 +339,31 @@ function runUse(
   }
   stop(mover);
   if (intent.kind === "pickup") {
-    pushCommand(world, { op: "pickup", target: t });
+    commandFor(world, hero, follower, { op: "pickup", target: t });
   } else {
-    interactWith(world, ctx, t);
+    interactWith(world, ctx, hero, follower, t);
   }
   setIdle(world, hero, intent, ctx);
 }
 
-function interactWith(world: World, ctx: SimContext, t: Entity): void {
+function interactWith(
+  world: World,
+  ctx: SimContext,
+  hero: Entity,
+  follower: boolean,
+  t: Entity,
+): void {
+  if (isDownedAlly(world, hero, t)) {
+    commandFor(world, hero, follower, { op: "revive", target: t });
+    return;
+  }
   const npc = world.get(t, Npc);
   if (npc) {
     const proto = ctx.registry.get<NpcProto>(KIND.npc, npc.proto);
     const role = proto?.role ?? "";
-    emit(ctx, { type: "classic.npc.opened", npc: t, proto: npc.proto, role });
-    if (role === "healer") pushCommand(world, { op: "heal", npc: t });
+    // Panels open for the controlled hero only (a follower's visit is silent).
+    if (!follower) emit(ctx, { type: "classic.npc.opened", npc: t, proto: npc.proto, role });
+    if (role === "healer") commandFor(world, hero, follower, { op: "heal", npc: t });
     return;
   }
   const it = world.get(t, Interactable);
@@ -324,24 +371,24 @@ function interactWith(world: World, ctx: SimContext, t: Entity): void {
   switch (it.kind) {
     case "stairsDown":
     case "stairsUp":
-      pushCommand(world, { op: "stairs", target: t });
+      commandFor(world, hero, follower, { op: "stairs", target: t });
       break;
     case "portal":
-      pushCommand(world, { op: "usePortal" });
+      commandFor(world, hero, follower, { op: "usePortal" });
       break;
     case "waypoint":
-      emit(ctx, { type: "classic.waypoint.opened" });
+      if (!follower) emit(ctx, { type: "classic.waypoint.opened" });
       break;
     case "stash":
-      emit(ctx, { type: "classic.stash.opened" });
+      if (!follower) emit(ctx, { type: "classic.stash.opened" });
       break;
     // Wave A: the obelisk opens the Rift panel (the player picks a level; the
     // auto controller queues openRift itself); the rift exit leaves the rift.
     case "riftObelisk":
-      emit(ctx, { type: "classic.rift.panel" });
+      if (!follower) emit(ctx, { type: "classic.rift.panel" });
       break;
     case "riftExit":
-      pushCommand(world, { op: "leaveRift" });
+      commandFor(world, hero, follower, { op: "leaveRift" });
       break;
   }
 }

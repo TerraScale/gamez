@@ -6,9 +6,11 @@
  */
 import type { FrozenRegistry, Rng } from "@gamez/kernel";
 import type { CombatStatsValue } from "./components.ts";
-import { clamp, pct } from "./fixed.ts";
+import { clamp, pct, type Facing } from "./fixed.ts";
+import type { PartyFormation } from "./resources.ts";
 import {
   KIND,
+  PARTY_ID,
   type AttrBlock,
   type BalanceProto,
   type Damage,
@@ -21,6 +23,8 @@ import {
   type MonsterModProto,
   type MonsterProto,
   type MonsterRarity,
+  type PartyProto,
+  type PartyRole,
   type RiftProto,
   type SetItemProto,
   type SetProto,
@@ -659,4 +663,199 @@ export function stashTabCount(bal: BalanceProto): number {
 /** Total stash capacity over all tabs. */
 export function stashCapacity(bal: BalanceProto): number {
   return bal.stashSize * stashTabCount(bal);
+}
+
+// ---------------------------------------------------------------------------
+// Party (docs/design/party.md). Pure; every "per size" table is indexed by
+// party size - 1 and its first entry is the identity, so size 1 changes
+// nothing (callers may still skip the work for size 1).
+// ---------------------------------------------------------------------------
+
+/** Hard cap of party members. */
+export const PARTY_MAX = 4;
+
+/**
+ * Defaults of PartyProto (classic.party defines exactly these; partial
+ * module sets without classic.party read them through partyProtoOf).
+ * Balance rationale: docs/design/party.md §8.
+ */
+export const DEFAULT_PARTY_PROTO: PartyProto = {
+  maxMembers: PARTY_MAX,
+  unlockBossDepths: [4, 8, 12],
+  slotPrices: [1500, 7500, 30000],
+  recruitLevelGap: 3,
+  recruitFeePerLevel: 50,
+  monsterLifePct: [100, 160, 220, 280],
+  monsterDamagePct: [100, 110, 120, 130],
+  monsterXpPct: [100, 140, 175, 210],
+  xpSharePct: [100, 65, 54, 48],
+  lootPct: [100, 140, 175, 210],
+  densityPct: [100, 110, 120, 130],
+  reviveTicks: 60,
+  reviveRange: 384,
+  reviveLifePct: 35,
+  leashRange: 12 * 256,
+  leashTeleport: 24 * 256,
+};
+
+/** PartyProto from the registry, or DEFAULT_PARTY_PROTO when classic.party is not loaded. */
+export function partyProtoOf(registry: FrozenRegistry): PartyProto {
+  return registry.get<PartyProto>(KIND.party, PARTY_ID) ?? DEFAULT_PARTY_PROTO;
+}
+
+/** Multipliers (percent) for a party of `size` (clamped to 1..maxMembers). */
+export interface PartyScale {
+  lifePct: number;
+  damagePct: number;
+  xpPct: number;
+  xpSharePct: number;
+  lootPct: number;
+  densityPct: number;
+}
+
+function perSize(table: readonly number[], size: number, identity: number): number {
+  if (table.length === 0) return identity;
+  const i = clamp(size, 1, table.length) - 1;
+  return table[i] ?? identity;
+}
+
+export function partyScale(proto: PartyProto, size: number): PartyScale {
+  const n = clamp(Math.trunc(size), 1, Math.max(1, proto.maxMembers));
+  return {
+    lifePct: perSize(proto.monsterLifePct, n, 100),
+    damagePct: perSize(proto.monsterDamagePct, n, 100),
+    xpPct: perSize(proto.monsterXpPct, n, 100),
+    xpSharePct: perSize(proto.xpSharePct, n, 100),
+    lootPct: perSize(proto.lootPct, n, 100),
+    densityPct: perSize(proto.densityPct, n, 100),
+  };
+}
+
+/**
+ * XP one living member gets for a kill: xpForKill for its own level, then
+ * its share for the party size. Never 0 for a kill worth XP.
+ */
+export function partyKillXp(
+  bal: BalanceProto,
+  proto: PartyProto,
+  size: number,
+  heroLevel: number,
+  monsterLvl: number,
+  xp: number,
+): number {
+  const own = xpForKill(bal, heroLevel, monsterLvl, xp);
+  if (size <= 1 || own <= 0) return own;
+  return Math.max(1, pct(own, partyScale(proto, size).xpSharePct));
+}
+
+/** Number of party slots that boss kills unlock for free (bosses of unlockBossDepths killed). */
+export function bossSlots(proto: PartyProto, bossesKilled: readonly number[]): number {
+  let n = 0;
+  for (const d of proto.unlockBossDepths) if (bossesKilled.includes(d)) n++;
+  return n;
+}
+
+/** Unlocked party slots: 1 + max(boss slots, bought), capped at maxMembers. */
+export function partySlots(
+  proto: PartyProto,
+  bossesKilled: readonly number[],
+  slotsBought: number,
+): number {
+  const extra = Math.max(bossSlots(proto, bossesKilled), Math.max(0, slotsBought));
+  return clamp(1 + extra, 1, Math.max(1, proto.maxMembers));
+}
+
+/** Gold price of the next slot when `slots` are unlocked now, or null when every slot is unlocked. */
+export function nextSlotPrice(proto: PartyProto, slots: number): number | null {
+  if (slots >= proto.maxMembers) return null;
+  return proto.slotPrices[slots - 1] ?? null;
+}
+
+/** Start level of a recruit: max(1, highest member level - recruitLevelGap). */
+export function recruitLevel(proto: PartyProto, highestLevel: number): number {
+  return Math.max(1, highestLevel - proto.recruitLevelGap);
+}
+
+/** Recruit fee in gold for a recruit starting at `level`. */
+export function recruitFee(proto: PartyProto, level: number): number {
+  return Math.max(0, proto.recruitFeePerLevel * Math.max(1, level));
+}
+
+/** Tile-space unit vector of an iso facing (inverse of fixed.facingOf). */
+export function facingVec(f: Facing): { x: number; y: number } {
+  switch (f) {
+    case "s":
+      return { x: 1, y: 1 };
+    case "n":
+      return { x: -1, y: -1 };
+    case "e":
+      return { x: 1, y: -1 };
+    case "w":
+      return { x: -1, y: 1 };
+    case "se":
+      return { x: 1, y: 0 };
+    case "nw":
+      return { x: -1, y: 0 };
+    case "ne":
+      return { x: 0, y: -1 };
+    case "sw":
+      return { x: 0, y: 1 };
+  }
+}
+
+/**
+ * Formation spots as (forward, right) in units of `spread` tiles, best
+ * (most forward) first. Three spots: followers of a party of four.
+ */
+export const FORMATION_SPOTS: Readonly<Record<PartyFormation, readonly [number, number][]>> = {
+  wedge: [
+    [-1, -1],
+    [-1, 1],
+    [-2, 0],
+  ],
+  line: [
+    [0, -1],
+    [0, 1],
+    [0, -2],
+  ],
+  ring: [
+    [1, -1],
+    [1, 1],
+    [-1, 0],
+  ],
+};
+
+/**
+ * Tile offsets from the leader for each follower (same order as `roles`,
+ * at most 3). "front" members take the most forward spots, "back" members
+ * the rest, each group in the given order. `spread` is clamped to 1..4.
+ * Pure integer maths (deterministic); callers still need a walkable tile
+ * near leader + offset (fall back to the nearest walkable one).
+ */
+export function formationOffsets(
+  formation: PartyFormation,
+  spread: number,
+  facing: Facing,
+  roles: readonly PartyRole[],
+): { dx: number; dy: number }[] {
+  const spots = FORMATION_SPOTS[formation] ?? FORMATION_SPOTS.wedge;
+  const s = clamp(Math.trunc(spread), 1, 4);
+  const f = facingVec(facing);
+  const r = { x: -f.y, y: f.x };
+  const order: number[] = [];
+  roles.forEach((role, i) => {
+    if (role === "front") order.push(i);
+  });
+  roles.forEach((role, i) => {
+    if (role !== "front") order.push(i);
+  });
+  const out: { dx: number; dy: number }[] = roles.map(() => ({ dx: 0, dy: 0 }));
+  order.forEach((who, k) => {
+    const spot = spots[Math.min(k, spots.length - 1)]!;
+    const extra = k >= spots.length ? k - spots.length + 1 : 0;
+    const fw = (spot[0] - extra) * s;
+    const rt = spot[1] * s;
+    out[who] = { dx: f.x * fw + r.x * rt, dy: f.y * fw + r.y * rt };
+  });
+  return out;
 }

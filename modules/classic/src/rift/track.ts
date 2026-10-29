@@ -13,19 +13,13 @@ import { emit } from "../events.ts";
 import { tileCenter, type TilePos } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { monsterLevel, riftScore } from "../rules.ts";
-import {
-  gameOf,
-  heroOf,
-  RES,
-  type DungeonState,
-  type RiftRun,
-  type RunStats,
-} from "../resources.ts";
+import { gameOf, RES, type DungeonState, type RiftRun, type RunStats } from "../resources.ts";
 import { type RiftProto, KIND, type MonsterProto, type ThemeProto } from "../types.ts";
 import { findFreeNear, tileKey } from "../world/common.ts";
 import { getMap, type ClassicMap } from "../world/maps.ts";
 import { riftProtoOf } from "../world/riftMap.ts";
 import { spawnInteractableSub } from "../world/transition.ts";
+import { actingLeaderOf, partySize, partyWiped } from "../party/shared.ts";
 import { failRun } from "./ops.ts";
 import { pushHistory, riftStateOf, recordOf } from "./state.ts";
 
@@ -52,7 +46,10 @@ export const riftTrackSystem: SystemDef = {
     for (const d of busOf(world).deaths) {
       if (state.active !== run || d.depth !== run.depth) continue;
       if (d.isHero) {
+        // A member's death counts; the run fails only when the whole party is down
+        // (docs/design/party.md §7.4). Solo: the one hero's death is the wipe.
         run.deaths += 1;
+        if (partySize(world) > 1 && !partyWiped(world)) continue;
         failRun(world, ctx, run, "death");
         return;
       }
@@ -102,12 +99,12 @@ function spawnGuardian(
   const monster = guardianId(ctx, rift, map, run.level);
   if (monster === null) {
     // No monster content at all: the run completes where the hero stands.
-    const hero = heroOf(world);
+    const hero = actingLeaderOf(world);
     const p = hero !== 0 ? world.read(hero, Pos) : { x: 0, y: 0 };
     completeRun(world, ctx, run, rift, p.x, p.y);
     return;
   }
-  const hero = heroOf(world);
+  const hero = actingLeaderOf(world);
   const heroTile: TilePos =
     hero !== 0 ? { x: world.read(hero, Pos).x >> 8, y: world.read(hero, Pos).y >> 8 } : map.spawn;
   const at = guardianTile(world, ctx, map, heroTile);

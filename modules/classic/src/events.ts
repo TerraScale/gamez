@@ -5,12 +5,26 @@
  *
  * Emit with `emit(ctx, {...})` for type checking. Keep payloads small: the
  * client receives every event of every tick.
+ *
+ * Party (docs/design/party.md §5): every event that is about ONE hero
+ * (xp, levelUp, statAllocated, skillLearned, hero.died, hero.respawned,
+ * loot.picked, gold, potion, item.*, bag.full, vendor.*, talent.*, set.bonus,
+ * repaired, upgraded...) carries `hero` = that hero's entity. Emitters always
+ * set it once their module is party-aware; observers treat a missing `hero`
+ * as the controlled hero (old emitters, solo). The client shows full feedback
+ * (toasts, sounds, floating text) for the controlled hero and compact party
+ * feedback for the others.
  */
 import type { Entity, SimContext } from "@gamez/kernel";
 import type { ControlMode, RiftRecord, SimSpeed } from "./resources.ts";
 import type { Element, EquipSlot, ItemCategory, ItemRarity, MonsterRarity } from "./types.ts";
 
-export type ClassicEvent =
+export type ClassicEvent = ClassicEventBody & {
+  /** The hero the event is about (party); absent = the controlled hero. */
+  hero?: Entity;
+};
+
+export type ClassicEventBody =
   // ---- classic.combat
   | {
       type: "classic.hit";
@@ -247,7 +261,47 @@ export type ClassicEvent =
       name: string;
       gold: number;
       title: string | null;
-    };
+    }
+  // ======================= party (docs/design/party.md §5) =======================
+  // ---- classic.party
+  | {
+      type: "classic.party.recruited";
+      hero: Entity;
+      classId: string;
+      name: string;
+      /** Slot index (0-based) it took. */
+      slot: number;
+      level: number;
+      fee: number;
+    }
+  /** `stashed`: items moved to the shared stash. */
+  | { type: "classic.party.dismissed"; hero: Entity; name: string; stashed: number }
+  | { type: "classic.party.renamed"; hero: Entity; name: string }
+  | { type: "classic.party.reordered"; members: Entity[] }
+  /** The controlled hero changed (GameState.hero). */
+  | {
+      type: "classic.party.control";
+      hero: Entity;
+      previous: Entity;
+      reason: "player" | "death" | "dismiss";
+    }
+  | { type: "classic.party.config" }
+  /** Party slots unlocked now (1..4): a boss kill or a purchase. */
+  | { type: "classic.party.slots"; slots: number; via: "boss" | "gold"; cost: number }
+  /** A member went down while another member still stands (not a wipe). */
+  | { type: "classic.party.downed"; hero: Entity; name: string }
+  | { type: "classic.party.reviving"; hero: Entity; by: Entity; until: number }
+  | { type: "classic.party.reviveCancelled"; hero: Entity; by: Entity }
+  | {
+      type: "classic.party.revived";
+      hero: Entity;
+      /** Reviver (0 for "town" / "respawn"). */
+      by: Entity;
+      via: "ally" | "town" | "respawn";
+    }
+  /** Every member is down (the solo death flow takes over: respawn in town). */
+  | { type: "classic.party.wiped" }
+  | { type: "classic.party.itemGiven"; uid: number; from: Entity; to: Entity; name: string };
 
 export type ClassicEventType = ClassicEvent["type"];
 

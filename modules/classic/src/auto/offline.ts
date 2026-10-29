@@ -9,6 +9,11 @@
  * classic.offlineXpPct, passed by the server); gold, items and quest kills
  * are not scaled by it. Gold is net of the measured upkeep (potions, scrolls,
  * repairs). A second grant on the same sim tick is rejected (offline_twice).
+ *
+ * Party (docs/design/party.md §6.8): partyOfflineGrant() computes the same
+ * grant for the party (kills, gold and items as party totals, scaled by the
+ * party's loot %) and splits the XP per standing member, each with its own
+ * share and the same xpPct factor; gold goes to the purse.
  */
 import {
   ActionError,
@@ -32,6 +37,7 @@ import {
 } from "../components.ts";
 import { emit } from "../events.ts";
 import { clamp } from "../fixed.ts";
+import { actingLeaderOf, aliveMembers, partyScaleOf, partySize } from "../party/shared.ts";
 import {
   heroOf,
   RES,
@@ -45,6 +51,8 @@ import {
   itemValue,
   levelForXp,
   monsterLevel,
+  partyKillXp,
+  partyProtoOf,
   rollSkillDamage,
   scaledTicks,
   scaleMonster,
@@ -53,6 +61,7 @@ import {
   xpForKill,
 } from "../rules.ts";
 import { totalDamage } from "../bus.ts";
+import { isParty } from "./util.ts";
 import {
   BALANCE_ID,
   KIND,
@@ -291,10 +300,131 @@ function junkGold(
   ilvl: number,
   kills: number,
   kept: number,
+  lootPct = 100,
 ): number {
-  const dropped = Math.floor((kills * bal.drops.normal.item) / 100);
+  const dropped =
+    lootPct === 100
+      ? Math.floor((kills * bal.drops.normal.item) / 100)
+      : Math.floor((kills * bal.drops.normal.item * lootPct) / 10000);
   const sold = Math.max(0, dropped - kept);
   return sold > 0 ? sold * junkPrice(reg, ilvl) : 0;
+}
+
+/** One member's share of a party's offline XP. */
+export interface OfflineShare {
+  hero: Entity;
+  xp: number;
+  levels: number;
+}
+
+/** computePartyOffline: the party model, with every standing member's model share. */
+export interface PartyOfflineModel {
+  /** Party totals: kills, gold, items; xp and levels summed over `shares`. */
+  result: OfflineResult;
+  /** Standing members in slot order: model XP (kills x perKill) and levels. */
+  shares: OfflineShare[];
+  /** XP per kill of each share's hero (aligned with `shares`). */
+  perKill: number[];
+  /** XP per kill of the controlled hero (GameState.hero), standing or not. */
+  heroPerKill: number;
+}
+
+/**
+ * The party's offline rate model (docs/design/party.md §6.8, the fallback of
+ * offline-idle.md §4.3): computeOffline for the ACTING LEADER's strength and
+ * level (depth), against monsters scaled for the party size (life x lifePct),
+ * with the damage of every standing member (the party kill rate) and the
+ * travel time per kill shortened by the party's pack density. Each standing
+ * member's XP per kill is partyKillXp for its own level (Monster.xp x xpPct);
+ * gold, kept and junked items scale with lootPct. Unscaled by the offline
+ * factors (partyOfflineGrant applies them).
+ */
+export function computePartyOffline(
+  world: World,
+  reg: FrozenRegistry,
+  elapsedMs: number,
+): PartyOfflineModel {
+  const leader = actingLeaderOf(world);
+  const alive = aliveMembers(world);
+  const bal = reg.get<BalanceProto>(KIND.balance, BALANCE_ID);
+  const proto = partyProtoOf(reg);
+  const size = Math.max(1, partySize(world));
+  const scale = partyScaleOf(world, reg);
+  const leaderLevel = world.get(leader, Level)?.level ?? 1;
+  const ms = Math.min(elapsedMs, bal?.offlineCapMs ?? elapsedMs);
+  const minutes = Math.floor(ms / 60000);
+  const depth = offlineDepth(world, leaderLevel);
+  const mlvl = monsterLevel(depth);
+  const depthIds = depthMonsterIds(reg, depth);
+  const result: OfflineResult = {
+    ms,
+    depth,
+    monsterLevel: mlvl,
+    kills: 0,
+    xp: 0,
+    gold: 0,
+    items: 0,
+    levels: 0,
+    depthIds,
+  };
+  const out: PartyOfflineModel = { result, shares: [], perKill: [], heroPerKill: 0 };
+  if (!bal || minutes <= 0 || alive.length === 0) return out;
+
+  const monsters = depthIds
+    .map((id) => reg.get<MonsterProto>(KIND.monster, id))
+    .filter((m): m is MonsterProto => m !== undefined);
+  let lifeSum = 0;
+  for (const m of monsters) lifeSum += scaleMonster(m, mlvl, "normal", []).life;
+  const n = Math.max(1, monsters.length);
+  const avgLife = Math.max(1, Math.floor((Math.floor(lifeSum / n) * scale.lifePct) / 100));
+  /** Average XP per kill for a member of level `own` (its partyKillXp share). */
+  const perKillAt = (own: number): number => {
+    let xpSum = 0;
+    for (const m of monsters) {
+      const pool = Math.floor((scaleMonster(m, mlvl, "normal", []).xp * scale.xpPct) / 100);
+      xpSum += partyKillXp(bal, proto, size, own, mlvl, pool);
+    }
+    return Math.floor(xpSum / n);
+  };
+
+  const atk = bestAttack(world, reg, leader);
+  const effDmg = atk.dmg * bal.offlineEfficiencyPct * alive.length;
+  const travel = Math.floor((OFFLINE_TRAVEL_TICKS * 100) / Math.max(100, scale.densityPct));
+  const killsPerMin = clamp(
+    Math.floor((effDmg * TICKS_PER_MIN) / (atk.ticks * avgLife * 100 + travel * effDmg)),
+    1,
+    KILLS_PER_MIN_MAX,
+  );
+  const kills = killsPerMin * minutes;
+
+  for (const e of alive) {
+    const lvl = world.get(e, Level);
+    const own = lvl?.level ?? 1;
+    const perKill = perKillAt(own);
+    const xp = kills * perKill;
+    const levels = Math.max(0, levelForXp(bal, (lvl?.xp ?? 0) + xp) - own);
+    out.shares.push({ hero: e, xp, levels });
+    out.perKill.push(perKill);
+    result.xp += xp;
+    result.levels += levels;
+  }
+  const hero = heroOf(world);
+  out.heroPerKill = perKillAt(world.get(hero, Level)?.level ?? leaderLevel);
+
+  const goldFind = world.get(leader, HeroStats)?.goldFind ?? 0;
+  const avgPile = Math.floor(
+    ((bal.goldPerLevel[0] + bal.goldPerLevel[1]) * mlvl * (100 + goldFind)) / 200,
+  );
+  let gold = Math.floor((kills * bal.drops.normal.gold * avgPile * scale.lootPct) / 10000);
+  const items = Math.min(
+    ITEM_KEEP_MAX,
+    Math.floor((kills * ITEM_KEEP_PCT * scale.lootPct) / 10000),
+  );
+  gold += junkGold(reg, bal, mlvl, kills, items, scale.lootPct);
+  result.kills = kills;
+  result.gold = gold;
+  result.items = items;
+  return out;
 }
 
 /** What the junk buyer pays for an average normal item of item level `ilvl`. */
@@ -413,6 +543,110 @@ export function offlineGrant(
   return { ...base, kills, xp, gold, upkeep, found, items, levels, source };
 }
 
+/**
+ * The party's offline grant (offline-idle.md §4.2 applied per member,
+ * docs/design/party.md §6.8). Kills, gold, upkeep and items are party totals:
+ * the measured rate (AutoRate counts every kill credited to the heroes' side,
+ * the purse's pickups and upkeep) or the party model, with the same caps as
+ * offlineGrant. XP is per standing member: the measured rate is the
+ * controlled hero's own XP rate (rate.ts adds its partyKillXp share), and each
+ * member gets it in proportion to its own model XP per kill (its level), capped
+ * at 3x its model; the model path pays each member its model XP x
+ * offlineModelXpPct. The factor xpPct (the admin tunable) applies to every
+ * member's XP. `grant.xp` and `grant.levels` are the members' sums.
+ */
+export function partyOfflineGrant(
+  world: World,
+  reg: FrozenRegistry,
+  elapsedMs: number,
+  xpPct?: number,
+): { grant: OfflineGrant; shares: OfflineShare[] } {
+  const bal = reg.get<BalanceProto>(KIND.balance, BALANCE_ID);
+  const model = computePartyOffline(world, reg, elapsedMs);
+  const m = model.result;
+  const minutes = Math.floor(m.ms / 60000);
+  const xpPctEff = xpPct ?? bal?.offlineXpPct ?? 0;
+  const grant: OfflineGrant = {
+    ms: m.ms,
+    minutes,
+    depth: m.depth,
+    monsterLevel: m.monsterLevel,
+    depthIds: m.depthIds,
+    xpPct: xpPctEff,
+    goldPct: bal?.offlineGoldPct ?? 0,
+    itemPct: bal?.offlineItemPct ?? 0,
+    kills: 0,
+    xp: 0,
+    gold: 0,
+    upkeep: 0,
+    found: 0,
+    items: 0,
+    levels: 0,
+    source: "model",
+  };
+  const shares: OfflineShare[] = [];
+  if (!bal || minutes <= 0 || model.shares.length === 0) return { grant, shares };
+
+  const lootPct = partyScaleOf(world, reg).lootPct;
+  const T = minutes * TICKS_PER_MIN;
+  const fbXp = (modelXp: number): number => Math.floor((modelXp * bal.offlineModelXpPct) / 100);
+  const rate = world.getResource<AutoRate>(RES.autoRate);
+  let kills: number;
+  let itemsB: number;
+  let baseGold: number;
+  let baseFound: number;
+  let upkeep: number;
+  let baseXp: number[];
+  if (rate && rate.ticks >= AUTO_RATE_MIN_TICKS) {
+    grant.source = "rate";
+    kills = Math.min(
+      Math.floor((rate.kills * T) / rate.ticks),
+      m.kills * RATE_CAP_X,
+      KILLS_PER_MIN_MAX * minutes,
+    );
+    const heroXp = Math.min(
+      Math.floor((rate.xp * T) / rate.ticks),
+      fbXp(m.kills * model.heroPerKill) * RATE_CAP_X,
+    );
+    baseXp = model.shares.map((sh, i) => {
+      const cap = fbXp(sh.xp) * RATE_CAP_X;
+      if (model.heroPerKill <= 0) return fbXp(sh.xp);
+      return Math.min(Math.floor((heroXp * model.perKill[i]!) / model.heroPerKill), cap);
+    });
+    itemsB = Math.min(ITEM_KEEP_MAX, Math.floor((kills * ITEM_KEEP_PCT * lootPct) / 10000));
+    const rateGold = Math.floor((rate.gold * T) / rate.ticks);
+    upkeep = Math.floor(((rate.upkeep ?? 0) * T) / rate.ticks);
+    baseFound = Math.min(
+      rateGold + junkGold(reg, bal, m.monsterLevel, kills, itemsB, lootPct),
+      m.gold * RATE_CAP_X + upkeep,
+    );
+    baseGold = clamp(baseFound - upkeep, 0, m.gold * RATE_CAP_X);
+  } else {
+    kills = m.kills;
+    baseXp = model.shares.map((sh) => fbXp(sh.xp));
+    itemsB = m.items;
+    upkeep = 0;
+    baseGold = Math.floor((m.gold * (bal.offlineModelGoldPct ?? 100)) / 100);
+    baseFound = baseGold;
+  }
+
+  model.shares.forEach((sh, i) => {
+    const xp = Math.floor((baseXp[i]! * xpPctEff) / 100);
+    const lvl = world.get(sh.hero, Level);
+    const own = lvl?.level ?? 1;
+    const levels = Math.max(0, Math.min(bal.maxLevel, levelForXp(bal, (lvl?.xp ?? 0) + xp)) - own);
+    shares.push({ hero: sh.hero, xp, levels });
+    grant.xp += xp;
+    grant.levels += levels;
+  });
+  grant.kills = kills;
+  grant.upkeep = upkeep;
+  grant.gold = Math.floor((baseGold * bal.offlineGoldPct) / 100);
+  grant.found = Math.floor((baseFound * bal.offlineGoldPct) / 100);
+  grant.items = Math.floor((itemsB * bal.offlineItemPct) / 100);
+  return { grant, shares };
+}
+
 /** Offline kills count for killMonsters quests (rule (d), design §16). `kills`
  * is spread evenly over `depthIds`, the monsters of the offline depth
  * (depthMonsterIds), so with n of them:
@@ -493,17 +727,31 @@ export const offlineAction: ActionDef<OfflinePayload> = {
     if (ctx.actor !== OFFLINE_SERVER_ACTOR && stats?.offlineAt === ctx.tick)
       throw new ActionError(ERR.offlineTwice, "offline progress was already granted this tick");
     const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
-    const g = offlineGrant(world, ctx.registry, hero, p.elapsedMs, p.xpPct);
+    const party = isParty(world);
+    let g = party
+      ? partyOfflineGrant(world, ctx.registry, p.elapsedMs, p.xpPct).grant
+      : offlineGrant(world, ctx.registry, hero, p.elapsedMs, p.xpPct);
     // A dead hero is respawned by the grant (§4.4). Its death was in the absence,
     // so the respawn delay counts as served, and execRespawn runs now, before the
     // grants are queued. (A queued respawn would race the controller's own respawn
-    // on the same tick, and the loser would emit classic.command.failed.)
+    // on the same tick, and the loser would emit classic.command.failed.) In a
+    // party, a dead controlled hero (a wipe, or downed while others stand)
+    // respawns every downed member with it (party.md §7.2).
     if (g.minutes > 0 && world.has(hero, Dead)) {
       const dead = world.read(hero, Dead);
       world.update(hero, Dead, { at: Math.min(dead.at, ctx.tick - bal.respawnDelay) });
-      execRespawn(world, ctx);
+      execRespawn(world, ctx, hero);
     }
-    if (g.xp > 0) pushCommand(world, { op: "grantXp", amount: g.xp, reason: "offline" });
+    // A party's XP goes to its standing members (after the respawn), each its own share.
+    if (party) {
+      const pg = partyOfflineGrant(world, ctx.registry, p.elapsedMs, p.xpPct);
+      g = pg.grant;
+      for (const sh of pg.shares) {
+        if (sh.xp <= 0) continue;
+        const cmd = { op: "grantXp", amount: sh.xp, reason: "offline" } as const;
+        pushCommand(world, sh.hero === hero ? cmd : { ...cmd, hero: sh.hero });
+      }
+    } else if (g.xp > 0) pushCommand(world, { op: "grantXp", amount: g.xp, reason: "offline" });
     if (g.gold > 0) pushCommand(world, { op: "grantGold", amount: g.gold, reason: "offline" });
     if (g.items > 0)
       pushCommand(world, {

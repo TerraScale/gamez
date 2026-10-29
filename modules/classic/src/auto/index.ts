@@ -15,6 +15,13 @@
  *   clearLevel objectives hunted to the last monster (./dungeon.ts
  *   clearObjective, town.ts objectiveReturn), offline kills credited to
  *   "any monster" kill quests (./offline.ts).
+ * - Party (docs/design/party.md §6; nothing of it runs for a party of one):
+ *   classic.auto.think drives the acting leader (leader brain: party trip
+ *   and retreat reasons, revive-before-descend, bounded waits, ./lead.ts);
+ *   classic.auto.party (pre 5, ./follow.ts) is the follower brain of every
+ *   other member (formation, leash/regroup, assist, protect, ally heals,
+ *   revives, loot, its own town errands) plus gear distribution
+ *   (./gear.ts); offline progress splits XP per member (./offline.ts).
  * - classic.auto.allocate (pre 10, ./allocate.ts): stat/skill points by class
  *   autoAlloc / autoSkillOrder, new skills into empty bar slots.
  * - classic.auto.rate (post 950, ./rate.ts): the online Auto/Idle rate that the
@@ -32,13 +39,14 @@ import {
   setSpeedAction,
 } from "./actions.ts";
 import { allocateSystem } from "./allocate.ts";
+import { partySystem } from "./follow.ts";
 import { offlineAction } from "./offline.ts";
 import { rateSystem } from "./rate.ts";
 import { thinkSystem } from "./think.ts";
 
 export const classicAuto = defineModule({
   id: MODULE.auto,
-  version: "0.5.1",
+  version: "0.6.0",
   deps: [MODULE.core],
   optionalDeps: [
     MODULE.content,
@@ -51,7 +59,7 @@ export const classicAuto = defineModule({
   setup(world) {
     world.setResource(RES.control, defaultControl());
   },
-  systems: [thinkSystem, allocateSystem, rateSystem],
+  systems: [thinkSystem, partySystem, allocateSystem, rateSystem],
   actions: [setControlAction, setSpeedAction, setAutoConfigAction, offlineAction],
 });
 

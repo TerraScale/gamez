@@ -2,11 +2,15 @@
  * classic.items.heroInit (pre -900, OWNER: T5, design §4 and §20): gives a new
  * hero its bag, equipment (class starter gear), belt (starter potions),
  * wallet and scrolls, then restocks the town vendors when due.
+ *
+ * Party (docs/design/party.md §2.3 I4): runs for every member without an
+ * Inventory (slot order). Wallet and Supplies (the purse) only go to a solo
+ * hero or the founder; a recruit gets its kit but no purse.
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { Belt, Equipment, Hero, Inventory, Supplies, Wallet } from "../components.ts";
 import { SYSTEM } from "../ids.ts";
-import { heroOf } from "../resources.ts";
+import { founderOf, partyMembers, partyOf } from "../party/shared.ts";
 import { KIND, type ClassProto } from "../types.ts";
 import { balanceOf, baseOf } from "./common.ts";
 import { beltAccept, type BeltSlot } from "./belt.ts";
@@ -57,6 +61,8 @@ export function initHeroKit(world: World, ctx: SimContext, hero: Entity): void {
     }
     world.add(hero, Belt, { slots, readyAt: 0 });
   }
+  // The purse (I4): a solo hero or the founder only.
+  if (partyOf(world) !== null && hero !== founderOf(world)) return;
   if (!world.has(hero, Wallet)) world.add(hero, Wallet, { gold: STARTING_GOLD });
   if (!world.has(hero, Supplies)) world.add(hero, Supplies, { tpScrolls: STARTING_SCROLLS });
 }
@@ -64,9 +70,11 @@ export function initHeroKit(world: World, ctx: SimContext, hero: Entity): void {
 export const heroInitSystem: SystemDef = {
   ...SYSTEM.itemsHeroInit,
   run(world, ctx) {
-    const hero = heroOf(world);
-    if (hero === 0) return;
-    if (!world.has(hero, Inventory)) initHeroKit(world, ctx, hero);
+    const members = partyMembers(world);
+    if (members.length === 0) return;
+    for (const hero of members) {
+      if (!world.has(hero, Inventory)) initHeroKit(world, ctx, hero);
+    }
     restockVendors(world, ctx);
   },
 };

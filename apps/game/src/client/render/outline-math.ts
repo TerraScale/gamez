@@ -147,6 +147,19 @@ export function ringScale(pulse01: number): number {
 /** Outline fade time on death (and back on revive), ms. */
 export const OUTLINE_FADE_MS = 500;
 
+/**
+ * Outline strength of a downed hero: the controlled hero ("self") and party
+ * members ("party") stay marked, dimmer, while they lie down (the player must
+ * still find their own hero and the allies to revive); "ally" fades out.
+ */
+export const DOWNED_OUTLINE_ALPHA = 0.45;
+
+/** The fade an outline of `kind` heads for: 1 standing, DOWNED_OUTLINE_ALPHA or 0 when dead. */
+export function outlineTarget(kind: EntityHighlight, dead: boolean): number {
+  if (!dead) return 1;
+  return kind === "ally" ? 0 : DOWNED_OUTLINE_ALPHA;
+}
+
 /** Moves `current` towards `target` (both 0..1) by dt / OUTLINE_FADE_MS. */
 export function fadeToward(current: number, target: number, dtMs: number): number {
   const step = Number.isFinite(dtMs) && dtMs > 0 ? dtMs / OUTLINE_FADE_MS : 0;

@@ -2,6 +2,11 @@
  * classic.monsters.spawn (pre -1050, owner: T4 monster builder): drains
  * Bus.spawns in order and creates monster entities with every component the
  * AI, movement, combat and death systems read.
+ *
+ * Party (docs/design/party.md §7.1, §8): in a party of 2+, monster-team
+ * spawns (not hero summons) get partyScaleOf(): Life by lifePct, CombatStats
+ * dmgMin/dmgMax and the flat element adds by damagePct, Monster.xp by xpPct.
+ * Solo (and a party of one) skips it entirely.
  */
 import type { Entity, FrozenRegistry, SimContext, SystemDef, World } from "@gamez/kernel";
 import {
@@ -24,7 +29,8 @@ import { emit } from "../events.ts";
 import { type Facing, dist2, pct, tileCenter, tiles } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
 import { currentDepth, RES, type DungeonState } from "../resources.ts";
-import { bossDisplayName, bossPhase, scaleMonster } from "../rules.ts";
+import { bossDisplayName, bossPhase, scaleMonster, type PartyScale } from "../rules.ts";
+import { partyScaleOf, partySize } from "../party/shared.ts";
 import { gridOf } from "../spatial.ts";
 import {
   KIND,
@@ -151,7 +157,35 @@ export function placeNear(map: ClassicMap, x: number, y: number): { x: number; y
   return best ?? { x, y };
 }
 
-function spawnOne(world: World, ctx: SimContext, req: SpawnRequest, depth: number): void {
+/** Applies the party multipliers to a monster's stats in place (integer maths). */
+export function scaleForParty(
+  scale: PartyScale,
+  stats: CombatStatsValue,
+  life: number,
+  xp: number,
+): { life: number; xp: number } {
+  if (scale.damagePct !== 100) {
+    const k = scale.damagePct;
+    stats.dmgMin = pct(stats.dmgMin, k);
+    stats.dmgMax = Math.max(stats.dmgMin, pct(stats.dmgMax, k));
+    stats.addFire = pct(stats.addFire, k);
+    stats.addCold = pct(stats.addCold, k);
+    stats.addLightning = pct(stats.addLightning, k);
+    stats.addPoison = pct(stats.addPoison, k);
+  }
+  return {
+    life: scale.lifePct !== 100 ? Math.max(1, pct(life, scale.lifePct)) : life,
+    xp: scale.xpPct !== 100 ? pct(xp, scale.xpPct) : xp,
+  };
+}
+
+function spawnOne(
+  world: World,
+  ctx: SimContext,
+  req: SpawnRequest,
+  depth: number,
+  party: PartyScale | null,
+): void {
   const proto = ctx.registry.get<MonsterProto>(KIND.monster, req.monster);
   if (proto === undefined) return;
   const level = Math.max(1, req.level);
@@ -161,6 +195,13 @@ function spawnOne(world: World, ctx: SimContext, req: SpawnRequest, depth: numbe
   const e: Entity = world.create();
   const stats = monsterCombatStats(ctx, proto, level, req.rarity, mods);
   const scaled = scaleMonster(proto, level, req.rarity, mods);
+  let lifeMax = scaled.life;
+  let xp = scaled.xp;
+  if (party !== null && req.team === "monster") {
+    const r = scaleForParty(party, stats, lifeMax, xp);
+    lifeMax = r.life;
+    xp = r.xp;
+  }
 
   const ranks = proto.skills
     .map((id) => {
@@ -177,9 +218,9 @@ function spawnOne(world: World, ctx: SimContext, req: SpawnRequest, depth: numbe
     mods: [...req.mods],
     pack: req.pack,
     name: monsterName(proto, req.rarity, mods, req.name),
-    xp: scaled.xp,
+    xp,
   });
-  const hp = startLife(world, req, scaled.life);
+  const hp = startLife(world, req, lifeMax);
   world.add(e, Ai, {
     state: req.awake ? "idle" : "sleep",
     target: 0,
@@ -192,11 +233,11 @@ function spawnOne(world: World, ctx: SimContext, req: SpawnRequest, depth: numbe
     // bosses with wave A phases start at 0 and enter their passed phases again.
     count:
       req.rarity === "boss" && !(proto.phases !== undefined && proto.phases.length > 0)
-        ? bossPhase(hp, scaled.life)
+        ? bossPhase(hp, lifeMax)
         : 0,
   });
   world.add(e, SkillBook, { ranks, cooldowns: [] });
-  world.add(e, Life, { hp, max: scaled.life, acc: 0 });
+  world.add(e, Life, { hp, max: lifeMax, acc: 0 });
   world.add(e, CombatStats, stats);
   world.add(e, Pos, { x: at.x, y: at.y });
   world.add(e, AreaTag, { depth: req.depth });
@@ -229,6 +270,7 @@ export const monstersSpawnSystem: SystemDef = {
     if (bus.spawns.length === 0) return;
     const reqs = bus.spawns.splice(0, bus.spawns.length);
     const depth = currentDepth(world);
-    for (const req of reqs) spawnOne(world, ctx, req, depth);
+    const party = partySize(world) > 1 ? partyScaleOf(world, ctx.registry) : null;
+    for (const req of reqs) spawnOne(world, ctx, req, depth, party);
   },
 };

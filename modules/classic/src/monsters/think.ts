@@ -9,6 +9,15 @@
  * the hero follow the hero distance field (see field.ts); other moves use A*
  * (findPath) at most once per PATH_EVERY ticks per monster and at most
  * SEARCHES_PER_TICK searches per tick in total.
+ *
+ * Party (docs/design/party.md §7.1, §12; only for a party of 2+, solo keeps
+ * the single-hero rules bit for bit): monsters fighting the hero team target
+ * the NEAREST STANDING member within aggro and keep it while it stands,
+ * switching when another member is at least SWITCH_CLOSER closer or when a
+ * member's hit turned them (threat, combat/resolve + util THREAT_HOLD).
+ * Chasers of a member follow that member's distance field, built lazily
+ * only for members that are actually targeted this tick (memoised per hero
+ * tile in field.ts).
  */
 import type { Entity, SimContext, SystemDef, World } from "@gamez/kernel";
 import { findPath } from "@gamez/world";
@@ -26,11 +35,12 @@ import {
   Monster,
   Mover,
   Pos,
+  Summoned,
 } from "../components.ts";
 import { emit } from "../events.ts";
-import { angleVec, dist2, scaleTo, tileCenter, tiles, within } from "../fixed.ts";
+import { angleVec, dist2, isqrt, scaleTo, tileCenter, tiles, within } from "../fixed.ts";
 import { SYSTEM } from "../ids.ts";
-import { currentDepth, heroOf } from "../resources.ts";
+import { partyStateOf, currentDepth, heroOf } from "../resources.ts";
 import { bossPhase } from "../rules.ts";
 import { type SpatialGrid, gridOf } from "../spatial.ts";
 import { KIND, type MonsterProto, type SkillProto, type Team } from "../types.ts";
@@ -61,6 +71,7 @@ import {
   skillReady,
   steerDirect,
   stopMover,
+  threatLocked,
 } from "./util.ts";
 
 /** A* searches allowed per tick across all monsters. */
@@ -75,6 +86,15 @@ const CHARGE_COOLDOWN = 100;
 const SUMMON_REACH = tiles(9);
 /** Tanks slam as every 4th attack (design §8.2). */
 const TANK_SLAM_EVERY = 4;
+/**
+ * Party of 2+ only: monsters think at most every this many ticks (engaged ones
+ * too; solo engaged monsters think every tick). It keeps 4 heroes + 300
+ * monsters inside the tick budget (docs/design/party.md §12). Must divide
+ * THINK_EVERY so the staggered every-4-ticks thinks still happen.
+ */
+export const PARTY_THINK_EVERY = 2;
+/** Party: a monster switches members when another one is this much closer (sub). */
+export const SWITCH_CLOSER = tiles(3);
 
 interface Env {
   world: World;
@@ -86,6 +106,16 @@ interface Env {
   heroE: Entity;
   /** Hero distance field of this tick (null when the hero is not live). Shared by every chaser. */
   heroField: DistanceField | null;
+  /**
+   * Party of 2+ (else null: solo rules): the standing members of this area
+   * in slot order and their distance fields (built on first use this tick).
+   */
+  party: {
+    members: Entity[];
+    fields: (DistanceField | null | undefined)[];
+    /** Some live hero-team summon is in the area (else only members can be targets: no grid scan). */
+    summons: boolean;
+  } | null;
   aggro: AggroState;
   budget: { left: number };
 }
@@ -126,10 +156,11 @@ export const monstersThinkSystem: SystemDef = {
     const depth = currentDepth(world);
     const map = getAreaMap(world, ctx.registry);
     const heroE = heroOf(world);
+    const party = partyEnv(world, depth);
     const heroField =
-      heroE !== 0 && isLive(world, heroE)
+      party === null && heroE !== 0 && isLive(world, heroE)
         ? (() => {
-            const hp = world.read(heroE, Pos);
+            const hp = world.peek(heroE, Pos)!;
             return heroFieldOf(map, hp.x >> 8, hp.y >> 8);
           })()
         : null;
@@ -141,15 +172,64 @@ export const monstersThinkSystem: SystemDef = {
       tick: ctx.tick,
       heroE,
       heroField,
+      party,
       aggro: aggroOf(world),
       budget: { left: SEARCHES_PER_TICK },
     };
     for (const e of monsters) {
-      if (world.read(e, AreaTag).depth !== depth) continue;
+      if (world.peek(e, AreaTag)!.depth !== depth) continue;
       thinkOne(env, e);
     }
   },
 };
+
+/** Standing members of the area when the party has 2+ members, else null (solo rules). */
+function partyEnv(world: World, depth: number): Env["party"] {
+  const p = partyStateOf(world);
+  if (p === null || p.members.length < 2) return null;
+  let count = 0;
+  const members: Entity[] = [];
+  for (const m of p.members) {
+    if (m === 0 || !world.exists(m)) continue;
+    count++;
+    if (world.has(m, Dead) || !world.has(m, Pos) || world.peek(m, AreaTag)?.depth !== depth)
+      continue;
+    members.push(m);
+  }
+  if (count < 2) return null;
+  let summons = false;
+  for (const s of world.query(Summoned)) {
+    if (world.has(s, Dead) || world.peek(s, Faction)?.team !== "hero") continue;
+    if (world.peek(s, AreaTag)?.depth === depth) {
+      summons = true;
+      break;
+    }
+  }
+  return { members, fields: members.map(() => undefined), summons };
+}
+
+/** True when `e` is a standing member of the area (party envs only). */
+function isMemberTarget(env: Env, e: Entity): boolean {
+  return env.party !== null && e !== 0 && env.party.members.includes(e);
+}
+
+/**
+ * Distance field toward the chased hero: solo, the shared hero field;
+ * party, the field of that member (built on first use this tick).
+ */
+function fieldToward(env: Env, target: Entity): DistanceField | null {
+  const party = env.party;
+  if (party === null) return env.heroField;
+  const i = party.members.indexOf(target);
+  if (i < 0) return null;
+  let f = party.fields[i];
+  if (f === undefined) {
+    const p = env.world.peek(target, Pos)!;
+    f = heroFieldOf(env.map, p.x >> 8, p.y >> 8);
+    party.fields[i] = f;
+  }
+  return f;
+}
 
 function isActive(s: AiStateName): boolean {
   return s === "chase" || s === "attack" || s === "kite" || s === "charge" || s === "flee";
@@ -157,23 +237,36 @@ function isActive(s: AiStateName): boolean {
 
 function thinkOne(env: Env, e: Entity): void {
   const { world, ctx, tick } = env;
-  const ai = world.read(e, Ai);
+  // Party (2+ members): every unit thinks at most every PARTY_THINK_EVERY ticks
+  // (staggered by id), engaged ones included (docs/design/party.md §12).
+  if (env.party !== null && (e + tick) % PARTY_THINK_EVERY !== 0) return;
+  const ai = world.peek(e, Ai)!;
   if (ai.state === "sleep" || world.has(e, Dead) || world.has(e, Dash)) return;
-  const mon = world.read(e, Monster);
+  // Throttle: units inside attack range think every tick, others every THINK_EVERY ticks.
+  // (Reads are ordered so a skipped unit copies as little as possible: every live
+  // read costs a copy in the tick's transaction. Reads never change the state.)
+  const cur = isLive(world, ai.target) ? ai.target : 0;
+  const p = world.peek(e, Pos)!;
+  const pos: Pt = { x: p.x, y: p.y };
+  let cs: CombatStatsValue | undefined;
+  if ((e + tick) % THINK_EVERY !== 0) {
+    if (cur === 0) return;
+    cs = world.peek(e, CombatStats)!;
+    const curPos = world.peek(cur, Pos)!;
+    const engaged = within(
+      pos.x,
+      pos.y,
+      curPos.x,
+      curPos.y,
+      cs.attackRange + bodyRadius(world, cur),
+    );
+    if (!engaged) return;
+  }
+  const mon = world.peek(e, Monster)!;
   const proto = ctx.registry.get<MonsterProto>(KIND.monster, mon.proto);
   if (proto === undefined) return;
-  const cs = world.read(e, CombatStats);
-  const p = world.read(e, Pos);
-  const pos: Pt = { x: p.x, y: p.y };
-  const enemy: Team = world.read(e, Faction).team === "monster" ? "hero" : "monster";
-
-  // Throttle: units inside attack range think every tick, others every THINK_EVERY ticks.
-  const cur = isLive(world, ai.target) ? ai.target : 0;
-  const curPos = cur !== 0 ? world.read(cur, Pos) : undefined;
-  const engaged =
-    curPos !== undefined &&
-    within(pos.x, pos.y, curPos.x, curPos.y, cs.attackRange + bodyRadius(world, cur));
-  if (!engaged && (e + tick) % THINK_EVERY !== 0) return;
+  cs ??= world.peek(e, CombatStats)!;
+  const enemy: Team = world.peek(e, Faction)!.team === "monster" ? "hero" : "monster";
 
   const active = isActive(ai.state);
   const radius =
@@ -183,11 +276,14 @@ function thinkOne(env: Env, e: Entity): void {
   // Combat engaged us (state chase without a memory entry): count it as contact now.
   if (last === undefined && active) last = tick;
   const recent = last !== undefined && tick - last < LOSE_CONTACT_TICKS;
-  const found = acquire(env, e, pos, enemy, radius, cur, recent);
+  const found =
+    env.party !== null && enemy === "hero"
+      ? acquireParty(env, e, pos, radius, cur, recent)
+      : acquire(env, e, pos, enemy, radius, cur, recent);
   if (found.near > 0) last = tick;
 
   const target = found.target;
-  const tp = target !== 0 ? world.read(target, Pos) : undefined;
+  const tp = target !== 0 ? world.peek(target, Pos)! : undefined;
   const tpos: Pt = tp !== undefined ? { x: tp.x, y: tp.y } : pos;
   const u: Unit = {
     e,
@@ -201,7 +297,8 @@ function thinkOne(env: Env, e: Entity): void {
     target,
     tpos,
     d2: tp !== undefined ? dist2(pos.x, pos.y, tpos.x, tpos.y) : Infinity,
-    isHeroTarget: target !== 0 && target === env.heroE,
+    isHeroTarget:
+      target !== 0 && (env.party !== null ? isMemberTarget(env, target) : target === env.heroE),
     repathAt: ai.repathAt,
     specialAt: ai.specialAt,
     count: ai.count,
@@ -262,7 +359,7 @@ function acquire(
   // Fast path: the hero is the preferred target, so while it is alive and in range
   // the answer is the hero without a grid search (same result as the full search).
   if (cur !== 0 && cur === env.heroE && enemy === "hero" && isEnemyOf(world, cur, enemy)) {
-    const hp = world.read(cur, Pos);
+    const hp = world.peek(cur, Pos)!;
     if (within(pos.x, pos.y, hp.x, hp.y, radius)) return { target: cur, near: 1 };
   }
   let near = 0;
@@ -270,9 +367,9 @@ function acquire(
   let bestD = Infinity;
   let hero: Entity = 0;
   for (const c of env.grid.query(pos.x, pos.y, radius)) {
-    if (c === e || world.get(c, Faction)?.team !== enemy || !isEnemyOf(world, c, enemy)) continue;
+    if (c === e || world.peek(c, Faction)?.team !== enemy || !isEnemyOf(world, c, enemy)) continue;
     near++;
-    const p = world.read(c, Pos);
+    const p = world.peek(c, Pos)!;
     const d = dist2(pos.x, pos.y, p.x, p.y);
     if (c === env.heroE) hero = c;
     if (d < bestD) {
@@ -282,8 +379,8 @@ function acquire(
   }
   let pick: Entity = hero !== 0 ? hero : best;
   if (pick !== 0 && cur !== 0 && cur !== pick && isEnemyOf(world, cur, enemy)) {
-    const cp = world.read(cur, Pos);
-    const pp = world.read(pick, Pos);
+    const cp = world.peek(cur, Pos)!;
+    const pp = world.peek(pick, Pos)!;
     // Keep the current target unless it is more than 50 % farther (squared: 4 d_cur <= 9 d_pick).
     if (4 * dist2(pos.x, pos.y, cp.x, cp.y) <= 9 * dist2(pos.x, pos.y, pp.x, pp.y)) pick = cur;
   }
@@ -295,6 +392,135 @@ function acquire(
     }
   }
   return { target: 0, near };
+}
+
+/**
+ * Party target choice (2+ members, monsters fighting the hero team): the
+ * nearest standing member within `radius`, else the nearest other enemy
+ * (summons). The current target is kept while it stands: a member target
+ * until another member is SWITCH_CLOSER closer (never for a summon while the
+ * contact is recent), a non-member by the solo 50 % rule, and any target
+ * while its threat lock holds. With nothing in range, a recent contact keeps
+ * the current target, else the nearest standing member. A standing member
+ * target never needs a grid search unless contact is lost.
+ */
+function acquireParty(
+  env: Env,
+  e: Entity,
+  pos: Pt,
+  radius: number,
+  cur: Entity,
+  recent: boolean,
+): { target: Entity; near: number } {
+  const { world } = env;
+  const members = env.party!.members;
+  const r2 = radius * radius;
+  const locked = cur !== 0 && threatLocked(env.aggro, e, env.tick) && isEnemyOf(world, cur, "hero");
+  // Fast path: a standing member target needs no grid search (at most 4 members scanned).
+  if (cur !== 0 && members.includes(cur)) {
+    const cp = world.peek(cur, Pos)!;
+    const dc = dist2(pos.x, pos.y, cp.x, cp.y);
+    if (dc <= r2) {
+      if (locked) return { target: cur, near: 1 };
+      return { target: closerMember(env, pos, cur, dc, r2), near: 1 };
+    }
+    // Out of range: another member in range still counts as contact; members beat summons.
+    const pick = locked ? cur : closerMember(env, pos, cur, dc, r2);
+    if (pick !== cur || anyMemberWithin(env, pos, r2)) return { target: pick, near: 1 };
+    if (recent) return { target: cur, near: 0 };
+  }
+  let near = 0;
+  let best: Entity = 0;
+  let bestD = Infinity;
+  let member: Entity = 0;
+  let memberD = Infinity;
+  if (env.party!.summons) {
+    for (const c of env.grid.query(pos.x, pos.y, radius)) {
+      if (c === e || world.peek(c, Faction)?.team !== "hero" || !isEnemyOf(world, c, "hero")) {
+        continue;
+      }
+      near++;
+      const p = world.peek(c, Pos)!;
+      const d = dist2(pos.x, pos.y, p.x, p.y);
+      if (d < memberD && members.includes(c)) {
+        memberD = d;
+        member = c;
+      }
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+  } else {
+    // Without hero summons only the standing members can be in range: no grid search.
+    for (const m of members) {
+      const p = world.peek(m, Pos)!;
+      const d = dist2(pos.x, pos.y, p.x, p.y);
+      if (d > r2) continue;
+      near++;
+      if (d < memberD) {
+        memberD = d;
+        member = m;
+      }
+    }
+    best = member;
+  }
+  let pick: Entity = member !== 0 ? member : best;
+  if (pick !== 0 && cur !== 0 && cur !== pick && isEnemyOf(world, cur, "hero")) {
+    const cp = world.peek(cur, Pos)!;
+    const pp = world.peek(pick, Pos)!;
+    const dc = dist2(pos.x, pos.y, cp.x, cp.y);
+    const dp = dist2(pos.x, pos.y, pp.x, pp.y);
+    if (locked) pick = cur;
+    else if (members.includes(cur) && members.includes(pick)) {
+      if (isqrt(dc) - isqrt(dp) < SWITCH_CLOSER) pick = cur;
+    } else if (4 * dc <= 9 * dp) pick = cur;
+  }
+  if (pick !== 0) return { target: pick, near };
+  if (recent) {
+    if (cur !== 0 && isEnemyOf(world, cur, "hero")) return { target: cur, near };
+    let nearest: Entity = 0;
+    let nd = Infinity;
+    for (const m of members) {
+      const p = world.peek(m, Pos)!;
+      const d = dist2(pos.x, pos.y, p.x, p.y);
+      if (d < nd) {
+        nd = d;
+        nearest = m;
+      }
+    }
+    if (nearest !== 0) return { target: nearest, near };
+  }
+  return { target: 0, near };
+}
+
+/** True when a standing member is within sqrt(r2) of `pos`. */
+function anyMemberWithin(env: Env, pos: Pt, r2: number): boolean {
+  for (const m of env.party!.members) {
+    const p = env.world.peek(m, Pos)!;
+    if (dist2(pos.x, pos.y, p.x, p.y) <= r2) return true;
+  }
+  return false;
+}
+
+/**
+ * `cur` (a member at squared distance `dc`), or the nearest other member in
+ * range when that one is at least SWITCH_CLOSER closer.
+ */
+function closerMember(env: Env, pos: Pt, cur: Entity, dc: number, r2: number): Entity {
+  let best = cur;
+  let bestD = dc;
+  for (const m of env.party!.members) {
+    if (m === cur) continue;
+    const p = env.world.peek(m, Pos)!;
+    const d = dist2(pos.x, pos.y, p.x, p.y);
+    if (d <= r2 && d < bestD) {
+      bestD = d;
+      best = m;
+    }
+  }
+  if (best === cur || isqrt(dc) - isqrt(bestD) < SWITCH_CLOSER) return cur;
+  return best;
 }
 
 function think(env: Env, u: Unit): AiStateName {
@@ -522,7 +748,7 @@ function boss(env: Env, u: Unit): AiStateName {
   }
   if (canOrder(env.world, u.e)) {
     if (!phased) {
-      const life = env.world.read(u.e, Life);
+      const life = env.world.peek(u.e, Life)!;
       const phase = bossPhase(life.hp, life.max);
       if (u.count < phase) {
         const call = options.find((o) => o.sk.shape === "summon" && o.sk.summon !== undefined);
@@ -657,8 +883,8 @@ function moveTo(env: Env, u: Unit, tx: number, ty: number, toHero: boolean): voi
   const { world, map, tick } = env;
   const mtx = u.pos.x >> 8;
   const mty = u.pos.y >> 8;
-  const field = env.heroField;
-  if (toHero && field !== null) {
+  const field = toHero ? fieldToward(env, u.target) : null;
+  if (field !== null) {
     const d = fieldDistance(field, mtx, mty);
     if (d !== undefined && d > 0) {
       const step = nextStep(map, field, mtx, mty);
@@ -668,7 +894,7 @@ function moveTo(env: Env, u: Unit, tx: number, ty: number, toHero: boolean): voi
       }
     }
   }
-  if (world.read(u.e, Mover).path.length > 0 && tick < u.repathAt) return;
+  if (world.peek(u.e, Mover)!.path.length > 0 && tick < u.repathAt) return;
   if (tick >= u.repathAt && env.budget.left > 0) {
     env.budget.left--;
     u.repathAt = tick + PATH_EVERY;

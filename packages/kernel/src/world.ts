@@ -227,6 +227,11 @@ export class WorldImpl implements World {
     return this.live(this.stores.get(c.name)?.get(e)) as T | undefined;
   }
 
+  peek<T>(e: Entity, c: ComponentType<T>): Readonly<T> | undefined {
+    if (c.name === ENTITY_COMPONENT) return (this.alive.has(e) ? true : undefined) as T | undefined;
+    return this.stores.get(c.name)?.get(e)?.value as T | undefined;
+  }
+
   read<T>(e: Entity, c: ComponentType<T>): T {
     const v = this.get(e, c);
     if (v === undefined)
@@ -247,12 +252,27 @@ export class WorldImpl implements World {
       sets.push(table);
     }
     sets.sort((a, b) => a.size - b.size);
-    const [smallest, ...rest] = sets as [(typeof sets)[number], ...typeof sets];
+    // Hot path (every system queries every tick): plain loops, no closures, and
+    // no sort when the ids already come in ascending order (the common case:
+    // components are mostly added in creation order).
+    const n = sets.length;
     const out: Entity[] = [];
-    for (const e of smallest.keys()) {
-      if (rest.every((s) => s.has(e))) out.push(e);
+    let sorted = true;
+    let last = -Infinity;
+    for (const e of sets[0]!.keys()) {
+      let all = true;
+      for (let i = 1; i < n; i++) {
+        if (!sets[i]!.has(e)) {
+          all = false;
+          break;
+        }
+      }
+      if (!all) continue;
+      if (e < last) sorted = false;
+      last = e;
+      out.push(e);
     }
-    return out.sort((a, b) => a - b);
+    return sorted ? out : out.sort((a, b) => a - b);
   }
 
   getResource<T>(key: string): T | undefined {

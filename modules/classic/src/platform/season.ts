@@ -6,14 +6,15 @@
  * integer of season points earned by this hero, from RunStats counters:
  *   total = kills + 25 * levelsGained + 100 * questsDone + 50 * riftsCompleted
  *           + 10 * deepestDepth   (exact weights: SEASON_WEIGHTS below)
- * levelsGained = hero level - 1 (levels are never lost; death costs xp only).
+ * levelsGained = founder level - 1 (levels are never lost; death costs xp only).
+ * A party's season total is the founder's (party-wide counters, monotonic).
  * null without a hero. The account turns deltas into season xp
  * (AccountApi.seasonProgress), so the formula may change only with a new key.
  */
 import type { FrozenRegistry, World } from "@gamez/kernel";
 import { Level } from "../components.ts";
+import { founderOf } from "../party/shared.ts";
 import {
-  heroOf,
   RES,
   type DungeonState,
   type GameState,
@@ -33,7 +34,8 @@ export function classicSeasonTotal(
   _registry: FrozenRegistry,
 ): { key: string; total: number } | null {
   try {
-    const hero = heroOf(world);
+    // The founder's level (docs/design/party.md §7.4): it never drops when a member is dismissed.
+    const hero = founderOf(world);
     if (hero === 0) return null;
     const game = world.getResource<GameState>(RES.game);
     if (!game) return null;

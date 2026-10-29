@@ -32,6 +32,9 @@ export const MODULE = {
   platform: "classic.platform",
   /** QA-only cheat module (src/debug), never part of the default `modules`. */
   debug: "classic.debug",
+  // ---- party (docs/design/party.md)
+  /** Party resource, recruit/dismiss/control actions, revive, give (src/party). */
+  party: "classic.party",
 } as const;
 
 interface SysRow {
@@ -58,8 +61,18 @@ export const SYSTEM = {
   progressionStats: sys("classic.progression.stats", "pre", -500),
   /** monsters: sleep far monsters, wake near ones (staggered by entity id). */
   monstersWake: sys("classic.monsters.wake", "pre", -100),
-  /** auto: the Auto/Idle controller writes the hero Intent and queues commands. */
+  /**
+   * auto: the Auto/Idle controller writes the hero Intent and queues commands.
+   * Party: runs the LEADER brain for the acting leader (party/shared.ts
+   * actingLeaderOf) when Auto/Idle drives it (docs/design/party.md §6.1).
+   */
   autoThink: sys("classic.auto.think", "pre", 0),
+  /**
+   * auto (party): the FOLLOWER brain of every other living member, always on
+   * (any control mode): formation, assist, protect, revive, loot, town routine.
+   * No-op without a party resource or with one member.
+   */
+  autoParty: sys("classic.auto.party", "pre", 5),
   /** auto: stat/skill point auto-allocation in auto/idle (queues commands). */
   autoAllocate: sys("classic.auto.allocate", "pre", 10),
   /** talents (wave A): grant points on level ups, auto-spend them in auto/idle, keep BonusStats in sync. */
@@ -75,6 +88,8 @@ export const SYSTEM = {
   craftingCommands: sys("classic.crafting.commands", "update", 54),
   /** rift (wave A): openRift / leaveRift ops. */
   riftCommands: sys("classic.rift.commands", "update", 55),
+  /** party: revive / give ops (HeroCommand owner classic.party). */
+  partyCommands: sys("classic.party.commands", "update", 56),
   /** core: execute the hero Intent (path, approach, CastOrder, pickup/interact commands). */
   coreIntent: sys("classic.core.intent", "update", 100),
   /** monsters: AI behaviours set Mover goals/paths and CastOrders. */
@@ -113,8 +128,12 @@ export const SYSTEM = {
   progressionRegen: sys("classic.progression.regen", "post", 300),
   /** world: reveal tiles around the hero. */
   worldExplore: sys("classic.world.explore", "post", 500),
-  /** progression: hero death penalty, respawn timer (auto respawn handled by classic.auto). */
+  /** progression: hero death penalty, respawn timer (auto respawn handled by classic.auto). Party: per member (docs/design/party.md §7.4). */
   progressionHeroDeath: sys("classic.progression.heroDeath", "post", 600),
+  /** party: revive channels (Reviving), town revive of downed members, downed / wiped events. */
+  partyRevive: sys("classic.party.revive", "post", 610),
+  /** party: control auto-switch when the controlled hero is down (Auto/Idle, PartyConfig.autoSwitch). */
+  partyControl: sys("classic.party.control", "post", 620),
   /** achievements (wave A): check metrics (every 20 ticks), unlock, grant rewards. */
   achievementsCheck: sys("classic.achievements.check", "post", 900),
   /**

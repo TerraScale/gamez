@@ -72,6 +72,56 @@ Hard checks: the boss spawns, phase 1 starts, its toast names Morrow, and
 `render.shakes` counts up. Each telegraph shape is a warning (the line only comes
 with the phase 2 rush). `data.boss` holds the shapes seen and the shake counts.
 
+### party
+
+The party UI without the party cheat (`src/party.ts`). `party <class> [--viewport phone]`:
+
+1. Manual mode, a gold cheat, then the Party panel (key P): buys slots 2 and 3 with the panel button,
+   picks the Rogue and Sorcerer class cards, types the names Wren and Ilsa and presses Recruit
+   (`party-panel`, `party-panel-recruited`).
+2. Checks three members in `window.__gamez.sim.party`, three `[data-party-frame]` HUD frames and the
+   outline census (one gold `self`, cyan `party` for the others) (`party-frames`).
+3. Takes control by clicking portrait 2, then F3, F1 and Tab. After each switch the controlled member
+   and the HUD hero must be the expected one, the camera target (`window.__gamez.render.camera`, tiles)
+   must be on that hero and the centre within 2.5 tiles, and there must still be exactly one `self`
+   outline (`control-portrait`, `control-f3`, `control-f1`, `control-tab`).
+4. Party: Auto (Idle x8) for 30 s. The party must stay within the leash (24 tiles; 12 is a warning),
+   and the camera target must stay on the controlled hero in 80 % of the samples (`party-idle`).
+
+### classic-party (cheats)
+
+A party of four in the real browser (`src/party.ts`, owner T-party-render). `classic-party <class>`
+opens `?debug=1&cheats=1` (`--url` picks the server; `--viewport phone` works too) and:
+
+1. Grants the party with `controls.cheat {party: ["classic.rogue", "classic.sorcerer", "classic.warrior"]}`.
+   When the cheat is not there yet, the run falls back to `{bossesKilled: [4, 8, 12], gold: 100000}` and
+   recruits the same three through `controls.act("classic.party.recruit")`. `data.party.grant` says which path ran
+   (`party-cheat` or `fallback`). The cheat names its recruits `<Class> <n>` (Rogue 1, Sorcerer 2,
+   Warrior 3); only the fallback recruits as Brannoc, Celene and Oren. The frame-name check accepts both.
+2. Takes `town-party` (outlines, name plates, party frames). The HUD's `window.__gamez.render.outlines`
+   census must show one gold `self` and cyan `party` outlines. Frame names are read from the page text.
+   The `ally` count is informational only: in town it includes the presence avatars (and their
+   companions) of every other live session on the shared dev server. Downed party members keep a
+   dimmed `self` / `party` outline, so they stay in the census.
+3. Presses F2, then Tab (`control-f2`, `control-tab`). The controlled hero's name (`sim.hero.name`) must change each time.
+4. Idles at x8 for 60 s, sampling every 2 s. Takes `downed` and `revived` shots the first time each happens, and
+   `idle-party` at the end.
+
+`data.party` holds the grant path, the outline census, the frame names, the control names, one sample per
+2 s (depth, controlled hero, downs, revives, heroDeaths and, when exposed, every member), the largest
+follower distance (`maxFollowerDistance`, tiles), `depthMax`, `downs`, `revives` and `final`.
+Member positions are read from `window.__gamez.sim.party.members` (`{name, x, y, dead, level}`, tiles)
+when the debug summary publishes it. Without it, the together check is a warning and only the controlled
+hero is sampled.
+
+Hard checks: three recruits joined, one self outline and party outlines, F2 and Tab switch control.
+Warnings: the frame names, the outline after the switch, the together check when positions are missing,
+and the descent (depth 1 or deeper).
+
+Gallery: the `party` section (`?qa=gallery`) lists the controlled hero (`self`), a follower (`party`), a
+downed follower (the dead pose, `party`), another player (`ally`, green) and a summon of a party member (the
+Spark Sentry in the party ink), every action, on the town grass.
+
 ### Auto mode and manual steps
 
 - The hero starts in auto. With the rift unlocked (cheat `unlockRift`), auto's rift loop
@@ -608,6 +658,7 @@ not reachable from the normal UI. Its sections:
 - every loot sprite with its rarity label, the uniques, the gems (tinted by kind)
   and a set-rarity sample
 - every skill effect and projectile, plus weapon projectiles
+- the `party` page: self, party, downed, ally and a party summon, every action
 - float texts and event effects, played through the real `effects.ts` planner
 - every tile and prop that the generated maps, themes and manifest use, and
   the station signs

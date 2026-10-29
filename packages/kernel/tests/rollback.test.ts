@@ -52,6 +52,25 @@ function populate(w: World): void {
   });
 }
 
+describe("peek (read-only view, no rollback copy)", () => {
+  it("returns the live value and an update() after a peek still rolls back", () => {
+    let seen: Readonly<{ x: number; y: number }> | undefined;
+    const sim = simWith((w) => {
+      seen = w.peek(1, Pos);
+      expect(seen).toBe(w.get(1, Pos));
+      expect(w.peek(1, Label)).toBeUndefined();
+      w.update(1, Pos, { x: 77 });
+      w.update(2, Pos, { y: 55 });
+      expect(w.peek(2, Pos)?.y).toBe(55);
+    }, populate);
+    const before = sim.hash();
+    expect(sim.dispatch("r.go", { fail: true }, null).ok).toBe(false);
+    expect(sim.hash()).toBe(before);
+    expect(sim.dispatch("r.go", { fail: false }, null).ok).toBe(true);
+    expect(sim.world.peek(1, Pos)).toEqual({ x: 77, y: 2 });
+  });
+});
+
 describe("rollback of in-place mutation", () => {
   it("restores values mutated through get() and read(), including nested arrays", () => {
     const sim = simWith((w) => {

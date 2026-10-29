@@ -4,8 +4,11 @@
  *
  * - Every EconomyProto.repair.everyKills hero-credited kills: the weapon and
  *   one ctx.rng-picked worn armor piece (shield / helm / armor / gloves /
- *   boots) lose 1 durability.
+ *   boots) lose 1 durability. Party: the counter is shared and the step
+ *   wears the hero credited with the kill that completes it (common.ts
+ *   creditedHero: the killer, or a killing summon's owner).
  * - A hero death: every equipped item loses deathLossPct % of its max (min 1).
+ *   Party: the dying member's items.
  * - classic.item.worn once at <= 10 % (per uid until repaired),
  *   classic.item.broken at 0. Broken items keep their slot; rules.addItemStats
  *   and progression.stats ignore them.
@@ -19,10 +22,11 @@ import { busOf, type DeathRecord } from "../bus.ts";
 import { Equipment } from "../components.ts";
 import { emit } from "../events.ts";
 import { SYSTEM } from "../ids.ts";
+import { isPartyHero } from "../party/shared.ts";
 import { heroOf } from "../resources.ts";
 import { maxDurabilityOf } from "../rules.ts";
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance } from "../types.ts";
-import { baseOf, economyOf } from "./common.ts";
+import { baseOf, creditedHero, economyOf } from "./common.ts";
 import { emitSetChanges, setSnapshot } from "./sets.ts";
 
 /** Items-owned resource: kills toward the next wear step and uids already warned as worn. */
@@ -125,6 +129,36 @@ function wearable(world: World, ctx: SimContext, hero: Entity, armorOnly: boolea
   return out;
 }
 
+/** Kill wear step on `hero`: the weapon and one rng-picked armor piece lose 1. */
+function killWear(world: World, ctx: SimContext, hero: Entity): void {
+  const losses: Loss[] = [];
+  const eq = world.read(hero, Equipment);
+  if (eq.weapon && wearable(world, ctx, hero, false).includes("weapon")) {
+    losses.push({ slot: "weapon", amount: 1 });
+  }
+  const armor = wearable(world, ctx, hero, true);
+  if (armor.length > 0) {
+    losses.push({ slot: armor.length === 1 ? armor[0]! : ctx.rng.pick(armor), amount: 1 });
+  }
+  applyWear(world, ctx, hero, losses);
+}
+
+/** Death wear on `hero`: every wearable item loses deathLossPct % of its max (min 1). */
+function deathWear(world: World, ctx: SimContext, hero: Entity, deathLossPct: number): void {
+  const eq = world.read(hero, Equipment);
+  const losses: Loss[] = [];
+  for (const slot of wearable(world, ctx, hero, false)) {
+    const item = eq[slot]!;
+    const base = baseOf(ctx.registry, item.base)!;
+    const max = item.dur?.max ?? maxDurabilityOf(base);
+    losses.push({
+      slot,
+      amount: Math.max(1, Math.floor((max * deathLossPct) / 100)),
+    });
+  }
+  applyWear(world, ctx, hero, losses);
+}
+
 export const wearSystem: SystemDef = {
   ...SYSTEM.itemsWear,
   run(world, ctx) {
@@ -132,49 +166,29 @@ export const wearSystem: SystemDef = {
     if (bus.deaths.length === 0) return;
     const econ = economyOf(ctx.registry);
     if (!econ) return;
-    const hero = heroOf(world);
-    if (hero === 0 || !world.has(hero, Equipment)) return;
-
-    let kills = 0;
-    let heroDied = false;
-    for (const d of bus.deaths) {
-      if (d.isHero && d.entity === hero) heroDied = true;
-      else if (isHeroKill(d)) kills++;
-    }
-
+    if (heroOf(world) === 0) return;
     const every = Math.max(1, Math.floor(econ.repair.everyKills));
-    if (kills > 0) {
+
+    // Kills first (bus order), each counted for the hero it is credited to.
+    for (const d of bus.deaths) {
+      if (!isHeroKill(d)) continue;
+      const hero = creditedHero(world, d.killer);
+      if (hero === 0 || !world.has(hero, Equipment)) continue;
       const state = wearOf(world);
-      let total = state.kills + kills;
-      while (total >= every) {
-        total -= every;
-        const losses: Loss[] = [];
-        const eq = world.read(hero, Equipment);
-        if (eq.weapon && wearable(world, ctx, hero, false).includes("weapon")) {
-          losses.push({ slot: "weapon", amount: 1 });
-        }
-        const armor = wearable(world, ctx, hero, true);
-        if (armor.length > 0) {
-          losses.push({ slot: armor.length === 1 ? armor[0]! : ctx.rng.pick(armor), amount: 1 });
-        }
-        applyWear(world, ctx, hero, losses);
+      state.kills++;
+      if (state.kills >= every) {
+        state.kills -= every;
+        killWear(world, ctx, hero);
       }
-      wearOf(world).kills = total;
     }
 
-    if (heroDied) {
-      const eq = world.read(hero, Equipment);
-      const losses: Loss[] = [];
-      for (const slot of wearable(world, ctx, hero, false)) {
-        const item = eq[slot]!;
-        const base = baseOf(ctx.registry, item.base)!;
-        const max = item.dur?.max ?? maxDurabilityOf(base);
-        losses.push({
-          slot,
-          amount: Math.max(1, Math.floor((max * econ.repair.deathLossPct) / 100)),
-        });
-      }
-      applyWear(world, ctx, hero, losses);
+    // Then deaths of party heroes (each member at most once).
+    const died: Entity[] = [];
+    for (const d of bus.deaths) {
+      if (!d.isHero || died.includes(d.entity)) continue;
+      if (!isPartyHero(world, d.entity) || !world.has(d.entity, Equipment)) continue;
+      died.push(d.entity);
+      deathWear(world, ctx, d.entity, econ.repair.deathLossPct);
     }
   },
 };

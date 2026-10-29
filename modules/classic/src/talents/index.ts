@@ -26,7 +26,7 @@ export {
 
 export const classicTalents = defineModule({
   id: MODULE.talents,
-  version: "1.0.0",
+  version: "1.1.0",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content, MODULE.progression],
   systems: [talentsPointsSystem, talentsCommands],

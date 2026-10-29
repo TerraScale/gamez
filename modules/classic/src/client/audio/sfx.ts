@@ -82,6 +82,12 @@ export function deathBoss(v: Voice): void {
   v.tone({ wave: "sawtooth", f0: 220, f1: 55, dur: 1.4, at: 0.1, vol: 0.12, lp: 700 });
 }
 
+/** A downed party member: a short, low thud (the controlled hero's death is heroDeath). */
+export function downThud(v: Voice): void {
+  v.tone({ wave: "sine", f0: 110, f1: 45, dur: 0.35, vol: 0.4 });
+  v.noise({ filter: "lowpass", f0: 300, dur: 0.12, vol: 0.2 });
+}
+
 export function heroDeath(v: Voice): void {
   v.tone({ wave: "sawtooth", f0: 440, f1: 110, dur: 1.1, vol: 0.25, lp: 1000 });
   v.tone({ wave: "sine", f0: 220, f1: 55, dur: 1.4, vol: 0.3 });

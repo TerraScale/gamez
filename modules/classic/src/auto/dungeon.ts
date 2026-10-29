@@ -5,9 +5,8 @@
  * rules. The BFS allocates its scratch arrays per call (no module state).
  */
 import { defineComponent, type Entity } from "@gamez/kernel";
-import { pushCommand } from "../bus.ts";
+import type { HeroCommand } from "../actions.ts";
 import { AreaTag, Dead, Faction, Level, Life, Monster, Pos, Summoned } from "../components.ts";
-import { emit } from "../events.ts";
 import type { TilePos } from "../fixed.ts";
 import { liveMonsterCount } from "../progression/quests.ts";
 import {
@@ -39,10 +38,12 @@ import {
   addIgnore,
   currentIntent,
   effectiveLevel,
+  emitFor,
   inReach,
   isIgnored,
   moveTo,
   nearestInteractable,
+  pushCmd,
   setIntent,
   setPlan,
   stopIntent,
@@ -181,11 +182,11 @@ export function exploreStep(c: AutoCtx): "moving" | "none" | "unknown" {
  * the start of the tick). Sending stops the intent and waits
  * TRAVEL_RETRY_TICKS before another one may be sent.
  */
-export function travel(c: AutoCtx, cmd: Parameters<typeof pushCommand>[1]): boolean {
+export function travel(c: AutoCtx, cmd: HeroCommand): boolean {
   // Still walking (no command sent since the last one stopped the intent), or due again.
   const walking = currentIntent(c)?.kind !== "idle";
   if (!c.due && !walking) return false;
-  pushCommand(c.world, cmd);
+  pushCmd(c, cmd);
   stopIntent(c);
   c.st.thinkAt = c.tick + TRAVEL_RETRY_TICKS;
   c.due = false;
@@ -384,7 +385,7 @@ function giveUpObjective(c: AutoCtx, depth: number): void {
   const v = { depth, until: c.tick + OBJECTIVE_COOLDOWN_TICKS };
   if (c.world.has(c.hero, AutoObjective)) c.world.update(c.hero, AutoObjective, v);
   else c.world.add(c.hero, AutoObjective, v);
-  emit(c.ctx, {
+  emitFor(c, {
     type: "classic.auto.notice",
     code: "objective_unreachable",
     message: "Auto: the last monsters of this level are out of reach, trying again later",
