@@ -89,17 +89,15 @@ docs/design/               Designs (classic.md, wave-A/B/C.md): the binding spec
 
 > ⚠️ Use the **workspace** binary `node_modules/.bin/vp`. The global `vp` on some machines runs its own Vitest copy, so every test suite fails with `Cannot read properties of undefined (reading 'config')`.
 
-| What                                                | Command (from repo root)                                                       |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Install                                             | `node_modules/.bin/vp install`                                                 |
-| Format + lint + typecheck                           | `node_modules/.bin/vp check` (`--fix` to format)                               |
-| All tests                                           | `node_modules/.bin/vp run -r test`                                             |
-| One package's tests                                 | `node_modules/.bin/vp test run modules/steps`                                  |
-| Dev server (client + Worker + DOs, local D1/queues) | `node_modules/.bin/vp run dev`                                                 |
-| Apply D1 migrations to local dev                    | `node_modules/.bin/vp run migrate-local`                                       |
-| End-to-end                                          | `node_modules/.bin/vp run e2e` (starts and stops its own dev server)           |
-| Browser QA (against a running dev server)           | `node tools/qa/src/run.ts classic-idle warrior 2 8` (see `tools/qa/README.md`) |
-| Production build                                    | `node_modules/.bin/vp -C apps/game build`                                      |
+- Install: `node_modules/.bin/vp install`
+- Format + lint + typecheck: `node_modules/.bin/vp check` (`--fix` to format)
+- All tests: `node_modules/.bin/vp run -r test`
+- One package's tests: `node_modules/.bin/vp test run modules/steps`
+- Dev server (client + Worker + DOs, local D1/queues): `node_modules/.bin/vp run dev`
+- Apply D1 migrations to local dev: `node_modules/.bin/vp run migrate-local`
+- End-to-end: `node_modules/.bin/vp run e2e` (starts and stops its own dev server)
+- Browser QA (against a running dev server): `node tools/qa/src/run.ts classic-idle warrior 2 8` (see `tools/qa/README.md`)
+- Production build: `node_modules/.bin/vp -C apps/game build`
 
 Fast: `node_modules/.bin/vp run -r test`. Use the affected package test command for a narrow change.
 
@@ -121,20 +119,18 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 
 ## Kernel concepts (cheat sheet)
 
-| Concept         | What it is                                                                                                             | API                                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Module**      | A unit of game logic and data with an id like `steps.combat`                                                           | `defineModule({ id, version, deps, data, dataUpdates, dataFinal, setup, systems, actions, overrides })` |
-| **Mode**        | A playable game: a set of modules, a world and a tick policy                                                           | `defineMode({ id, name, description, world, modules: ["steps.*"], tick, instance })`                    |
-| **Registry**    | Prototype tables (items, spells, creatures…) built in 3 stages, then frozen                                            | `reg.define / patch / remove / get / all`                                                               |
-| **Data stages** | `data` (define) → `dataUpdates` (patch others) → `dataFinal` (last fixes), each run across _all_ modules in load order | Factorio model                                                                                          |
-| **Component**   | Plain-JSON data attached to an entity                                                                                  | `defineComponent<T>("steps.health")`                                                                    |
-| **World**       | ECS store with sorted queries and resources                                                                            | `world.create / add / update / read / peek / query / setResource`                                       |
-| **System**      | Runs every tick (fixed) or after each action (event), ordered by stage → order → load order → id                       | `{ id, stage, order, run(world, ctx) }`                                                                 |
-| **Action**      | A validated player intent; atomic, so any throw rolls everything back                                                  | `{ name, parse(world, payload, ctx), apply(world, p, ctx) }`                                            |
-| **Override**    | Change another module's runtime behaviour                                                                              | `{ kind: "system" \| "action", target, op: "disable" \| "replace" \| "wrap" }`                          |
-| **Event**       | Something observers should know about (UI, network, logs)                                                              | `ctx.emit({ type: "steps.attack", … })`                                                                 |
-| **Sim**         | A running mode                                                                                                         | `createSim(loadMode(mode, catalog), { seed })` → `dispatch / step / snapshot / hash`                    |
-| **contentHash** | Hash of the module set and the frozen registry; client and server must match                                           | `loaded.contentHash`                                                                                    |
+- **Module**: A unit of game logic and data with an id like `steps.combat` API: `defineModule({ id, version, deps, data, dataUpdates, dataFinal, setup, systems, actions, overrides })`
+- **Mode**: A playable game: a set of modules, a world and a tick policy API: `defineMode({ id, name, description, world, modules: ["steps.*"], tick, instance })`
+- **Registry**: Prototype tables (items, spells, creatures…) built in 3 stages, then frozen API: `reg.define / patch / remove / get / all`
+- **Data stages**: `data` (define) → `dataUpdates` (patch others) → `dataFinal` (last fixes), each run across _all_ modules in load order API: Factorio model
+- **Component**: Plain-JSON data attached to an entity API: `defineComponent<T>("steps.health")`
+- **World**: ECS store with sorted queries and resources API: `world.create / add / update / read / peek / query / setResource`
+- **System**: Runs every tick (fixed) or after each action (event), ordered by stage → order → load order → id API: `{ id, stage, order, run(world, ctx) }`
+- **Action**: A validated player intent; atomic, so any throw rolls everything back API: `{ name, parse(world, payload, ctx), apply(world, p, ctx) }`
+- **Override**: Change another module's runtime behaviour API: `{ kind: "system" | "action", target, op: "disable" | "replace" | "wrap" }`
+- **Event**: Something observers should know about (UI, network, logs) API: `ctx.emit({ type: "steps.attack", … })`
+- **Sim**: A running mode API: `createSim(loadMode(mode, catalog), { seed })` → `dispatch / step / snapshot / hash`
+- **contentHash**: Hash of the module set and the frozen registry; client and server must match API: `loaded.contentHash`
 
 Load order comes from `deps` and `optionalDeps`, with ties broken by id. Patching, wrapping and overriding apply in that order, so a later module wraps an earlier one.
 
@@ -183,13 +179,11 @@ Applies to everything the kernel runs: `data*`, `setup`, systems, actions. That 
 
 Prefer the lightest tool that works.
 
-| Need                                    | Use                                                                                             |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Tweak numbers or content                | `dataUpdates`: `reg.patch(kind, id, fn)`                                                        |
-| Remove content                          | `reg.remove(kind, id)` in `dataUpdates` or `dataFinal`                                          |
-| Add behaviour around a system or action | `overrides: [{ kind: "system", target, op: "wrap", with: (w, ctx, next) => { …; next(); … } }]` |
-| Change a rule completely                | `op: "replace"`                                                                                 |
-| Turn a rule off                         | `op: "disable"`                                                                                 |
+- Tweak numbers or content: `dataUpdates`: `reg.patch(kind, id, fn)`
+- Remove content: `reg.remove(kind, id)` in `dataUpdates` or `dataFinal`
+- Add behaviour around a system or action: `overrides: [{ kind: "system", target, op: "wrap", with: (w, ctx, next) => { …; next(); … } }]`
+- Change a rule completely: `op: "replace"`
+- Turn a rule off: `op: "disable"`
 
 Overrides that target an unknown id fail loudly at load time. Declare the target module in `deps`, so that you load after it.
 
@@ -236,15 +230,13 @@ Examples to copy: `modules/steps` (event tick, Pixi grid, keyboard and tap) and 
 
 A "feature system" is something like professions, player shops, an auction house, guilds or a battle pass. Decide each layer explicitly.
 
-| Question                                               | Where it goes                                                                                                      |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| Rules and content (recipes, prices, formulas)          | A **module** (`modules/economy/…`), with data in the registry and logic in actions and systems                     |
-| Per-player authoritative state                         | The player's **CharacterDO** (per mode) or **AccountDO** (shared across modes: wallet, universal stash, cosmetics) |
-| Shared authoritative state (a shop, a market, a guild) | **Its own DO** keyed by id (`ShopDO`, `MarketDO`, `GuildDO`). One DO is the single writer for its data.            |
-| Transfers between two owners (trade, buy, mail)        | **EscrowDO** saga, idempotent by `txId`. Never "debit here, credit there" without escrow.                          |
-| Search, lists, leaderboards, admin views               | A **D1 projection** fed by the outbox                                                                              |
-| Wire format                                            | Extend `packages/protocol` (and both codecs), or reuse instance actions for instance modes                         |
-| UI                                                     | A module client panel in a UI slot                                                                                 |
+- Rules and content (recipes, prices, formulas): A **module** (`modules/economy/…`), with data in the registry and logic in actions and systems
+- Per-player authoritative state: The player's **CharacterDO** (per mode) or **AccountDO** (shared across modes: wallet, universal stash, cosmetics)
+- Shared authoritative state (a shop, a market, a guild): **Its own DO** keyed by id (`ShopDO`, `MarketDO`, `GuildDO`). One DO is the single writer for its data.
+- Transfers between two owners (trade, buy, mail): **EscrowDO** saga, idempotent by `txId`. Never "debit here, credit there" without escrow.
+- Search, lists, leaderboards, admin views: A **D1 projection** fed by the outbox
+- Wire format: Extend `packages/protocol` (and both codecs), or reuse instance actions for instance modes
+- UI: A module client panel in a UI slot
 
 ### Adding an HTTP route
 
@@ -279,15 +271,13 @@ Add a file in `apps/game/src/server/routes/` that returns `null` for paths it do
 
 ## Test coverage
 
-| Layer        | Required                                                                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Module       | Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay                                                                                                                                |
-| Kernel       | Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.                                                                                                                                      |
-| Server logic | Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes.                                                                                                            |
-| Sync         | Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)                                                                                                                                           |
-| End to end   | `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph, then the platform features (`E2eFeature`s in `tools/e2e/src/features.ts`: `run`, optional `afterRestart`)      |
-| Browser      | `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)                                                                                                                                      |
-| Performance  | Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`. Timing asserts in tests scale with the measured machine load (`modules/classic/tests/support/perf.ts` `loadScale()`), never a bare ms bound |
+- Module: Behaviour, determinism (pinned hash), rejection of invalid actions, override and patch interplay
+- Kernel: Covered in `packages/kernel/tests`. Any kernel change must keep **both** test modes green.
+- Server logic: Pure helpers unit-tested. Extract DO logic into classes with a storage interface and test them with in-memory fakes.
+- Sync: Changes need chaos-style tests (shuffled, duplicated batches end in the latest state)
+- End to end: `tools/e2e` against real `vp dev`: plaza presence, each instance mode, persistence across restart, client graph, then the platform features (`E2eFeature`s in `tools/e2e/src/features.ts`: `run`, optional `afterRestart`)
+- Browser: `tools/qa` scenarios for user-visible work (screenshots at desktop and `--viewport phone`)
+- Performance: Relevant bench in `tools/bench`, results in `docs/bench/`, decision in `docs/adr/`. Timing asserts in tests scale with the measured machine load (`modules/classic/tests/support/perf.ts` `loadScale()`), never a bare ms bound
 
 ## Classic party conventions (docs/design/party.md)
 
