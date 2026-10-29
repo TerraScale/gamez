@@ -40,6 +40,7 @@ import { loadVisuals, type Visuals } from "./visuals.ts";
 import { EntityLayer } from "./entity-view.ts";
 import { FxLayer, type EffectArt } from "./fx.ts";
 import { floatOrigin } from "./fx-plan.ts";
+import { isPickupFloat, PICKUP_LIFT } from "./float-layout.ts";
 import { burstKeyIn, frameDeltaMs, shakeOffset } from "./fx-math.ts";
 import { glowEnabled, lightTextureSize, qualityResolution, shakeEnabled } from "./quality.ts";
 import { insetRect } from "./label-layout.ts";
@@ -283,6 +284,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     const s = tileToScreen(spec.x + 0.5, spec.y + 0.5);
     const layer = this.entities;
     const origin = floatOrigin(spec, layer ? layer.headTopNear(s.sx, s.sy) : Number.NaN);
+    // Pickup texts ("+10 gold") rise from above the sprites of their tile.
+    if (isPickupFloat(spec.text)) origin.sy -= PICKUP_LIFT;
     if (layer) origin.sy = layer.clearOfLabels(origin.sx, origin.sy);
     fx.float(spec, origin);
   }
@@ -560,7 +563,8 @@ class PixiWorldRenderer implements ArpgWorldRenderer {
     this.updateCamera(dt);
     this.updateChunks();
     this.updateEntities();
-    this.fx?.update(dt);
+    // The hero's nameplate is read after this frame's label layout, before the floats move.
+    this.fx?.update(dt, this.entities?.selfLabelBand() ?? null);
     this.updateLighting();
     if (this.markerMs > 0) {
       this.markerMs -= dt;

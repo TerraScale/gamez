@@ -25,6 +25,7 @@ import type { TileMap } from "@gamez/world";
 import { mode, modules } from "../index.ts";
 import { SUB } from "../fixed.ts";
 import {
+  ITEM_CATEGORIES,
   KIND,
   type ClassProto,
   type ItemBaseProto,
@@ -1127,7 +1128,7 @@ export function refineKind(
 /**
  * Counts the report cells: byKind by worst resolution, the real gaps (problems:
  * generic or worse; actionFallbacks: an action that plays idle or another clip),
- * accepted attack fallbacks and actions the game never plays ("n/a", never a gap).
+ * accepted attack fallbacks and actions the game never plays ("static", never a gap).
  */
 export function tallyCells(cells: readonly CellReport[]): CellTally {
   const byKind: Record<string, number> = {};
@@ -1142,7 +1143,7 @@ export function tallyCells(cells: readonly CellReport[]): CellTally {
     const resolved =
       (typeof c.resolved === "string" ? c.resolved : JSON.stringify(c.resolved)) +
       (c.projectile ? `; projectile ${c.projectile}` : "");
-    if (w === "n/a") notPlayed++;
+    if (w === "static" || w === "n/a") notPlayed++;
     else if (w === "attack-fallback") attackFallbacks++;
     else if ((KIND_RANK[w] ?? 0) >= 2) problems.push(`${label} -> ${resolved}`);
     else if (w === "action-fallback") actionFallbacks.push(`${label} -> ${resolved}`);
@@ -1163,6 +1164,7 @@ const KIND_COLOUR: Record<string, string> = {
   exact: "#7fe08a",
   "attack-fallback": "#c4e27a",
   "n/a": "#7d8594",
+  static: "#7d8594",
   "action-fallback": "#ffd75e",
   generic: "#ffa64d",
   fallback: "#ff7a7a",
@@ -1179,6 +1181,7 @@ const KIND_RANK: Record<string, number> = {
   sprite: 0,
   text: 0,
   "n/a": 0,
+  static: 0,
   "attack-fallback": 0.5,
   procedural: 1,
   "action-fallback": 1,
@@ -1201,9 +1204,9 @@ export interface CellReport {
   resolved: string | Record<string, string>;
   projectile?: string;
   extra?: Record<string, string>;
-  /** Worst resolution kind across facings, projectile and effect ("n/a" when never played). */
+  /** Worst resolution kind across facings, projectile and effect ("static" for an unreachable action). */
   worst: string;
-  /** False for an action the game never plays on this kind (NPC attack, walk, ...). */
+  /** False for an action the game never plays on this kind (NPC walk, attack, ...): static, not animated. */
   reachable: boolean;
 }
 
@@ -1240,9 +1243,37 @@ function resolveCell(r: ArpgWorldRenderer, cell: GalleryCell, facing: Facing): R
   }
 }
 
-/** The kind a cell shows and counts as: "n/a" for an action the game never plays. */
+/** The kind a cell shows and counts as: "static" for an action the game never plays. */
 function displayKind(cell: GalleryCell, res: Resolution): string {
-  return cellReachable(cell) ? res.kind : "n/a";
+  return displayWorst(cellReachable(cell), res.kind);
+}
+
+/** The worst kind a cell counts as: unreachable actions (static NPC cells) are "static", never a gap. */
+export function displayWorst(reachable: boolean, worst: string): string {
+  return reachable ? worst : "static";
+}
+
+/**
+ * Glyph-backed icon ids: the HUD draws these as inline SVG (hud/icons.tsx), so
+ * they need no manifest art. An item icon is drawn by its category (every
+ * ITEM_CATEGORIES entry has a glyph in ITEM_PATHS); a skill icon is always drawn
+ * (its own glyph, else the tag glyph).
+ */
+export function iconGlyphIds(reg: FrozenRegistry): Set<string> {
+  const out = new Set<string>();
+  for (const [, b] of reg.all<ItemBaseProto>(KIND.itemBase)) {
+    if (ITEM_CATEGORIES.includes(b.category)) out.add(b.icon);
+  }
+  for (const [, s] of reg.all<SkillProto>(KIND.skill)) out.add(s.icon);
+  return out;
+}
+
+/** How one icon id is covered: a HUD glyph wins (that is what the player sees), then manifest art. */
+export type IconStatus = "glyph" | "art" | "missing";
+
+export function classifyIcon(glyph: boolean, art: boolean): IconStatus {
+  if (glyph) return "glyph";
+  return art ? "art" : "missing";
 }
 
 export function cellReachable(cell: GalleryCell): boolean {
@@ -1615,15 +1646,15 @@ export const classicGalleryView: ClientModeView = {
         out.extra = extra;
       }
       out.reachable = cellReachable(cell);
-      // Actions the game never plays are shown as n/a and never counted as gaps.
-      out.worst = out.reachable ? worst : "n/a";
+      // Actions the game never plays (NPC walk, attack, ...) are static and never counted as gaps.
+      out.worst = displayWorst(out.reachable, worst);
       return out;
     };
 
     const report = (): Record<string, unknown> => {
       const cells = sections.flatMap((s) => s.cells.map((c) => cellReport(c, s)));
       const { byKind, problems, actionFallbacks, attackFallbacks, notPlayed } = tallyCells(cells);
-      // Icons are drawn as inline SVG by the HUD, so they are only informational here.
+      // Icons are drawn as inline SVG glyphs by the HUD, so a glyph-backed id is never missing.
       const iconIds = new Set<string>();
       for (const s of sections) {
         for (const c of s.cells) {
@@ -1631,9 +1662,13 @@ export const classicGalleryView: ClientModeView = {
           if (icon) iconIds.add(icon);
         }
       }
-      let iconsMissing = 0;
-      for (const id of iconIds) {
-        if (renderer.debug?.resolveSprite(id).kind === "missing") iconsMissing++;
+      const glyphIds = iconGlyphIds(reg);
+      const icons = { ids: iconIds.size, art: 0, glyph: 0, missing: 0, missingIds: [] as string[] };
+      for (const id of [...iconIds].sort()) {
+        const art = (renderer.debug?.resolveSprite(id).kind ?? "missing") !== "missing";
+        const status = classifyIcon(glyphIds.has(id), art);
+        icons[status]++;
+        if (status === "missing") icons.missingIds.push(id);
       }
       const referenced = new Set<string>();
       for (const s of sections) {
@@ -1660,7 +1695,7 @@ export const classicGalleryView: ClientModeView = {
           unusedArt,
           attackFallbacks,
           notPlayed,
-          icons: { ids: iconIds.size, missing: iconsMissing },
+          icons,
         },
         cells,
       };

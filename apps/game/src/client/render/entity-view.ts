@@ -44,6 +44,14 @@ import {
 } from "./label-layout.ts";
 import { labelColour } from "./palette.ts";
 import {
+  labelBacking,
+  PLATE_ALPHA,
+  PLATE_COLOUR,
+  readableLabelColour,
+  SUBTITLE_COLOUR,
+} from "./label-contrast.ts";
+import type { FloatBand } from "./float-layout.ts";
+import {
   fadeToward,
   localRadius,
   OUTLINE_PX,
@@ -77,11 +85,8 @@ const NAME_FONT_PX = 12;
 const SUB_FONT_PX = 10;
 const SUB_LINE = 12;
 const MARKER_LINE = 22;
-const SUBTITLE_COLOUR = 0xb3b9c6;
 const MARKER_COLOUR = 0xffd166;
-/** Name backing plate (labelPlate): colour, opacity, padding (px). */
-const PLATE_COLOUR = 0x05070b;
-const PLATE_ALPHA = 0.62;
+/** Name backing plate (labelPlate, and every NPC subtitle): padding (px). Colour in label-contrast.ts. */
 const PLATE_PAD_X = 3;
 /** Floats snap to a unit whose feet are this close (world px) to the float's tile centre. */
 const FLOAT_SNAP_X = 26;
@@ -277,6 +282,8 @@ export class EntityLayer {
   private readonly labelled = new Set<EntityView>();
   /** Reused list of label boxes for the de-overlap pass. */
   private readonly boxes: LabelBox[] = [];
+  /** Reused box for the hero's nameplate (selfLabelBand). */
+  private readonly selfBand: FloatBand = { x: 0, top: 0, w: 0 };
   /**
    * A labelled entity was shown, hidden, moved or changed its stack: re-run
    * the de-overlap pass. Every visible label takes part; the hero's own name
@@ -477,6 +484,24 @@ export class EntityLayer {
       this.clampDirty = true;
       if (this.labelled.has(v)) this.layoutDirty = true;
     }
+  }
+
+  /**
+   * The hero's visible nameplate stack this frame (screen-clamped position,
+   * de-overlap shift included), for the float guard; null when it is hidden.
+   * Reuses one box, no allocation.
+   */
+  selfLabelBand(): FloatBand | null {
+    for (const v of this.labelled) {
+      if (!v.isSelf || !v.root.visible || !v.labelOn) continue;
+      if (v.texts?.visible === false || !v.tag?.visible) continue;
+      const b = this.selfBand;
+      b.x = v.sx + v.clampX;
+      b.top = v.sy + v.stackTop + v.labelDy + v.clampY;
+      b.w = v.labelW;
+      return b;
+    }
+    return null;
   }
 
   /**
@@ -1209,7 +1234,8 @@ export class EntityLayer {
     const subtitleOn = subtitle !== "";
     const markerText = !projectile && e.marker ? e.marker : "";
     const markerOn = markerText !== "";
-    const plateOn = labelOn && !!e.labelPlate;
+    // NPC role subtitles get the plate too: grey text on bright grass is unreadable without it.
+    const plateOn = labelOn && (!!e.labelPlate || subtitleOn);
     let changed = relayout;
     if (plateOn !== v.plateOn) {
       v.plateOn = plateOn;
@@ -1241,7 +1267,11 @@ export class EntityLayer {
         v.labelColour = -1;
         changed = true;
       }
-      const colour = e.labelColor ?? labelColour(e.isSelf);
+      // Read against the backing the label really sits on (plate or stroke): dark tints are lifted.
+      const colour = readableLabelColour(
+        e.labelColor ?? labelColour(e.isSelf),
+        labelBacking(plateOn),
+      );
       if (v.labelColour !== colour) {
         v.labelColour = colour;
         v.label.style.fill = colour;
@@ -1335,8 +1365,9 @@ export class EntityLayer {
       }
       // Estimated widths: measuring Pixi text here would force a canvas layout per change.
       const nameW = labelOn ? estimateLabelWidth(v.name, NAME_FONT_PX) : 0;
-      v.labelW = subtitleOn ? Math.max(nameW, estimateLabelWidth(subtitle, SUB_FONT_PX)) : nameW;
-      this.updatePlate(v, nameW);
+      const subW = subtitleOn ? estimateLabelWidth(subtitle, SUB_FONT_PX) : 0;
+      v.labelW = Math.max(nameW, subW);
+      this.updatePlate(v, Math.max(nameW, subW));
     }
 
     const visible = labelOn || markerOn;
@@ -1371,8 +1402,12 @@ export class EntityLayer {
     }
   }
 
-  /** The dark plate behind the name (labelPlate), drawn only when the layout changes. */
-  private updatePlate(v: EntityView, nameW: number): void {
+  /**
+   * The dark plate behind the name (labelPlate) and the role subtitle, drawn
+   * only when the layout changes. It covers the whole stack: name line, plus
+   * the subtitle line below it when there is one.
+   */
+  private updatePlate(v: EntityView, textW: number): void {
     if (!v.plateOn) {
       if (v.plate) v.plate.visible = false;
       return;
@@ -1383,10 +1418,12 @@ export class EntityLayer {
       // Behind the texts of the stack.
       v.texts!.addChildAt(v.plate, 0);
     }
-    const w = Math.max(8, nameW - 4) + PLATE_PAD_X * 2;
+    const w = Math.max(8, textW - 4) + PLATE_PAD_X * 2;
+    const top = v.nameBottom - NAME_LINE;
+    const h = v.subtitleOn ? v.textBottom - top : NAME_LINE;
     v.plate
       .clear()
-      .roundRect(-w / 2, v.nameBottom - NAME_LINE, w, NAME_LINE, 3)
+      .roundRect(-w / 2, top, w, h, 3)
       .fill({ color: PLATE_COLOUR, alpha: PLATE_ALPHA });
     v.plate.visible = true;
   }

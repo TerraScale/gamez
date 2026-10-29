@@ -8,8 +8,8 @@
 import { useState } from "react";
 import type { ClassicClientApi, PanelId } from "../../contract.ts";
 import { useSelect } from "../hooks.ts";
-import { Btn, useHudLayout, type SlotProps } from "../common.tsx";
-import { bottomOrderFor, modesControlVisible } from "../layout.ts";
+import { Btn, useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
+import { bottomOrderFor, modesControlVisible, moreMenuAnchor } from "../layout.ts";
 import { BANK_TITLE, SHELL_BUTTONS, type ShellSpec } from "../shell.ts";
 import { MoreMenu, type MoreItem } from "./MoreMenu.tsx";
 
@@ -103,6 +103,7 @@ export function shellItemsOf(api: Pick<ClassicClientApi, "openScreen">): MoreIte
 export function PanelButtons({ api }: SlotProps) {
   const open = useSelect(api.ui, (u) => u.panels);
   const layout = useHudLayout(api);
+  const insets = useHudInsets();
   const compact = layout !== "desktop";
   const [moreOpen, setMoreOpen] = useState(false);
   // The mode picker control. The shell has no back button for classic (ClientModeView.ownsExitControl).
@@ -170,7 +171,12 @@ export function PanelButtons({ api }: SlotProps) {
         </Btn>
       ) : null}
       {compact ? (
-        <MoreMenu items={moreItems} open={moreOpen && moreItems.length > 0} setOpen={setMoreOpen} />
+        <MoreMenu
+          items={moreItems}
+          open={moreOpen && moreItems.length > 0}
+          setOpen={setMoreOpen}
+          anchorBottom={moreMenuAnchor(layout, insets.bottom)}
+        />
       ) : null}
     </div>
   );
