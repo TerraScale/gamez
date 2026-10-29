@@ -142,4 +142,47 @@ describe("VerifiedHost analytics (admin-dashboard.md §11.2)", () => {
     expect(off[0]!.doubles.ms).toBe(3_600_000);
     expect(off[0]!.doubles.xp).toBeGreaterThan(0);
   }, 120_000);
+
+  it("an imported (quarantined) hero writes no sim.tally or sim.offline points, only verify health (ADR 0007 R1)", async () => {
+    const env = setup();
+    const sock = env.connect();
+    const c = new Client();
+    await c.adopt(vstateOf(await env.send(sock, { t: "join", token: "t", mode: "classic" })));
+    // A client-authored local save: a hero on Idle (the server cannot verify how it got here).
+    const local = createSim(loaded, { seed: 7 });
+    expect(
+      local.dispatch(
+        classic.ACTION.newHero,
+        { classId: "classic.warrior", name: "Forged" },
+        VERIFIED_ACTOR,
+      ).ok,
+    ).toBe(true);
+    expect(local.dispatch(classic.ACTION.setControl, { mode: "idle" }, VERIFIED_ACTOR).ok).toBe(
+      true,
+    );
+    local.step(40);
+    const imported = vstateOf(
+      await env.send(sock, {
+        t: "import",
+        snapshot: { enc: "json", data: local.snapshot() },
+        savedAt: 1,
+      }),
+    );
+    expect(imported.imported).toBe(true);
+    await c.adopt(imported);
+    for (let i = 0; i < 10; i++) {
+      env.clock.now += 400 * MS_PER_TICK;
+      const out = await env.send(sock, c.segment(400));
+      expect(out.map((m) => m.t)).toEqual(["verified"]);
+    }
+    await env.host.handleClose(Object.assign(sock, { open: false }));
+    env.clock.now += 3_600_000;
+    const v = vstateOf(await env.send(env.connect(), { t: "join", token: "t", mode: "classic" }));
+    // Solo play keeps everything, offline progress included...
+    expect(v.offline).not.toBeNull();
+    // ...but none of it feeds the game-wide balance metrics.
+    expect(env.analytics.of("sim.tally")).toHaveLength(0);
+    expect(env.analytics.of("sim.offline")).toHaveLength(0);
+    expect(env.analytics.of("verify.segment").some((p) => p.blobs.outcome === "ok")).toBe(true);
+  }, 120_000);
 });

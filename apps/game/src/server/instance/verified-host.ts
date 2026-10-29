@@ -200,6 +200,17 @@ type LoadResult = "ok" | "new" | "carried" | "reset";
 
 type Segment = Extract<VerifiedClientMessage, { t: "segment" }>;
 
+/** ADR 0007 R1: drops the gameplay points of an imported (quarantined) hero. */
+function quarantinedAnalytics(inner: Analytics): Analytics {
+  return {
+    write(metric, blobs, doubles, index) {
+      if (metric === "sim.tally" || metric === "sim.offline") return;
+      inner.write(metric, blobs, doubles, index);
+    },
+    flush: () => inner.flush(),
+  };
+}
+
 export class VerifiedHost {
   readonly #d: VerifiedHostDeps;
   readonly #serverOnly: ReadonlySet<string>;
@@ -1513,12 +1524,22 @@ export class VerifiedHost {
     this.#flushTally(rec.baseAt);
   }
 
-  /** Writes the pending analytics points (never throws; no-op without a sink or data). */
+  /**
+   * Writes the pending analytics points (never throws; no-op without a sink or data).
+   * ADR 0007 R1: an imported hero's state is client-authored, so its gameplay
+   * points (sim.tally, sim.offline: kills, gold, xp rates) would skew the
+   * game-wide balance metrics. They are dropped; verification health
+   * (verify.*) is still written.
+   */
   #flushTally(now: number): void {
     const analytics = this.#d.analytics;
     if (!analytics) return;
     const accountId = this.#rec?.accountId || accountOfInstance(this.#d.name);
-    this.#tally.flush(analytics, accountId, now);
+    this.#tally.flush(
+      this.#rec?.imported ? quarantinedAnalytics(analytics) : analytics,
+      accountId,
+      now,
+    );
   }
 
   /** Appends changed report rows to the outbox (inside the caller's transaction). */

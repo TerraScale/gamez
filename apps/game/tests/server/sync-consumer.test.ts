@@ -3,9 +3,11 @@ import type { ReplicationBatch } from "@gamez/sync";
 import {
   consumeSyncBatch,
   SYNC_DLQ_RETRY_SECONDS,
+  SYNC_MAX_RETRIES,
   SYNC_STATEMENT_BUDGET,
   type SyncConsumerDeps,
 } from "../../src/server/sync-consumer.ts";
+import type { SyncMessageSample } from "../../src/server/analytics/sync.ts";
 
 type FakeMessage = {
   body: ReplicationBatch;
@@ -173,5 +175,48 @@ describe("consumeSyncBatch: DLQ consumer", () => {
       expect.any(String),
       expect.objectContaining({ source: "chat:global", records: 5 }),
     );
+  });
+});
+
+describe("consumeSyncBatch: admin instrumentation (admin-dashboard.md §2.7)", () => {
+  it("records each applied or failed main-queue message before its ack or retry", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const samples: SyncMessageSample[] = [];
+    let calls = 0;
+    const applyBatch = vi.fn(async () => {
+      if (++calls === 2) throw new Error("D1 unavailable");
+      return { applied: 3, stale: 0, unknown: 0 };
+    });
+    const good = message(3, 1, "character:acc:classic");
+    const bad = message(1, SYNC_MAX_RETRIES, "chat:global");
+    const skipped = [message(900, 1, "market:classic:weapon")];
+    const bySource = new Map([
+      [good.body.source, good],
+      [bad.body.source, bad],
+    ]);
+    const record = (s: SyncMessageSample) => {
+      const msg = bySource.get(s.source)!;
+      // Recorded before the ack or retry decision is made.
+      expect(msg.acked).toBe(false);
+      expect(msg.retries).toEqual([]);
+      samples.push(s);
+    };
+    await consumeSyncBatch(
+      batchOf("gamez-sync", [good, bad, ...skipped]),
+      env,
+      deps({ applyBatch, record }),
+    );
+    expect(samples.map((s) => [s.source, s.ok, s.rows, s.attempts])).toEqual([
+      ["character:acc:classic", true, 3, 1],
+      ["chat:global", false, 0, SYNC_MAX_RETRIES],
+    ]);
+    expect(samples.every((s) => s.maxRetries === SYNC_MAX_RETRIES)).toBe(true);
+    expect(skipped[0]!.retries).toEqual([{ delaySeconds: 2 }]);
+  });
+
+  it("never records DLQ re-applies", async () => {
+    const record = vi.fn();
+    await consumeSyncBatch(batchOf("gamez-sync-dlq", [message(2)]), env, deps({ record }));
+    expect(record).not.toHaveBeenCalled();
   });
 });
