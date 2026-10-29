@@ -19,15 +19,45 @@
  *   7. Reload: QuestState (the completed list) survived.
  *   8. Deeper Still: accept (level 4 by cheat if needed), deepest 6, done,
  *      turn in; Into the Ninth shows up as available at level 16.
+ *   9. Into the Ninth (level 16): accepted from Hale's dialog, deepest 12 by
+ *      cheat (tracker and log say Ready), turned in from the dialog; the Reward
+ *      toast reads '+1200 gold, +1400 XP' (the quest data), gold and XP go up.
+ *      Reload: completed survives.
+ *  10. Ash and Ember (killMonsters, 15 ash seers): accepted from the dialog (unless
+ *      Idle took it), Idle x8 until done, turned in; the Reward toast reads the
+ *      quest's '+300 gold, +500 XP'. When Idle turned it in itself (completed),
+ *      gold and XP must have risen during the run and the toast is warn-only;
+ *      still active = not finished (data.ashTurnedInBy); any other state fails.
+ *
+ * Screenshots are numbered in order: 01-hale-marker ... 09-into-the-ninth,
+ * 10-into-the-ninth-accepted, 11-into-the-ninth-turned-in, 12-killmonsters-reward.
+ * data.rewardToasts records the depth at each Reward toast (warn: turn-ins are
+ * expected in town, depth 0).
+ *
+ * Toasts: each toast check is read right after its action (polled for up to
+ * 3.5 s from the press, since a toast lasts 4 s). When the toast cannot be seen
+ * and a dev-server reload happened in between (data.reloads changed: a reload
+ * wipes the toasts), or the page could not be read, the quest log line decides
+ * ('Accepted: <name>', 'Complete: <name>', 'Reward: <gold> gold, <xp> XP') and the
+ * check is warn-only with the reason in its detail. On an unreloaded page a
+ * toast that was not seen but whose log line is there is also warn-only (HMR or a
+ * stalled frame can drop a 4 s toast); neither toast nor log line fails (warn-only
+ * where the turn-in was Idle's).
  *
  * Known limits: Auto runs only at x1 (use Idle x8 for unattended QA, which this
  * scenario does). Long runs can be interrupted by Vite full reloads when other
  * work edits files: every wait re-acquires the page (same class, save slot
- * cheats) and carries on, and the reload count is in data.reloads. Turning in
+ * cheats) and carries on, and the reload count is in data.reloads. A dev-server
+ * restart waits for the server before the page is opened again. Turning in
  * from deep in the dungeon uses a town portal (needs a scroll); without one the
  * run switches to Auto until the hero is in town (data.toTown says which path).
+ *
+ * Arguments: `quests <class> [phone]`; the word "phone" may come first
+ * (`quests phone --out ...` runs the warrior on the phone layout).
  */
-import { classArg, openPicker, type Run } from "./run.ts";
+import { openPicker, type Run } from "./run.ts";
+// The rewards come from the quest data itself, so the toast checks follow a balance change.
+import { QUESTS } from "../../../modules/classic/src/content/quests.ts";
 
 type Runner = (run: Run) => Promise<void>;
 
@@ -35,8 +65,14 @@ const HALE = "classic.npc.captain_hale";
 const RATS = "classic.quest.rats_in_the_cellar";
 const DEEPER = "classic.quest.deeper_still";
 const NINTH = "classic.quest.into_the_ninth";
+const ASH = "classic.quest.ash_and_ember";
 const RATS_NAME = "Rats in the Cellar";
 const DEEPER_NAME = "Deeper Still";
+const NINTH_NAME = "Into the Ninth";
+const ASH_NAME = "Ash and Ember";
+const NINTH_DEEPEST = 12;
+/** Ash and Ember: Idle x8 kills the fifteen ash seers (no kill cheat exists). */
+const ASH_BUDGET_MS = 420_000;
 const RATS_COUNT = 20;
 const DEEPER_LEVEL = 4;
 const NINTH_LEVEL = 16;
@@ -55,13 +91,8 @@ interface QuestRow {
 interface HudLite {
   quests: QuestRow[];
   questGiver: { name: string; inReach: boolean } | null;
-  area: { isTown: boolean } | null;
+  area: { isTown: boolean; depth: number } | null;
   hero: { level: number; xp: number; gold: number } | null;
-}
-interface UiLite {
-  panels: string[];
-  toasts: { kind: string; title: string; body: string }[];
-  error: { code: string; message: string } | null;
 }
 interface ClickTarget {
   found: boolean;
@@ -91,12 +122,7 @@ async function applyPhone(run: Run): Promise<void> {
 
 const hudOf = (run: Run): Promise<HudLite> =>
   run.page.evaluate<HudLite>(
-    "(() => { const h = window.__gamez.hud; return { quests: (h.quests ?? []).map(q => ({ id: q.id, name: q.name, state: q.state, progress: q.progress, count: q.count, reward: q.reward })), questGiver: h.questGiver ? { name: h.questGiver.name, inReach: h.questGiver.inReach } : null, area: h.area ? { isTown: h.area.isTown } : null, hero: h.hero ? { level: h.hero.level, xp: h.hero.xp, gold: h.hero.gold } : null }; })()",
-  );
-
-const uiOf = (run: Run): Promise<UiLite> =>
-  run.page.evaluate<UiLite>(
-    "(() => { const u = window.__gamez.ui; return { panels: u.panels, toasts: u.toasts.map(t => ({ kind: t.kind, title: t.title, body: t.body })), error: u.error ?? null }; })()",
+    "(() => { const h = window.__gamez.hud; return { quests: (h.quests ?? []).map(q => ({ id: q.id, name: q.name, state: q.state, progress: q.progress, count: q.count, reward: q.reward })), questGiver: h.questGiver ? { name: h.questGiver.name, inReach: h.questGiver.inReach } : null, area: h.area ? { isTown: h.area.isTown, depth: h.area.depth } : null, hero: h.hero ? { level: h.hero.level, xp: h.hero.xp, gold: h.hero.gold } : null }; })()",
   );
 
 /** hudOf that re-acquires the page when a dev-server reload has interrupted it, then retries once. */
@@ -106,16 +132,6 @@ async function hudSafe(run: Run, cls: string): Promise<HudLite> {
   } catch {
     await reacquire(run, cls);
     return hudOf(run);
-  }
-}
-
-/** uiOf with the same re-acquire. */
-async function uiSafe(run: Run, cls: string): Promise<UiLite> {
-  try {
-    return await uiOf(run);
-  } catch {
-    await reacquire(run, cls);
-    return uiOf(run);
   }
 }
 
@@ -172,9 +188,11 @@ async function reacquire(run: Run, cls: string): Promise<void> {
       break;
     } catch (e) {
       if (attempt >= 4) throw e;
+      run.progress(`reacquire failed (${attempt}): ${String(e).slice(0, 160)}`);
       await run.page.wait(10_000);
     }
   }
+  run.progress(`re-acquired the page after a reload (reloads=${reloadsOf(run)})`);
   await run.page.wait(600);
   await dismissTips(run);
 }
@@ -223,7 +241,127 @@ const questDone = (id: string, states: string[]): string =>
     .map((s) => `'${s}'`)
     .join(",")}].includes(q.state))`;
 
-const toastSeen = (ui: UiLite, title: string): boolean => ui.toasts.some((t) => t.title === title);
+/** How long a dialog button press may take to change its quest row (a tap's click is asynchronous). */
+const RESPOND_MS = 6_000;
+
+/** How long after the press a toast is still polled for (a toast lasts 4 s). */
+const TOAST_WATCH_MS = 3_500;
+
+/** The class: the first positional word that is not "phone" (the layout word), else the warrior. */
+function questClass(run: Run): string {
+  const cls = run.args.positional.find((p) => p !== "phone") ?? "warrior";
+  if (!/^[a-z_.]+$/i.test(cls)) throw new Error(`bad class ${cls}`);
+  return cls;
+}
+
+/** data.reloads: how many times the page was re-acquired after a dev-server reload. */
+const reloadsOf = (run: Run): number => (run.report.data.reloads as number | undefined) ?? 0;
+
+interface ToastRead {
+  title: string;
+  body: string;
+}
+
+/** One read of the toasts; null when the page cannot be read (a reload in progress). */
+async function toastsNow(run: Run): Promise<ToastRead[] | null> {
+  try {
+    return await run.page.evaluate<ToastRead[]>(
+      "window.__gamez.ui.toasts.map((t) => ({ title: t.title, body: t.body }))",
+    );
+  } catch {
+    return null;
+  }
+}
+
+interface ToastExpect {
+  /** The check name. */
+  label: string;
+  title: string;
+  /** The exact body: the quest name, or the '+gold, +xp' reward text. */
+  body: string;
+  /** The quest log line that records the same event (the fallback when the toast is not observable). */
+  logLine: string;
+  /** data.reloads before the action. */
+  reloadsBefore: number;
+  /** When the action was pressed (Date.now()); the toast is polled for TOAST_WATCH_MS from here. */
+  sinceMs: number;
+  /** A check that only warns (an Idle turn-in, whose toast may have expired). */
+  warnOnly?: boolean;
+}
+
+/**
+ * The toast of one action, read right after the action. Polls up to TOAST_WATCH_MS
+ * from the press (the first read is immediate). When the toast is not there, and a
+ * reload wiped the toasts (or the page could not be read), the quest log line decides
+ * and the check is warn-only with the reason in its detail. Returns whether the event
+ * was confirmed (toast or log line).
+ */
+async function expectToast(run: Run, x: ToastExpect): Promise<boolean> {
+  const deadline = Math.max(Date.now(), x.sinceMs + TOAST_WATCH_MS);
+  let toasts: ToastRead[] = [];
+  let unreadable = false;
+  let seen = false;
+  do {
+    const now = await toastsNow(run);
+    unreadable = now === null;
+    if (now !== null) {
+      toasts = now;
+      seen = now.some((t) => t.title === x.title && t.body === x.body);
+    }
+    if (seen) break;
+    await run.page.wait(150);
+  } while (Date.now() < deadline);
+  const shown = toasts.map((t) => `${t.title}: ${t.body}`);
+  if (seen) {
+    run.check(x.label, true, { toast: x.body });
+    return true;
+  }
+  const reloaded = reloadsOf(run) !== x.reloadsBefore;
+  const logged = await logHas(run, x.logLine).catch(() => false);
+  if (reloaded || unreadable) {
+    const reason = reloaded
+      ? "a dev-server reload happened between the action and the check (it wipes the toasts)"
+      : "the page could not be read for its toasts";
+    run.check(
+      x.label,
+      logged,
+      { via: "log", reason, logLine: x.logLine, logged, toasts: shown },
+      true,
+    );
+    return logged;
+  }
+  if (logged) {
+    // The event happened (the log line is there) but its toast was not observed: an HMR
+    // update or a stalled frame on a loaded machine can drop or outlive a 4 s toast.
+    run.check(
+      x.label,
+      false,
+      {
+        via: "log",
+        reason: "toast not observed within 3.5 s of the press; the log line confirms the event",
+        logLine: x.logLine,
+        logged,
+        toasts: shown,
+      },
+      true,
+    );
+    return true;
+  }
+  // Neither the toast nor the log line: the event did not happen (a real failure).
+  run.check(
+    x.label,
+    false,
+    {
+      via: "none",
+      reason: "neither the toast (3.5 s) nor the log line was seen",
+      logLine: x.logLine,
+      logged,
+      toasts: shown,
+    },
+    x.warnOnly === true,
+  );
+  return false;
+}
 
 /** Button in the quest dialog, found by its label inside the row of one quest (or anywhere when quest is null). */
 async function dialogButton(run: Run, label: string, quest: string | null): Promise<ClickTarget> {
@@ -235,6 +373,8 @@ async function dialogButton(run: Run, label: string, quest: string | null): Prom
       for (const row of rows) {
         const b = [...row.querySelectorAll('button')].find(x => x.textContent.trim() === ${JSON.stringify(label)});
         if (b) {
+          // The quest list scrolls inside the dialog: a row below the fold (Into the Ninth on a 768 px desktop) is brought into view first.
+          b.scrollIntoView({ block: 'nearest' });
           const r = b.getBoundingClientRect();
           return { found: true, disabled: b.disabled, x: r.x + r.width / 2, y: r.y + r.height / 2, text: b.textContent.trim() };
         }
@@ -247,6 +387,30 @@ async function dialogButton(run: Run, label: string, quest: string | null): Prom
 async function press(run: Run, phone: boolean, x: number, y: number): Promise<void> {
   if (phone) await run.page.tap(x, y);
   else await run.page.click(x, y);
+}
+
+/**
+ * Accept and Turn in are disabled out of reach of Hale. A dialog opened by a
+ * talk (or a town portal arrival) can come before the hero has walked to him:
+ * the player's own way is the "Go to Captain Hale" button, so it is pressed
+ * until the giver is in reach. False when that does not happen in time.
+ */
+async function waitInReach(run: Run, phone: boolean, timeoutMs = 30_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const hud = await hudOf(run).catch(() => null);
+    if (hud === null) {
+      await run.page.wait(500);
+      continue;
+    }
+    if (hud.questGiver === null || hud.questGiver.inReach) return true;
+    const go = await dialogButton(run, `Go to ${hud.questGiver.name}`, null);
+    if (go.found && !go.disabled && go.x !== undefined && go.y !== undefined) {
+      await press(run, phone, go.x, go.y);
+    }
+    await run.page.wait(1_500);
+  }
+  return false;
 }
 
 /**
@@ -320,7 +484,7 @@ async function safeShot(run: Run, cls: string, name: string): Promise<void> {
 /**
  * Clicks (or taps) a dialog button; false when it is missing or disabled.
  * Records what sits at the button's centre (elementFromPoint). When the
- * press does nothing (the quest row is unchanged after 1.5 s), that is a
+ * press does nothing (the quest row is unchanged after RESPOND_MS, 6 s), that is a
  * failed check (a covered or dead button is a real UI bug, or a harness
  * input problem; `hit` tells which), and a DOM click carries the run on.
  */
@@ -329,10 +493,16 @@ async function clickDialog(
   phone: boolean,
   label: string,
   quest: string | null,
-): Promise<{ clicked: boolean; target: ClickTarget }> {
-  const target = await dialogButton(run, label, quest);
+): Promise<{ clicked: boolean; target: ClickTarget; pressedAt: number }> {
+  let target = await dialogButton(run, label, quest);
+  if (target.found && target.disabled) {
+    // Out of reach: walk to Hale with the Go button, then press (waitInReach records the outcome below).
+    const inReach = await waitInReach(run, phone);
+    run.report.data[`walkedTo ${label} ${quest ?? "dialog"}`] = inReach;
+    target = await dialogButton(run, label, quest);
+  }
   if (!target.found || target.disabled || target.x === undefined || target.y === undefined) {
-    return { clicked: false, target };
+    return { clicked: false, target, pressedAt: 0 };
   }
   const rowExpr = `(() => {
     const d = document.querySelector('${DIALOG}');
@@ -350,15 +520,24 @@ async function clickDialog(
   );
   const before = await run.page.evaluate<string | null>(rowExpr);
   await press(run, phone, target.x, target.y);
+  // The press time: the toast of this action is polled from here (expectToast); moved
+  // to the moment the row changes, which is when the action (and its toast) happened.
+  let pressedAt = Date.now();
+  // A tap's click is synthesised by Chrome's gesture detector after touchend, on the
+  // renderer's own time: on a loaded machine with a busy game (right after an Idle x8
+  // run) it lands seconds later (3.5 s measured), so the row is watched for up to 6 s.
+  const respondEnd = pressedAt + RESPOND_MS;
   let changed = false;
-  for (let i = 0; i < 6 && !changed; i++) {
-    await run.page.wait(250);
+  while (!changed && Date.now() < respondEnd) {
+    await run.page.wait(200);
     changed = (await run.page.evaluate<string | null>(rowExpr)) !== before;
   }
+  if (changed) pressedAt = Date.now();
   run.check(`${label} (${quest ?? "dialog"}) responds to the ${phone ? "tap" : "click"}`, changed, {
     hit: target.hit,
     x: target.x,
     y: target.y,
+    waitedMs: Date.now() - (respondEnd - RESPOND_MS),
   });
   if (!changed) {
     target.fallback = "dom-click";
@@ -373,7 +552,7 @@ async function clickDialog(
       })()`,
     );
   }
-  return { clicked: true, target };
+  return { clicked: true, target, pressedAt };
 }
 
 /** Tries to get to town: a town portal when the hero has a scroll, else Auto until it is there. */
@@ -454,7 +633,7 @@ async function startFresh(run: Run, cls: string): Promise<void> {
 }
 
 async function quests(run: Run): Promise<void> {
-  const cls = classArg(run, 0);
+  const cls = questClass(run);
   const phone = isPhone(run);
   if (phone && run.args.viewport !== "phone") await applyPhone(run);
   await startFresh(run, cls);
@@ -513,23 +692,26 @@ async function quests(run: Run): Promise<void> {
     { state: rats0, ...near0 },
   );
   await safeShot(run, cls, "dialog-open");
+  const r0 = reloadsOf(run);
   const accept = await clickDialog(run, phone, "Accept", RATS_NAME);
   run.check(
     "Accept button for Rats in the Cellar is enabled in reach",
     accept.clicked,
     accept.target,
   );
+  await expectToast(run, {
+    label: "'Quest accepted' toast",
+    title: "Quest accepted",
+    body: RATS_NAME,
+    logLine: `Accepted: ${RATS_NAME}`,
+    reloadsBefore: r0,
+    sinceMs: accept.pressedAt,
+  });
   await run.page.wait(500);
   hud = await hudSafe(run, cls);
-  let ui = await uiSafe(run, cls);
   run.check("Rats in the Cellar is active after Accept", stateOf(hud, RATS) === "active", {
     state: stateOf(hud, RATS),
   });
-  run.check(
-    "'Quest accepted' toast",
-    toastSeen(ui, "Quest accepted"),
-    ui.toasts.map((t) => t.title),
-  );
   const tracker0 = await questTracker(run);
   run.check(
     "quest tracker lists Rats with 0 / 20",
@@ -560,6 +742,7 @@ async function quests(run: Run): Promise<void> {
   };
   await idle8();
   const finishedAt = Date.now();
+  const rLog = reloadsOf(run);
   const finished = await waitUntil(
     run,
     cls,
@@ -568,10 +751,11 @@ async function quests(run: Run): Promise<void> {
     15_000,
     idle8,
   );
+  // The moment the quest was seen done: its "Quest complete" toast was raised within the last 100 ms.
+  const doneAt = Date.now();
   await ctl(run, cls, "window.__gamez.controls.setMode('manual')");
   run.report.data.progressSeconds = Math.round((Date.now() - finishedAt) / 1000);
   hud = await hudSafe(run, cls);
-  ui = await uiSafe(run, cls);
   const rowState = stateOf(hud, RATS);
   run.check(
     "Idle x8 finishes Rats in the Cellar (20/20)",
@@ -581,14 +765,15 @@ async function quests(run: Run): Promise<void> {
       seconds: run.report.data.progressSeconds,
     },
   );
-  run.check(
-    "'Quest complete' toast or log line on finish",
-    toastSeen(ui, "Quest complete") || (await logHas(run, "Complete: Rats in the Cellar")),
-    {
-      toasts: ui.toasts.map((t) => t.title),
-    },
-    true,
-  );
+  await expectToast(run, {
+    label: "'Quest complete' toast or log line on finish",
+    title: "Quest complete",
+    body: RATS_NAME,
+    logLine: `Complete: ${RATS_NAME}`,
+    reloadsBefore: rLog,
+    sinceMs: doneAt,
+    warnOnly: true,
+  });
   const tracker1 = await questTracker(run);
   run.check(
     "tracker shows Ready (return to Captain Hale)",
@@ -636,26 +821,25 @@ async function quests(run: Run): Promise<void> {
     ratsReady === "done" && near1.haleOnScreen && (near1.marker ?? 0) > 0,
     { state: ratsReady, ...near1 },
   );
+  const r6 = reloadsOf(run);
   const turn = await clickDialog(run, phone, "Turn in", RATS_NAME);
   run.check("Turn in button for Rats in the Cellar is enabled", turn.clicked, turn.target);
-  await run.page.wait(800);
+  // The reward toast first (it is read right after the press), then the state and the gold.
+  await checkRewardToast(
+    run,
+    cls,
+    RATS,
+    "Rats in the Cellar turn-in",
+    { reloadsBefore: r6, sinceMs: turn.pressedAt },
+    { gold0, xp0 },
+  );
   hud = await hudSafe(run, cls);
-  ui = await uiSafe(run, cls);
   run.check(
     "Rats in the Cellar is completed after the turn-in",
     stateOf(hud, RATS) === "completed",
     {
       state: stateOf(hud, RATS),
     },
-  );
-  const rewardToast = ui.toasts.find((t) => t.title === "Reward");
-  run.check("reward toast shows +60 gold, +120 XP", rewardToast?.body === "+60 gold, +120 XP", {
-    toast: rewardToast?.body ?? null,
-  });
-  run.check(
-    "gold and XP went up by the reward",
-    (hud.hero?.gold ?? 0) - gold0 >= 60 && (hud.hero?.xp ?? 0) - xp0 >= 120,
-    { gold: [gold0, hud.hero?.gold], xp: [xp0, hud.hero?.xp] },
   );
   await safeShot(run, cls, "turned-in");
 
@@ -744,6 +928,219 @@ async function quests(run: Run): Promise<void> {
   });
   await safeShot(run, cls, "into-the-ninth");
 
+  // 9. Into the Ninth, end to end: accept from Hale's dialog, depth 12 by cheat, the
+  //    tracker and log say Ready, turn in from the dialog, the Reward toast and gold/XP.
+  hud = await hudSafe(run, cls);
+  const ninthByDialog = stateOf(hud, NINTH) === "available";
+  run.report.data.ninthAcceptedBy = ninthByDialog ? "dialog" : stateOf(hud, NINTH);
+  if (ninthByDialog) {
+    const talked5 = await talkToHale(run, cls, phone);
+    run.check("Hale's dialog opens for Into the Ninth", talked5 !== null, {
+      phone,
+      via: talked5,
+    });
+    const r9 = reloadsOf(run);
+    const acceptNinth = await clickDialog(run, phone, "Accept", NINTH_NAME);
+    run.check(
+      "Accept for Into the Ninth is enabled in reach",
+      acceptNinth.clicked,
+      acceptNinth.target,
+    );
+    await expectToast(run, {
+      label: "'Quest accepted' toast for Into the Ninth",
+      title: "Quest accepted",
+      body: NINTH_NAME,
+      logLine: `Accepted: ${NINTH_NAME}`,
+      reloadsBefore: r9,
+      sinceMs: acceptNinth.pressedAt,
+    });
+    await run.page.wait(500);
+  } else {
+    // Idle accepted it on its own (no press, so no toast to read): recorded, not failed.
+    run.check(
+      "'Quest accepted' toast for Into the Ninth (accepted by Idle: not checked)",
+      true,
+      {
+        state: stateOf(hud, NINTH),
+      },
+      true,
+    );
+  }
+  hud = await hudSafe(run, cls);
+  run.check("Into the Ninth is active after Accept", stateOf(hud, NINTH) === "active", {
+    state: stateOf(hud, NINTH),
+  });
+  const ninthTracker0 = await questTracker(run);
+  run.check(
+    "quest tracker lists Into the Ninth at progress (x / 12)",
+    (ninthTracker0 ?? "").includes(NINTH_NAME) &&
+      (ninthTracker0 ?? "").includes(`/ ${NINTH_DEEPEST}`),
+    { tracker: ninthTracker0 },
+  );
+  await safeShot(run, cls, "into-the-ninth-accepted");
+
+  // Depth 12 by cheat (the deepest depth reached, the same mechanism as depth 6).
+  await ctl(run, cls, `window.__gamez.controls.cheat({ deepest: ${NINTH_DEEPEST} })`);
+  await run.page.wait(800);
+  hud = await hudSafe(run, cls);
+  run.check("Into the Ninth is done once depth 12 is reached", stateOf(hud, NINTH) === "done", {
+    state: stateOf(hud, NINTH),
+  });
+  const ninthTracker1 = await questTracker(run);
+  run.check("tracker shows Into the Ninth as Ready", (ninthTracker1 ?? "").includes("Ready"), {
+    tracker: ninthTracker1,
+  });
+  const ninthLog = await readLog(run, cls);
+  run.check(
+    "log (L) shows Into the Ninth as Ready to turn in",
+    ninthLog.includes(NINTH_NAME) && ninthLog.includes("Ready to turn in"),
+    { head: ninthLog.slice(0, 200) },
+  );
+  await closeLog(run, cls);
+
+  // Turn in from the dialog (town: a town portal from depth 12 when the hero has a scroll).
+  const toTownNinth = (hud.area?.isTown ?? false) ? "already in town" : await goToTown(run, cls);
+  run.report.data.toTownNinth = toTownNinth;
+  await ctl(run, cls, "window.__gamez.controls.setMode('manual')");
+  hud = await hudSafe(run, cls);
+  const ninthGold0 = hud.hero?.gold ?? 0;
+  const ninthXp0 = hud.hero?.xp ?? 0;
+  const talked6 = await talkToHale(run, cls, phone);
+  run.check("Hale's dialog opens for the Into the Ninth turn-in", talked6 !== null, {
+    phone,
+    toTown: toTownNinth,
+    via: talked6,
+  });
+  const rNinth = reloadsOf(run);
+  const turnNinth = await clickDialog(run, phone, "Turn in", NINTH_NAME);
+  run.check("Turn in for Into the Ninth is enabled", turnNinth.clicked, turnNinth.target);
+  await checkRewardToast(
+    run,
+    cls,
+    NINTH,
+    "Into the Ninth turn-in",
+    { reloadsBefore: rNinth, sinceMs: turnNinth.pressedAt },
+    { gold0: ninthGold0, xp0: ninthXp0 },
+  );
+  hud = await hudSafe(run, cls);
+  run.check("Into the Ninth is completed after the turn-in", stateOf(hud, NINTH) === "completed", {
+    state: stateOf(hud, NINTH),
+  });
+  await safeShot(run, cls, "into-the-ninth-turned-in");
+  await run.page.wait(3_000);
+  await reacquire(run, cls);
+  hud = await hudSafe(run, cls);
+  run.check("reload keeps Into the Ninth completed", stateOf(hud, NINTH) === "completed", {
+    state: stateOf(hud, NINTH),
+  });
+
+  // 10. A killMonsters reward: Ash and Ember (15 ash seers), accepted by the dialog unless
+  //     Idle took it already, progressed by Idle x8, turned in, the Reward toast checked.
+  hud = await hudSafe(run, cls);
+  const ash0 = stateOf(hud, ASH);
+  if (ash0 === "available") {
+    const talked7 = await talkToHale(run, cls, phone);
+    run.check("Hale's dialog opens for Ash and Ember", talked7 !== null, { phone, via: talked7 });
+    const acceptAsh = await clickDialog(run, phone, "Accept", ASH_NAME);
+    run.check("Accept for Ash and Ember is enabled in reach", acceptAsh.clicked, acceptAsh.target);
+    await run.page.wait(500);
+  }
+  run.report.data.ashAcceptedBy =
+    ash0 === "available" ? "dialog" : ash0 === "active" ? "idle" : ash0;
+  hud = await hudSafe(run, cls);
+  run.check(
+    "Ash and Ember is active",
+    stateOf(hud, ASH) === "active" || stateOf(hud, ASH) === "done",
+    {
+      state: stateOf(hud, ASH),
+    },
+  );
+  // Gold and XP before the Idle run: the baseline when Idle turns the quest in itself.
+  const ashRunGold0 = hud.hero?.gold ?? 0;
+  const ashRunXp0 = hud.hero?.xp ?? 0;
+  // Idle x8 kills the ash seers (the warn below records the progress count when it gives up).
+  if (stateOf(hud, ASH) === "active") {
+    await idle8Mode(run, cls);
+    const ashFinished = await waitUntil(
+      run,
+      cls,
+      questDone(ASH, ["done", "completed"]),
+      ASH_BUDGET_MS,
+      15_000,
+      () => idle8Mode(run, cls),
+    );
+    await ctl(run, cls, "window.__gamez.controls.setMode('manual')");
+    hud = await hudSafe(run, cls);
+    run.check("Idle x8 finishes Ash and Ember (15 ash seers)", ashFinished, {
+      state: stateOf(hud, ASH),
+      budgetMs: ASH_BUDGET_MS,
+    });
+  }
+  hud = await hudSafe(run, cls);
+  // Idle turns a finished quest in itself when it is in town; the reward is the same either way.
+  const ashReady = stateOf(hud, ASH) === "done";
+  if (ashReady) {
+    const toTownAsh = (hud.area?.isTown ?? false) ? "already in town" : await goToTown(run, cls);
+    run.report.data.toTownAsh = toTownAsh;
+    await ctl(run, cls, "window.__gamez.controls.setMode('manual')");
+    hud = await hudSafe(run, cls);
+    const ashGold0 = hud.hero?.gold ?? 0;
+    const ashXp0 = hud.hero?.xp ?? 0;
+    const talked8 = await talkToHale(run, cls, phone);
+    run.check("Hale's dialog opens for the Ash and Ember turn-in", talked8 !== null, {
+      phone,
+      toTown: toTownAsh,
+      via: talked8,
+    });
+    const rAsh = reloadsOf(run);
+    const turnAsh = await clickDialog(run, phone, "Turn in", ASH_NAME);
+    run.check("Turn in for Ash and Ember is enabled", turnAsh.clicked, turnAsh.target);
+    await checkRewardToast(
+      run,
+      cls,
+      ASH,
+      "Ash and Ember turn-in",
+      { reloadsBefore: rAsh, sinceMs: turnAsh.pressedAt },
+      { gold0: ashGold0, xp0: ashXp0 },
+    );
+    hud = await hudSafe(run, cls);
+  } else {
+    // Not "done": Idle turned it in already, Idle ran out of budget, or something broke.
+    const ashState = stateOf(hud, ASH);
+    if (ashState === "completed") {
+      run.report.data.ashTurnedInBy = "idle";
+      // Idle spends gold in town (potions, repairs, gambling): only "it rose" is checked.
+      run.check(
+        "Ash and Ember (turned in by Idle): gold and XP rose during the Idle run",
+        (hud.hero?.gold ?? 0) > ashRunGold0 && (hud.hero?.xp ?? 0) > ashRunXp0,
+        { gold: [ashRunGold0, hud.hero?.gold], xp: [ashRunXp0, hud.hero?.xp] },
+      );
+      // Idle turned it in: no press, so the toast is read now and is warn-only (it may have
+      // expired while Idle went on playing; the log line is the fallback).
+      await checkRewardToast(
+        run,
+        cls,
+        ASH,
+        "Ash and Ember (turned in by Idle)",
+        { reloadsBefore: reloadsOf(run), sinceMs: Date.now(), warnOnly: true },
+        null,
+      );
+    } else if (ashState === "active") {
+      // Unfinished in the budget: the "Idle x8 finishes" check above already failed.
+      run.report.data.ashTurnedInBy = "not finished";
+    } else {
+      run.report.data.ashTurnedInBy = ashState ?? null;
+      run.check(
+        `Ash and Ember is done or completed after the Idle run (state: ${ashState})`,
+        false,
+        {
+          state: ashState ?? null,
+        },
+      );
+    }
+  }
+  await safeShot(run, cls, "killmonsters-reward");
+
   // Final reload: both completions are in the save.
   await run.page.wait(3_000);
   await reacquire(run, cls);
@@ -757,6 +1154,77 @@ async function quests(run: Run): Promise<void> {
     },
   );
   run.report.data.final = { level: hud.hero?.level, gold: hud.hero?.gold, quests: hud.quests };
+}
+
+/** Idle at speed 8 (the unattended run of the scenario); a reload drops it, so the callers re-issue it. */
+async function idle8Mode(run: Run, cls: string): Promise<void> {
+  await ctl(run, cls, "window.__gamez.controls.setMode('idle')");
+  await ctl(run, cls, "window.__gamez.controls.setSpeed(8)");
+}
+
+/**
+ * The Reward toast of one turn-in: the text must be '+<gold> gold, +<xp> XP' from
+ * the quest data, gold and XP must have gone up (when the start values are known),
+ * and the area and depth at the toast are recorded (data.rewardToasts). A turn-in
+ * outside town is a warn check, so the run shows where it happened without failing.
+ * `toastWarnOnly` makes the toast text a warn check too (a turn-in by Idle whose
+ * toast may have expired before the check).
+ */
+async function checkRewardToast(
+  run: Run,
+  cls: string,
+  quest: string,
+  label: string,
+  act: { reloadsBefore: number; sinceMs: number; warnOnly?: boolean },
+  before: { gold0: number; xp0: number } | null,
+): Promise<void> {
+  const reward = QUESTS[quest]?.reward;
+  if (!reward) {
+    run.check(`${label}: quest data exists`, false, { quest });
+    return;
+  }
+  const expected = `+${reward.gold} gold, +${reward.xp} XP`;
+  // The toast first: it is read right after the turn-in press (expectToast).
+  await expectToast(run, {
+    label: `${label}: Reward toast reads '${expected}'`,
+    title: "Reward",
+    body: expected,
+    logLine: `Reward: ${reward.gold} gold, ${reward.xp} XP`,
+    reloadsBefore: act.reloadsBefore,
+    sinceMs: act.sinceMs,
+    warnOnly: act.warnOnly,
+  });
+  // The turn-in applies a moment after the press: the gold and XP are read after it.
+  await run.page.wait(800);
+  const hud = await hudSafe(run, cls);
+  if (before !== null) {
+    const gold = (hud.hero?.gold ?? 0) - before.gold0;
+    const xp = (hud.hero?.xp ?? 0) - before.xp0;
+    run.check(
+      `${label}: gold and XP went up by the reward`,
+      gold >= reward.gold && xp >= reward.xp,
+      {
+        gold: [before.gold0, hud.hero?.gold],
+        xp: [before.xp0, hud.hero?.xp],
+      },
+    );
+  }
+  const entry = {
+    quest,
+    label,
+    toast: expected,
+    depth: hud.area?.depth ?? null,
+    isTown: hud.area?.isTown ?? null,
+  };
+  const list = (run.report.data.rewardToasts as object[] | undefined) ?? [];
+  list.push(entry);
+  run.report.data.rewardToasts = list;
+  run.check(
+    `${label}: Reward toast raised in town (depth ${hud.area?.depth ?? "?"})`,
+    hud.area?.isTown === true,
+    entry,
+    true,
+  );
 }
 
 async function stateOf2(run: Run, cls: string, id: string): Promise<QuestRow["state"]> {

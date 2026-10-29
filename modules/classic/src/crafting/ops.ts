@@ -9,13 +9,16 @@
  *
  * RunStats: goldSpent for every paid op; itemsCrafted for a successful
  * upgrade, reroll, added socket and combined gems (resources.ts RunStats
- * doc); gemsSocketed per socketed gem. Repair adds only goldSpent.
+ * doc); gemsSocketed per socketed gem. Repair adds only goldSpent, and
+ * counts as upkeep for the offline rate (noteUpkeepGold, offline-idle.md
+ * §4.1); the other ops are discretionary and do not.
  */
 import type { Entity, FrozenRegistry, SimContext, World } from "@gamez/kernel";
 import { ERR, fail, INTERACT_RANGE, OK, type OpResult } from "../actions.ts";
 import { Equipment, Inventory, Npc, Pos, Wallet, type InvEntry } from "../components.ts";
 import { emit } from "../events.ts";
 import { within } from "../fixed.ts";
+import { noteUpkeepGold } from "../resources.ts";
 import {
   maxDurabilityOf,
   repairCost,
@@ -207,6 +210,7 @@ export function execRepair(world: World, ctx: SimContext, npc: Entity, uid: numb
 
   const sets = setSnapshot(world, reg, hero);
   pay(world, hero, total);
+  noteUpkeepGold(world, total);
   for (const t of targets) {
     const max = t.item.dur!.max;
     writeBack(world, hero, t.loc, { ...t.item, dur: { cur: max, max } });

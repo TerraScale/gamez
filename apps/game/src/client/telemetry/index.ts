@@ -3,6 +3,7 @@
  *
  *   startTelemetry(opts?)                  once at boot (idempotent)
  *   setTelemetryContext({token, mode, contentHash})   when the session or mode changes
+ *   setTelemetryContentHash(mode, hash)    when a verified instance joins
  *   reportRenderError(err)                 from error boundaries
  *
  * Nothing here throws into the app, and nothing waits for the network.
@@ -146,18 +147,43 @@ export function startTelemetry(opts: StartTelemetryOptions = {}): void {
   }
 }
 
-/** Sets the bearer token, mode and contentHash that later events carry. */
+/**
+ * Sets the bearer token, mode and contentHash that later events carry. An
+ * empty contentHash keeps the known one while the mode stays the same (the
+ * shell does not know it; setTelemetryContentHash does).
+ */
 export function setTelemetryContext(next: TelemetryContext): void {
   try {
+    const mode = typeof next.mode === "string" ? next.mode : "";
+    const hash = typeof next.contentHash === "string" ? next.contentHash : "";
     context = {
       token: typeof next.token === "string" ? next.token : "",
-      mode: typeof next.mode === "string" ? next.mode : "",
-      contentHash: typeof next.contentHash === "string" ? next.contentHash : "",
+      mode,
+      contentHash: hash !== "" ? hash : mode === context.mode ? context.contentHash : "",
     };
     core?.setContext(context);
   } catch {
     // never throw into the app
   }
+}
+
+/**
+ * The server-confirmed contentHash of `mode` (the verified connection calls
+ * this on every join); later events carry it while that mode runs.
+ */
+export function setTelemetryContentHash(mode: string, contentHash: string): void {
+  try {
+    if (typeof mode !== "string" || typeof contentHash !== "string") return;
+    context = { ...context, mode, contentHash };
+    core?.setContext(context);
+  } catch {
+    // never throw into the app
+  }
+}
+
+/** The context later events carry (a copy; tests and debugging). */
+export function telemetryContext(): TelemetryContext {
+  return { ...context };
 }
 
 /** Reports a render error from an error boundary (kind "render"). */

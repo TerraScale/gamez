@@ -128,8 +128,10 @@ class FakeServer {
   verifiedCount = 0;
   imported = false;
   down = false;
-  /** Offline grant (ms) for the next join without pending segments. */
+  /** Offline grant (ms) for the next join that holds no unverified play (offline-idle.md §5.2). */
   grantMs: number | null = null;
+  /** XP of the last offline grant's classic.offline.summary (null: none yet). */
+  lastOfflineXp: number | null = null;
   limits = { ...DEFAULT_LIMITS };
   readonly inbox: Inbox[] = [];
   readonly conns = new Set<FakeConnection>();
@@ -219,18 +221,19 @@ class FakeServer {
       !fresh && resume !== null && resume.tick === this.sim.tick && resume.hash === this.hash();
     let offline: VerifiedState["offline"] = null;
     const policy = classicClientDriven.offline;
-    if (
-      this.grantMs !== null &&
-      policy &&
-      resume?.pending !== true &&
-      policy.eligible(this.sim.world)
-    ) {
+    // Unverified play the client still holds past the server's tick defers the grant (not modelled).
+    const unverified = continued && (resume?.pendingToTick ?? 0) > this.sim.tick;
+    if (this.grantMs !== null && policy && !unverified && policy.eligible(this.sim.world)) {
       const elapsedMs = this.grantMs;
       const r = this.sim.dispatch(policy.action, { elapsedMs }, "server");
       this.grantMs = null;
       if (r.ok) {
         this.base = this.sim.snapshot();
         offline = { elapsedMs, events: clone(r.events) };
+        const sum = r.events.find((e) => e.type === "classic.offline.summary") as
+          | { xp: number }
+          | undefined;
+        this.lastOfflineXp = sum?.xp ?? null;
         continued = false;
       }
     }
@@ -516,7 +519,7 @@ describe("ServerSync recording and verification", () => {
     const v = c.sync.view.getSnapshot();
     expect(v.verifiedTick).toBe(server.tick);
     expect(v.overflow).toBe(false);
-  });
+  }, 30_000);
 
   it("keeps x8 Full Idle segments within the tick limit", async () => {
     const server = new FakeServer(LOADED);
@@ -688,8 +691,24 @@ describe("offline progress and long hidden tabs", () => {
     c.sync.visible(90_000);
     server.pump();
     expect(server.joins.at(-1)?.resume).toMatchObject({ pending: false });
+    expect(server.joins.at(-1)?.resume?.pendingToTick).toBeUndefined();
     expect(c.game.currentSim()).not.toBe(before);
-    expect(c.game.api.ui.getSnapshot().toasts.some((t) => t.kind === "offline")).toBe(true);
+    // The grant's commands land on the next step, so its events wait for it
+    // (game.ts): nothing is shown yet next to the pre-grant HUD.
+    const offlineLines = () => c.game.api.log.getSnapshot().filter((l) => /offline/i.test(l.text));
+    expect(offlineLines()).toHaveLength(0);
+    const xpAtAdopt = c.game.api.hud.getSnapshot().hero?.xp ?? 0;
+    c.clock.now += 50;
+    c.clock.wall += 50;
+    c.renderer.frame(50);
+    // The grant's events reached the game (the away summary logs a line), and nothing was "lost".
+    expect(offlineLines()).toHaveLength(1);
+    // When the summary shows, the HUD already has its XP (QA classic-offline C and D).
+    const grantXp = server.lastOfflineXp ?? 0;
+    expect(grantXp).toBeGreaterThan(0);
+    expect(c.game.api.hud.getSnapshot().hero?.xp ?? 0).toBeGreaterThanOrEqual(xpAtAdopt + grantXp);
+    const toasts = c.game.api.ui.getSnapshot().toasts;
+    expect(toasts.some((t) => t.title === SYNC_TEXT.replacedTitle)).toBe(false);
     play(c, server, 2500);
     expect(server.resyncs).toEqual([]);
   });

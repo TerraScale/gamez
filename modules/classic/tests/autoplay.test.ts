@@ -243,8 +243,18 @@ describe("classic Full Idle offline progress", () => {
     const b = idleHero(12);
     const capped = a.dispatch("classic.offlineProgress", { elapsedMs: 24 * 3600 * 1000 }, null);
     const eight = b.dispatch("classic.offlineProgress", { elapsedMs: 8 * 3600 * 1000 }, null);
-    const sum = (r: typeof capped) => r.events.find((e) => e.type === "classic.offline.summary");
-    expect(sum(capped)).toEqual(sum(eight));
+    const sum = (r: typeof capped) =>
+      r.events.find((e) => e.type === "classic.offline.summary") as Extract<
+        ClassicEvent,
+        { type: "classic.offline.summary" }
+      >;
+    // Everything but the absence is the same: the credited time is capped at 8 h.
+    const { awayMs: awayCapped, ...restCapped } = sum(capped);
+    const { awayMs: awayEight, ...restEight } = sum(eight);
+    expect(restCapped).toEqual(restEight);
+    expect(awayCapped).toBe(24 * 3600 * 1000);
+    expect(awayEight).toBe(8 * 3600 * 1000);
+    expect(sum(capped).ms).toBe(8 * 3600 * 1000);
 
     // Bad payloads are rejected without touching the world.
     const h = sim.hash();

@@ -35,7 +35,7 @@ function defineAll<T extends object>(reg: Registry, kind: string, table: Record<
 
 export const classicContent = defineModule({
   id: MODULE.content,
-  version: "0.3.2",
+  version: "0.4.2",
   data(reg) {
     defineAll(reg, KIND.balance, BALANCES);
     defineAll(reg, KIND.class, CLASSES);

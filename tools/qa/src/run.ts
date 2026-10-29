@@ -16,7 +16,7 @@
  * Options: --out <dir>  --viewport desktop|phone  --url <base>  --seed <n>
  *          --strict (console errors fail the run)  --verbose (page console to stderr)
  */
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   launch,
@@ -36,6 +36,7 @@ import {
 import { WAVE_B_RUNNERS } from "./waveB/index.ts";
 import { WAVE_C_RUNNERS } from "./waveC/index.ts";
 import { QUESTS_RUNNERS } from "./quests.ts";
+import { OFFLINE_RUNNERS } from "./offline.ts";
 
 interface Args {
   scenario: string;
@@ -95,7 +96,16 @@ const SCENARIOS: readonly string[] = [
   ...Object.keys(WAVE_B_RUNNERS),
   ...Object.keys(WAVE_C_RUNNERS),
   ...Object.keys(QUESTS_RUNNERS),
+  ...Object.keys(OFFLINE_RUNNERS),
 ];
+
+/** Network failures of a dev-server restart (see main): reported as warnings, not game errors. */
+const SERVER_DOWN = /ERR_CONNECTION_(REFUSED|RESET|CLOSED)|ERR_EMPTY_RESPONSE/;
+
+/** A console entry for a check detail: the text, the URL it came from and its source. */
+function errorDetail(e: ConsoleEntry): { text: string; url: string | null; source: string } {
+  return { text: e.text, url: e.url ?? null, source: e.source };
+}
 
 function usage(msg?: string): never {
   if (msg) process.stderr.write(`${msg}\n\n`);
@@ -193,6 +203,7 @@ export class Run {
     const to = await this.page.evaluate<number>("performance.now()");
     this.pauses.push([from, to]);
     this.report.screenshots.push({ name, path });
+    this.progress(`shot ${path}`);
     return path;
   }
 
@@ -201,7 +212,23 @@ export class Run {
     if (warn) c.warn = true;
     if (detail !== undefined) c.detail = detail;
     this.report.checks.push(c);
+    this.progress(`${ok ? "ok  " : warn ? "WARN" : "FAIL"} ${name}`);
     return ok;
+  }
+
+  /**
+   * Appends a timestamped line to <outDir>/progress.log, so a long or stalled run shows
+   * how far it got (the JSON report is only printed at the end). Never throws.
+   */
+  progress(line: string): void {
+    try {
+      appendFileSync(
+        join(this.report.outDir, "progress.log"),
+        `${new Date().toISOString()} ${line}\n`,
+      );
+    } catch {
+      // Best effort.
+    }
   }
 
   sample(value: unknown): void {
@@ -215,7 +242,12 @@ export class Run {
 
 // ---- shared steps -------------------------------------------------------------------
 
+/**
+ * Opens the picker with a query. First waits for the dev server (a restart mid-run
+ * makes the navigation fail with net::ERR_CONNECTION_REFUSED until it is back).
+ */
 export async function openPicker(run: Run, query = "debug=1"): Promise<void> {
+  await waitForServer(run.args.url);
   await run.page.open(run.url(query));
   await run.page.waitFor("document.querySelectorAll('.mode-card').length > 0", 30_000);
 }
@@ -531,7 +563,20 @@ async function recoverFromReload<T>(
     } catch (err) {
       if (attempt >= 4) throw err;
       run.report.data.reloads = ((run.report.data.reloads as number) ?? 0) + 1;
-      await recover();
+      run.progress(
+        `reload/restart during a step (attempt ${attempt}): ${String(err).slice(0, 160)}`,
+      );
+      // A dev-server restart can outlast one recovery: wait for the server and try again.
+      for (let r = 1; ; r++) {
+        try {
+          await recover();
+          break;
+        } catch (e) {
+          if (r >= 3) throw e;
+          run.progress(`recovery failed (${r}): ${String(e).slice(0, 160)}`);
+          await waitForServer(run.args.url, 120_000);
+        }
+      }
     }
   }
 }
@@ -822,30 +867,55 @@ const PANEL_KEYS: [string, string][] = [
   ["Tab", "map"],
 ];
 
+/** True while the classic game is on the page (false after a dev-server reload, which leaves the picker). */
+async function classicOnPage(run: Run): Promise<boolean> {
+  try {
+    return await run.page.evaluate<boolean>("!!window.__gamez?.sim");
+  } catch {
+    return false;
+  }
+}
+
 async function panels(run: Run): Promise<void> {
   const cls = classArg(run);
   await startClassic(run, cls);
   await run.page.evaluate("window.__gamez.controls.setMode('manual')");
   await run.page.wait(300);
+  // A dev-server reload drops the game (the page goes back to the picker): the scenario
+  // starts the same class again (same seed) and redoes the step that failed, once per reload.
+  const restart = async (): Promise<void> => {
+    await startClassic(run, cls);
+    await run.page.evaluate("window.__gamez.controls.setMode('manual')");
+    await run.page.wait(300);
+  };
+  const step = <T>(fn: () => Promise<T>): Promise<T> => recoverFromReload(run, fn, restart);
   const results: Record<string, unknown> = {};
   for (const [key, panel] of PANEL_KEYS) {
-    await run.page.press(key);
-    await run.page.wait(450);
-    const ui = await uiOf(run);
+    const ui = await step(async () => {
+      await run.page.press(key);
+      await run.page.wait(450);
+      return uiOf(run);
+    });
     results[panel] = ui.panels;
     run.check(`key ${key} opens ${panel}`, ui.panels.includes(panel), ui.panels);
-    await run.shot(`panel-${panel}`);
-    await run.page.press("Escape");
-    await run.page.wait(200);
+    await step(() => run.shot(`panel-${panel}`));
+    await step(async () => {
+      await run.page.press("Escape");
+      await run.page.wait(200);
+    });
   }
   for (const panel of ["settings", "log"]) {
-    await run.page.evaluate(`window.__gamez.controls.openPanel(${JSON.stringify(panel)})`);
-    await run.page.wait(400);
-    const ui = await uiOf(run);
+    const ui = await step(async () => {
+      await run.page.evaluate(`window.__gamez.controls.openPanel(${JSON.stringify(panel)})`);
+      await run.page.wait(400);
+      return uiOf(run);
+    });
     run.check(`${panel} panel opens`, ui.panels.includes(panel), ui.panels);
-    await run.shot(`panel-${panel}`);
-    await run.page.evaluate("window.__gamez.controls.closeAll()");
-    await run.page.wait(200);
+    await step(() => run.shot(`panel-${panel}`));
+    await step(async () => {
+      await run.page.evaluate("window.__gamez.controls.closeAll()");
+      await run.page.wait(200);
+    });
   }
   // NPCs and stations: the hero walks there (kernel action) and the panel opens.
   // panel null = no panel by design (the healer heals on contact): wait for its npc.opened event.
@@ -859,8 +929,10 @@ async function panels(run: Run): Promise<void> {
     ["waypoint", "waypoint"],
   ];
   for (const [target, panel] of targets) {
-    const res = await run.page.evaluate<{ ok: boolean; error?: unknown }>(
-      `window.__gamez.controls.interact(${JSON.stringify(target)})`,
+    const res = await step(() =>
+      run.page.evaluate<{ ok: boolean; error?: unknown }>(
+        `window.__gamez.controls.interact(${JSON.stringify(target)})`,
+      ),
     );
     if (!res.ok) {
       run.check(`interact ${target}`, false, res.error);
@@ -870,17 +942,21 @@ async function panels(run: Run): Promise<void> {
       panel === null
         ? `window.__gamez.sim.lastEvents.some((e) => e.type === 'classic.npc.opened' && e.role === ${JSON.stringify(target)})`
         : "window.__gamez.ui.panels.length > 0";
-    let reached = true;
-    try {
-      await run.page.waitFor(done, 25_000);
-    } catch {
-      reached = false;
-    }
+    // A timeout is "not reached"; a reload (the game gone) is retried by the step.
+    const reached = await step(async () => {
+      try {
+        await run.page.waitFor(done, 25_000);
+        return true;
+      } catch (err) {
+        if (!(await classicOnPage(run))) throw err;
+        return false;
+      }
+    });
     await run.page.wait(400);
-    const ui = await uiOf(run);
+    const ui = await step(() => uiOf(run));
     results[target] = ui.panels;
     if (panel === null) {
-      const hero = (await simOf(run)).hero;
+      const hero = (await step(() => simOf(run))).hero;
       run.check(`${target} reached (no panel by design)`, reached, {
         panels: ui.panels,
         life: hero ? `${hero.life}/${hero.lifeMax}` : null,
@@ -888,13 +964,18 @@ async function panels(run: Run): Promise<void> {
     } else {
       run.check(`${target} opens ${panel}`, reached && ui.panels.includes(panel), ui.panels);
     }
-    await run.shot(`npc-${target}`);
-    await run.page.evaluate("window.__gamez.controls.closeAll()");
-    await run.page.wait(250);
+    await step(() => run.shot(`npc-${target}`));
+    await step(async () => {
+      await run.page.evaluate("window.__gamez.controls.closeAll()");
+      await run.page.wait(250);
+    });
   }
   run.report.data.panels = results;
-  run.report.data.render = renderSummary(await renderOf(run));
+  run.report.data.render = renderSummary(await step(() => renderOf(run)));
 }
+
+/** Longest wait for the phase-2 telegraphs (the line rush follows the other skills' cooldowns). */
+const PHASE2_WATCH_MS = 100_000;
 
 /** Ticks a queued cheat grant needs to land (manual x1 runs 20 ticks per second). */
 const GRANT_WAIT_MS = 1500;
@@ -1144,6 +1225,26 @@ interface TelegraphSeen {
 }
 
 /**
+ * Polls the page toasts ("title | body") until one matches `pattern` or the budget ends.
+ * Returns every toast text seen in the last read (empty when the page is gone).
+ */
+async function pollToastTexts(run: Run, pattern: RegExp, budgetMs: number): Promise<string[]> {
+  const end = Date.now() + budgetMs;
+  let texts: string[] = [];
+  for (;;) {
+    try {
+      texts = await run.page.evaluate<string[]>(
+        "window.__gamez.ui.toasts.map((t) => `${t.title} | ${t.body ?? ''}`)",
+      );
+    } catch {
+      return texts;
+    }
+    if (texts.some((t) => pattern.test(t)) || Date.now() > end) return texts;
+    await run.page.wait(150);
+  }
+}
+
+/**
  * classic-boss <class>: a deterministic route to a boss fight (cheats). The
  * hero gets 25 levels and takes the town stairs to depth 1, then `spawnBoss`
  * puts Morrow, the Grave Warden (depth-1 level) awake beside it. The run screenshots each telegraph shape as
@@ -1152,6 +1253,39 @@ interface TelegraphSeen {
  * shake (render.shakes). Shapes not seen in time are warnings.
  */
 async function classicBoss(run: Run): Promise<void> {
+  // The boss fight cannot be resumed after a dev-server reload (the page returns to the
+  // picker and the boss is gone): the whole attempt is restarted, up to 3 attempts. The
+  // checks of an interrupted attempt are dropped (listed in data.bossRestarts).
+  for (let attempt = 1; ; attempt++) {
+    const checks0 = run.report.checks.length;
+    try {
+      await bossAttempt(run);
+      return;
+    } catch (err) {
+      if (attempt >= 3 || (await classicHeroOnPage(run))) throw err;
+      const dropped = run.report.checks.splice(checks0).map((c) => c.name);
+      run.report.data.reloads = ((run.report.data.reloads as number) ?? 0) + 1;
+      const restarts = (run.report.data.bossRestarts as unknown[] | undefined) ?? [];
+      restarts.push({ attempt, error: String(err).slice(0, 300), droppedChecks: dropped });
+      run.report.data.bossRestarts = restarts;
+      run.progress(`boss attempt ${attempt} interrupted by a reload: ${String(err).slice(0, 160)}`);
+      await waitForServer(run.args.url, 120_000);
+    }
+  }
+}
+
+/** The classic hero is on the page (false after a reload to the picker, or a page that does not answer). */
+async function classicHeroOnPage(run: Run): Promise<boolean> {
+  try {
+    return await run.page.evaluate<boolean>(
+      "window.__gamez?.mode === 'classic' && window.__gamez.sim?.hero != null",
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function bossAttempt(run: Run): Promise<void> {
   const cls = classArg(run);
   await startClassic(run, cls, { cheats: true });
   await run.page.evaluate("window.__gamez.controls.setMode('manual')");
@@ -1222,11 +1356,10 @@ async function classicBoss(run: Run): Promise<void> {
   } catch {
     phaseSeen = false;
   }
-  await run.page.wait(250);
+  // The toast is read right after the phase counter moves (before the screenshot):
+  // a slow frame or the shot itself must not let it expire first.
+  const toasts = await pollToastTexts(run, /Morrow/, 3_000);
   await run.shot("boss-phase-1");
-  const toasts = await run.page.evaluate<string[]>(
-    "window.__gamez.ui.toasts.map((t) => `${t.title} | ${t.body ?? ''}`)",
-  );
   data.phaseToasts = toasts;
   run.check("the boss enters phase 1", phaseSeen);
   run.check(
@@ -1235,12 +1368,13 @@ async function classicBoss(run: Run): Promise<void> {
     toasts,
   );
 
-  // Phase 2 at 35 %: enrage and the rush (line telegraph).
+  // Phase 2 at 35 %: enrage and the rush (line telegraph). The rush comes after the
+  // cleave and quake cooldowns (the rotation), so the window is long: 100 s covers it.
   const phase2 = await cheat({ woundBosses: 30 });
   run.check("cheat woundBosses (phase 2) accepted", phase2.ok, phase2.error);
   await run.page.wait(400);
   await run.shot("boss-phase-2");
-  await watch(["line", "cone", "circle"], 40_000);
+  await watch(["line", "cone", "circle"], PHASE2_WATCH_MS);
   const shakes1 = await shakesAt();
   data.shakes = { before: shakes0, after: shakes1 };
   data.shapes = shapes;
@@ -1354,6 +1488,7 @@ const RUNNERS: Record<string, (run: Run) => Promise<void>> = {
   ...WAVE_B_RUNNERS,
   ...WAVE_C_RUNNERS,
   ...QUESTS_RUNNERS,
+  ...OFFLINE_RUNNERS,
   picker,
   "classic-start": classicStart,
   "classic-create": classicCreate,
@@ -1373,6 +1508,8 @@ async function main(): Promise<void> {
   const outDir =
     args.out ?? join("/tmp/gamez-qa", `${label}${args.viewport === "phone" ? "-phone" : ""}`);
   mkdirSync(outDir, { recursive: true });
+  // progress.log is this run's own (Run.progress appends to it).
+  rmSync(join(outDir, "progress.log"), { force: true });
   // Screenshots of an earlier run in the default directory would mix with this run's.
   if (args.out === null) {
     for (const f of readdirSync(outDir)) {
@@ -1419,13 +1556,25 @@ async function main(): Promise<void> {
       await page.close();
     }
   }
-  const consoleOk = report.consoleErrors.length === 0;
+  // Connection errors while the dev server restarts are not the game's: they are reported
+  // on their own (warn) so the console check only judges real errors.
+  const serverDown = report.consoleErrors.filter((e) => SERVER_DOWN.test(e.text));
+  const realErrors = report.consoleErrors.filter((e) => !SERVER_DOWN.test(e.text));
+  const consoleOk = realErrors.length === 0;
   report.checks.push({
     name: "no console errors",
     ok: consoleOk,
     ...(args.strict ? {} : { warn: true }),
-    ...(consoleOk ? {} : { detail: report.consoleErrors.slice(0, 20).map((e) => e.text) }),
+    ...(consoleOk ? {} : { detail: realErrors.slice(0, 20).map(errorDetail) }),
   });
+  if (serverDown.length > 0) {
+    report.checks.push({
+      name: "dev-server connection errors during the run (not the game)",
+      ok: false,
+      warn: true,
+      detail: serverDown.slice(0, 20).map(errorDetail),
+    });
+  }
   report.ok = report.error === undefined && report.checks.every((c) => c.ok || c.warn === true);
   report.durationMs = Math.round(performance.now() - started);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

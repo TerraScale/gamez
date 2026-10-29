@@ -25,6 +25,7 @@ import type {
 import { ClockSync } from "../clock.ts";
 import { backoffDelay } from "../net.ts";
 import { clearSession, getSession } from "../session.ts";
+import { setTelemetryContentHash } from "../telemetry/index.ts";
 import { CLOSE_REPLACED, CLOSE_UNAUTHORIZED } from "./messages.ts";
 import { instanceUrl, type SocketLike } from "./connection.ts";
 
@@ -281,6 +282,8 @@ export class VerifiedClient implements VerifiedConnection {
     switch (msg.t) {
       case "vstate": {
         if (msg.mode !== this.mode) return;
+        // Telemetry events carry the server's contentHash (admin-dashboard.md §9, §11.5).
+        setTelemetryContentHash(this.mode, msg.contentHash);
         const snapshot = msg.snapshot ? await unpackSnapshot(msg.snapshot) : null;
         if (gen !== this.#generation || this.#closed) return;
         this.#clock.seed(msg.serverTime, this.#now());
@@ -327,6 +330,7 @@ export class VerifiedClient implements VerifiedConnection {
           tick: msg.tick,
           hash: msg.hash,
           snapshot,
+          offline: msg.offline ?? null,
         });
         return;
       }
@@ -358,7 +362,11 @@ export class VerifiedClient implements VerifiedConnection {
       } catch (err) {
         console.error("verified: resume() failed", err);
       }
-      if (resume) msg.resume = { tick: resume.tick, hash: resume.hash, pending: resume.pending };
+      if (resume) {
+        msg.resume = { tick: resume.tick, hash: resume.hash, pending: resume.pending };
+        if (typeof resume.pendingToTick === "number")
+          msg.resume.pendingToTick = resume.pendingToTick;
+      }
     }
     this.#send(msg);
   }

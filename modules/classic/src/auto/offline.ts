@@ -1,8 +1,14 @@
 /**
- * classic.offlineProgress (§15.4): a deterministic rate model of what the
- * hero would have earned while the game was closed. Pure integer maths over
- * the hero's current stats and the registry; queues grantXp / grantGold /
- * grantItems for their owners and emits classic.offline.summary.
+ * classic.offlineProgress (docs/design/offline-idle.md §4): what the hero
+ * earns while the game was closed. Pure integer maths over the hero's
+ * measured online rate (auto/rate.ts) or, with too little measured play, the
+ * §15.4 rate model (computeOffline, unchanged). offlineGrant() turns that into
+ * the final numbers; the action queues grantXp / grantGold / grantItems,
+ * respawns a dead hero first, credits kill quests and emits
+ * classic.offline.summary. XP is scaled by the factor xpPct (the admin tunable
+ * classic.offlineXpPct, passed by the server); gold, items and quest kills
+ * are not scaled by it. Gold is net of the measured upkeep (potions, scrolls,
+ * repairs). A second grant on the same sim tick is rejected (offline_twice).
  */
 import {
   ActionError,
@@ -26,7 +32,14 @@ import {
 } from "../components.ts";
 import { emit } from "../events.ts";
 import { clamp } from "../fixed.ts";
-import { heroOf, RES, type DungeonState, type QuestState, type RunStats } from "../resources.ts";
+import {
+  heroOf,
+  RES,
+  type AutoRate,
+  type DungeonState,
+  type QuestState,
+  type RunStats,
+} from "../resources.ts";
 import {
   effectiveRank,
   itemValue,
@@ -51,12 +64,32 @@ import {
   type SkillProto,
   type ThemeProto,
 } from "../types.ts";
+import { execRespawn } from "../progression/ops.ts";
+import { AUTO_RATE_MIN_TICKS } from "./rate.ts";
 
 export const MAX_OFFLINE_MS = 7 * 24 * 3600 * 1000;
+/**
+ * Actor of the verified server's dispatches (protocol BANK_ACTOR, the host's
+ * SERVER_ACTOR): exempt from the same-tick guard (§4.4).
+ */
+export const OFFLINE_SERVER_ACTOR = "server";
+/** Sim ticks per second (TickPolicy fixed 20 Hz) and per minute. */
+const SIM_HZ = 20;
+const TICKS_PER_MIN = 60 * SIM_HZ;
 /** Items kept per minute of kills: floor(kills * 2 / 100), at most 20. */
 const ITEM_KEEP_PCT = 2;
 const ITEM_KEEP_MAX = 20;
 const KILLS_PER_MIN_MAX = 120;
+/** Sanity bound of the measured rate against the model (not a balance lever). */
+const RATE_CAP_X = 3;
+/**
+ * Model only: sim ticks between kills spent walking, looting and in town
+ * (offline-idle.md §4.3). Online Idle kills stay at about 15-28 a minute
+ * whatever the hero's damage (measured L1-L16), so the model's time per kill
+ * is the fight time plus this travel time: at most 1200 / 60 = 20 kills a
+ * minute, and a weak hero is limited by its damage.
+ */
+export const OFFLINE_TRAVEL_TICKS = 60;
 
 export interface OfflineResult {
   ms: number;
@@ -67,6 +100,43 @@ export interface OfflineResult {
   gold: number;
   items: number;
   levels: number;
+  /** Monster ids the offline kills are spread over (depthMonsterIds, computed once). */
+  depthIds: string[];
+}
+
+/** The final numbers of one offline grant (offline-idle.md §4.2). */
+export interface OfflineGrant {
+  /** Credited time: min(elapsedMs, offlineCapMs). */
+  ms: number;
+  /** Whole minutes of `ms`. */
+  minutes: number;
+  depth: number;
+  monsterLevel: number;
+  /** Unscaled kills (quest credit and statistics). */
+  kills: number;
+  /** Scaled by xpPct. */
+  xp: number;
+  /** Scaled by goldPct; net of `upkeep`. */
+  gold: number;
+  /** Upkeep gold deducted from the rate path's gold (0 for the model). */
+  upkeep: number;
+  /**
+   * Gold found before upkeep, scaled by goldPct: ground + junk at the measured
+   * rate, capped with the gold so that gold = max(0, found - upkeep) (rate
+   * path), or `gold` (model). The card shows it next to the upkeep so a grant
+   * of 0 gold reads as "upkeep used it up", not as a bug.
+   */
+  found: number;
+  /** Scaled by itemPct. */
+  items: number;
+  /** Levels gained by xp, clamped to maxLevel. */
+  levels: number;
+  depthIds: string[];
+  /** "rate": the measured online rate. "model": the §15.4 fallback. */
+  source: "rate" | "model";
+  xpPct: number;
+  goldPct: number;
+  itemPct: number;
 }
 
 /** Deepest unlocked waypoint whose monster level is at most heroLevel + 1 (>= 1). */
@@ -79,7 +149,7 @@ export function offlineDepth(world: World, heroLevel: number): number {
 }
 
 /** Average damage and the attack time (ticks) of the hero's best affordable bar skill. */
-function bestAttack(
+export function bestAttack(
   world: World,
   reg: FrozenRegistry,
   hero: Entity,
@@ -117,8 +187,12 @@ function bestAttack(
     : { dmg: Math.max(1, stats.dmgMin), ticks: Math.max(2, stats.attackTicks) };
 }
 
-/** Monster protos of the depth's theme tier (sorted ids), with a fallback to every themed monster. */
-function depthMonsters(reg: FrozenRegistry, depth: number): MonsterProto[] {
+/**
+ * Ids of the monsters offline kills are spread over: the depth's theme tier
+ * (sorted ids, minDepth <= depth), with a fallback to every themed monster.
+ * Exported so the quest credit and the tests use the same list.
+ */
+export function depthMonsterIds(reg: FrozenRegistry, depth: number): string[] {
   const tier = tierOf(depth);
   const ids = new Set<string>();
   for (const [id, t] of reg.all<ThemeProto>(KIND.theme)) {
@@ -126,19 +200,18 @@ function depthMonsters(reg: FrozenRegistry, depth: number): MonsterProto[] {
     for (const m of t.monsters) ids.add(m);
   }
   const sorted = [...ids].sort();
-  let protos = sorted
-    .map((id) => reg.get<MonsterProto>(KIND.monster, id))
-    .filter((m): m is MonsterProto => m !== undefined && m.minDepth <= depth);
-  if (protos.length === 0) {
-    protos = reg
-      .all<MonsterProto>(KIND.monster)
-      .map(([, m]) => m)
-      .filter((m) => m.themes.length > 0);
-  }
-  return protos;
+  const themed = sorted.filter((id) => {
+    const m = reg.get<MonsterProto>(KIND.monster, id);
+    return m !== undefined && m.minDepth <= depth;
+  });
+  if (themed.length > 0) return themed;
+  return reg
+    .all<MonsterProto>(KIND.monster)
+    .filter(([, m]) => m.themes.length > 0)
+    .map(([id]) => id);
 }
 
-/** The deterministic offline rate model. Throws nothing; callers validate the hero. */
+/** The deterministic offline rate model (§15.4). Throws nothing; callers validate the hero. */
 export function computeOffline(
   world: World,
   reg: FrozenRegistry,
@@ -152,6 +225,7 @@ export function computeOffline(
   const minutes = Math.floor(ms / 60000);
   const depth = offlineDepth(world, heroLevel);
   const mlvl = monsterLevel(depth);
+  const depthIds = depthMonsterIds(reg, depth);
   const empty: OfflineResult = {
     ms,
     depth,
@@ -161,10 +235,13 @@ export function computeOffline(
     gold: 0,
     items: 0,
     levels: 0,
+    depthIds,
   };
   if (!bal || minutes <= 0) return empty;
 
-  const monsters = depthMonsters(reg, depth);
+  const monsters = depthIds
+    .map((id) => reg.get<MonsterProto>(KIND.monster, id))
+    .filter((m): m is MonsterProto => m !== undefined);
   let lifeSum = 0;
   let xpSum = 0;
   for (const m of monsters) {
@@ -177,9 +254,13 @@ export function computeOffline(
   const avgXp = Math.floor(xpSum / n);
 
   const atk = bestAttack(world, reg, hero);
-  // killsPerMin = dps * 60 * eff% / avgLife, dps = dmg * 20 / ticks.
+  // Time per kill = fight ticks + travel ticks, with fight ticks =
+  // avgLife * ticks * 100 / (dmg * eff%); killsPerMin = 1200 / time per kill.
+  const effDmg = atk.dmg * bal.offlineEfficiencyPct;
   const killsPerMin = clamp(
-    Math.floor((atk.dmg * 1200 * bal.offlineEfficiencyPct) / (atk.ticks * avgLife * 100)),
+    Math.floor(
+      (effDmg * TICKS_PER_MIN) / (atk.ticks * avgLife * 100 + OFFLINE_TRAVEL_TICKS * effDmg),
+    ),
     1,
     KILLS_PER_MIN_MAX,
   );
@@ -193,14 +274,27 @@ export function computeOffline(
   let gold = Math.floor((kills * bal.drops.normal.gold * avgPile) / 100);
 
   const items = Math.min(ITEM_KEEP_MAX, Math.floor((kills * ITEM_KEEP_PCT) / 100));
-  // The other dropped items are sold to the junk buyer.
-  const dropped = Math.floor((kills * bal.drops.normal.item) / 100);
-  const sold = Math.max(0, dropped - items);
-  if (sold > 0) gold += sold * junkPrice(reg, mlvl);
+  gold += junkGold(reg, bal, mlvl, kills, items);
 
   const xpNow = lvl?.xp ?? 0;
   const levels = Math.max(0, levelForXp(bal, xpNow + xp) - heroLevel);
-  return { ms, depth, monsterLevel: mlvl, kills, xp, gold, items, levels };
+  return { ms, depth, monsterLevel: mlvl, kills, xp, gold, items, levels, depthIds };
+}
+
+/**
+ * Gold from the dropped normal items that are not kept (sold to the junk
+ * buyer): floor(kills * drop item %) minus the kept items, at junkPrice(ilvl).
+ */
+function junkGold(
+  reg: FrozenRegistry,
+  bal: BalanceProto,
+  ilvl: number,
+  kills: number,
+  kept: number,
+): number {
+  const dropped = Math.floor((kills * bal.drops.normal.item) / 100);
+  const sold = Math.max(0, dropped - kept);
+  return sold > 0 ? sold * junkPrice(reg, ilvl) : 0;
 }
 
 /** What the junk buyer pays for an average normal item of item level `ilvl`. */
@@ -221,21 +315,133 @@ function junkPrice(reg: FrozenRegistry, ilvl: number): number {
 }
 
 /**
- * Offline kills count for quests: every active, not done killMonsters quest
- * whose target is "*" (any monster) gains `kills` (capped at its count),
- * with the same classic.quest.progress / classic.quest.done events as live
- * kills (progression/quests.ts). No other quest kind changes offline.
+ * The final numbers of an offline grant (offline-idle.md §4.2). With a
+ * measured online rate of at least AUTO_RATE_MIN_TICKS, kills, XP, and gold
+ * are the rate extrapolated to the credited ticks (T = minutes * 1200), capped
+ * at 3x the model (and 120 kills per minute): the offline XP is xpPct of the
+ * measured online Idle XP rate, never more. Gold is ground + junk minus the measured
+ * upkeep (potions, scrolls, repairs), floored at 0. Otherwise the model is
+ * used: XP scaled by offlineModelXpPct, gold by offlineModelGoldPct, no
+ * upkeep. The factors are applied last. `xpPct` overrides
+ * BalanceProto.offlineXpPct (the server's effective tunable).
  */
-export function creditOfflineKills(world: World, ctx: SimContext, kills: number): void {
+export function offlineGrant(
+  world: World,
+  reg: FrozenRegistry,
+  hero: Entity,
+  elapsedMs: number,
+  xpPct?: number,
+): OfflineGrant {
+  const bal = reg.get<BalanceProto>(KIND.balance, BALANCE_ID);
+  const model = computeOffline(world, reg, hero, elapsedMs);
+  const minutes = Math.floor(model.ms / 60000);
+  const xpPctEff = xpPct ?? bal?.offlineXpPct ?? 0;
+  const base = {
+    ms: model.ms,
+    minutes,
+    depth: model.depth,
+    monsterLevel: model.monsterLevel,
+    depthIds: model.depthIds,
+    xpPct: xpPctEff,
+    goldPct: bal?.offlineGoldPct ?? 0,
+    itemPct: bal?.offlineItemPct ?? 0,
+  };
+  if (!bal || minutes <= 0) {
+    return {
+      ...base,
+      kills: 0,
+      xp: 0,
+      gold: 0,
+      upkeep: 0,
+      found: 0,
+      items: 0,
+      levels: 0,
+      source: "model",
+    };
+  }
+
+  const T = minutes * TICKS_PER_MIN;
+  const fbXp = Math.floor((model.xp * bal.offlineModelXpPct) / 100);
+  const rate = world.getResource<AutoRate>(RES.autoRate);
+  let kills: number;
+  let baseXp: number;
+  let itemsB: number;
+  let baseGold: number;
+  let baseFound: number;
+  let upkeep: number;
+  let source: "rate" | "model";
+  if (rate && rate.ticks >= AUTO_RATE_MIN_TICKS) {
+    source = "rate";
+    kills = Math.min(
+      Math.floor((rate.kills * T) / rate.ticks),
+      model.kills * RATE_CAP_X,
+      KILLS_PER_MIN_MAX * minutes,
+    );
+    // The measured online rate itself (§4.2, §4.3): no model floor, which paid
+    // 2-4x the online rate at the depth-3 waypoint (L5-L9).
+    baseXp = Math.min(Math.floor((rate.xp * T) / rate.ticks), fbXp * RATE_CAP_X);
+    itemsB = Math.min(ITEM_KEEP_MAX, Math.floor((kills * ITEM_KEEP_PCT) / 100));
+    const rateGold = Math.floor((rate.gold * T) / rate.ticks);
+    upkeep = Math.floor(((rate.upkeep ?? 0) * T) / rate.ticks);
+    // found is capped with the gold, so the card's numbers add up:
+    // baseGold = max(0, baseFound - upkeep).
+    baseFound = Math.min(
+      rateGold + junkGold(reg, bal, model.monsterLevel, kills, itemsB),
+      model.gold * RATE_CAP_X + upkeep,
+    );
+    baseGold = clamp(baseFound - upkeep, 0, model.gold * RATE_CAP_X);
+  } else {
+    source = "model";
+    kills = model.kills;
+    baseXp = fbXp;
+    itemsB = model.items;
+    upkeep = 0;
+    baseGold = Math.floor((model.gold * (bal.offlineModelGoldPct ?? 100)) / 100);
+    baseFound = baseGold;
+  }
+
+  const xp = Math.floor((baseXp * xpPctEff) / 100);
+  const gold = Math.floor((baseGold * bal.offlineGoldPct) / 100);
+  const found = Math.floor((baseFound * bal.offlineGoldPct) / 100);
+  const items = Math.floor((itemsB * bal.offlineItemPct) / 100);
+  const lvl = world.get(hero, Level);
+  const heroLevel = lvl?.level ?? 1;
+  const levels = Math.max(
+    0,
+    Math.min(bal.maxLevel, levelForXp(bal, (lvl?.xp ?? 0) + xp)) - heroLevel,
+  );
+  return { ...base, kills, xp, gold, upkeep, found, items, levels, source };
+}
+
+/** Offline kills count for killMonsters quests (rule (d), design §16). `kills`
+ * is spread evenly over `depthIds`, the monsters of the offline depth
+ * (depthMonsterIds), so with n of them:
+ *  - target "*" (any monster) gains `kills`;
+ *  - a named target that is one of the n monsters gains floor(kills / n);
+ *  - a named target outside that list gains 0.
+ * Progress is capped at the quest's count. Done quests and the other quest
+ * kinds (reachDepth, killBoss, clearLevel) never change offline. Quests are
+ * visited in qs.active order. The events are the same as for live kills
+ * (classic.quest.progress / classic.quest.done, progression/quests.ts).
+ */
+export function creditOfflineKills(
+  world: World,
+  ctx: SimContext,
+  kills: number,
+  depthIds: readonly string[],
+): void {
   if (kills <= 0) return;
   const qs = world.getResource<QuestState>(RES.quests);
   if (!qs || qs.active.length === 0) return;
+  const share = depthIds.length > 0 ? Math.floor(kills / depthIds.length) : 0;
   let changed = false;
   for (const q of qs.active) {
     if (q.done) continue;
     const qp = ctx.registry.get<QuestProto>(KIND.quest, q.id);
-    if (!qp || qp.kind !== "killMonsters" || qp.target !== "*") continue;
-    const progress = Math.min(qp.count, q.progress + kills);
+    if (!qp || qp.kind !== "killMonsters") continue;
+    const gain = qp.target === "*" ? kills : depthIds.includes(qp.target) ? share : 0;
+    if (gain <= 0) continue;
+    const progress = Math.min(qp.count, q.progress + gain);
     if (progress === q.progress) continue;
     q.progress = progress;
     emit(ctx, { type: "classic.quest.progress", quest: q.id, progress, count: qp.count });
@@ -248,46 +454,89 @@ export function creditOfflineKills(world: World, ctx: SimContext, kills: number)
   if (changed) world.setResource(RES.quests, qs);
 }
 
-export const offlineAction: ActionDef<{ elapsedMs: number }> = {
+/**
+ * Payload of classic.offlineProgress (server-only in server play). `xpPct`:
+ * the effective offline XP percent (admin tunable "classic.offlineXpPct",
+ * integer 0..100), set by the server; absent = BalanceProto.offlineXpPct.
+ */
+export interface OfflinePayload {
+  elapsedMs: number;
+  xpPct?: number;
+}
+
+export const offlineAction: ActionDef<OfflinePayload> = {
   name: ACTION.offlineProgress,
   parse(_world, payload) {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload))
       throw new ActionError(ERR.badPayload, "expected { elapsedMs }");
     const keys = Object.keys(payload);
-    if (keys.some((k) => k !== "elapsedMs")) throw new ActionError(ERR.badPayload, "unknown field");
+    if (keys.some((k) => k !== "elapsedMs" && k !== "xpPct"))
+      throw new ActionError(ERR.badPayload, "unknown field");
     const ms = (payload as { elapsedMs?: unknown }).elapsedMs;
     if (typeof ms !== "number" || !Number.isInteger(ms) || ms <= 0 || ms > MAX_OFFLINE_MS)
       throw new ActionError(ERR.badPayload, "elapsedMs must be an integer in 1..7 days");
-    return { elapsedMs: ms };
+    if (!("xpPct" in payload)) return { elapsedMs: ms };
+    const pct = (payload as { xpPct?: unknown }).xpPct;
+    if (typeof pct !== "number" || !Number.isInteger(pct) || pct < 0 || pct > 100)
+      throw new ActionError(ERR.badPayload, "xpPct must be an integer in 0..100");
+    return { elapsedMs: ms, xpPct: pct };
   },
   apply(world, p, ctx) {
     const hero = heroOf(world);
     if (hero === 0 || !world.has(hero, Level)) throw new ActionError(ERR.noHero, "no hero");
-    if (world.has(hero, Dead)) throw new ActionError(ERR.dead, "the hero is dead");
-    const r = computeOffline(world, ctx.registry, hero, p.elapsedMs);
-    if (r.xp > 0) pushCommand(world, { op: "grantXp", amount: r.xp, reason: "offline" });
-    if (r.gold > 0) pushCommand(world, { op: "grantGold", amount: r.gold, reason: "offline" });
-    if (r.items > 0)
+    // Same-tick guard (§4.4): a double local dispatch can never pay twice.
+    // Throwing rolls back the whole action. The verified server (actor
+    // "server") is exempt: it pays measured absences only, and two of them
+    // may follow each other on one tick (a grant, then leaving before a tick
+    // of play), which the guard would lose.
+    const stats = world.getResource<RunStats>(RES.stats);
+    if (ctx.actor !== OFFLINE_SERVER_ACTOR && stats?.offlineAt === ctx.tick)
+      throw new ActionError(ERR.offlineTwice, "offline progress was already granted this tick");
+    const bal = ctx.registry.require<BalanceProto>(KIND.balance, BALANCE_ID);
+    const g = offlineGrant(world, ctx.registry, hero, p.elapsedMs, p.xpPct);
+    // A dead hero is respawned by the grant (§4.4). Its death was in the absence,
+    // so the respawn delay counts as served, and execRespawn runs now, before the
+    // grants are queued. (A queued respawn would race the controller's own respawn
+    // on the same tick, and the loser would emit classic.command.failed.)
+    if (g.minutes > 0 && world.has(hero, Dead)) {
+      const dead = world.read(hero, Dead);
+      world.update(hero, Dead, { at: Math.min(dead.at, ctx.tick - bal.respawnDelay) });
+      execRespawn(world, ctx);
+    }
+    if (g.xp > 0) pushCommand(world, { op: "grantXp", amount: g.xp, reason: "offline" });
+    if (g.gold > 0) pushCommand(world, { op: "grantGold", amount: g.gold, reason: "offline" });
+    if (g.items > 0)
       pushCommand(world, {
         op: "grantItems",
-        count: r.items,
-        ilvl: r.monsterLevel,
+        count: g.items,
+        ilvl: g.monsterLevel,
         minRarity: "magic",
         toStash: true,
         reason: "offline",
       });
-    creditOfflineKills(world, ctx, r.kills);
-    const stats = world.getResource<RunStats>(RES.stats);
-    if (stats) stats.offlineMs += r.ms;
+    creditOfflineKills(world, ctx, g.kills, g.depthIds);
+    if (stats) {
+      stats.offlineMs += g.ms;
+      stats.offlineAt = ctx.tick;
+      world.setResource(RES.stats, stats);
+    }
     emit(ctx, {
       type: "classic.offline.summary",
-      ms: r.ms,
-      depth: r.depth,
-      kills: r.kills,
-      xp: r.xp,
-      gold: r.gold,
-      items: r.items,
-      levels: r.levels,
+      ms: g.ms,
+      awayMs: p.elapsedMs,
+      capMs: bal.offlineCapMs,
+      xpPct: g.xpPct,
+      goldPct: g.goldPct,
+      itemPct: g.itemPct,
+      source: g.source,
+      depth: g.depth,
+      kills: g.kills,
+      xp: g.xp,
+      gold: g.gold,
+      upkeep: g.upkeep,
+      found: g.found,
+      items: g.items,
+      levels: g.levels,
     });
   },
 };

@@ -135,7 +135,7 @@ export interface ActionPayloads {
   "classic.setSpeed": { speed: SimSpeed };
   "classic.setAutoConfig": { config: Partial<AutoConfig> };
   /** Elapsed wall time supplied by the host (server-verified later). 0 < elapsedMs <= 7 days. */
-  "classic.offlineProgress": { elapsedMs: number };
+  "classic.offlineProgress": { elapsedMs: number; xpPct?: number };
   /** Wave C, server-only: hero <-> account bank op (src/platform/bank.ts ClassicBankPayload). */
   "classic.bank": import("./platform/bank.ts").ClassicBankPayload;
   // ---- wave A
@@ -203,6 +203,8 @@ export const ERR = {
   modeNotIdle: "mode_not_idle",
   empty: "empty",
   potionUseless: "potion_useless",
+  /** classic.offlineProgress dispatched twice on one tick (RunStats.offlineAt). */
+  offlineTwice: "offline_twice",
   // ---- wave A
   notSmith: "not_smith",
   notGambler: "not_gambler",

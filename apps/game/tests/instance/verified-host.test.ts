@@ -307,6 +307,17 @@ class Player {
   }
 }
 
+/**
+ * started(), with the hero not farming (tvc.eligible off): a test that banks
+ * credit by moving the clock with the socket open is not an absence
+ * (offline-idle.md §5.6 pays such gaps to farming heroes).
+ */
+async function startedIdle(loaded: LoadedMode = V1) {
+  const r = await started(loaded);
+  r.p.act("tvc.eligible", { on: false });
+  return r;
+}
+
 async function started(loaded: LoadedMode = V1) {
   const h = new Harness(loaded);
   const s = h.connect();
@@ -571,7 +582,7 @@ describe("VerifiedHost: segments", () => {
   });
 
   it("credit accrues with wall time up to the cap", async () => {
-    const { h, s, p } = await started();
+    const { h, s, p } = await startedIdle();
     h.advance(3_600_000);
     const ack = only(await h.send(s, p.play(20)), "verified") as Ack;
     expect(ack.creditMs).toBe(CREDIT_CAP_MS - 1000);
@@ -614,7 +625,7 @@ describe("VerifiedHost: segments", () => {
   });
 
   it("segments are rate limited per socket (burst 40, 2/s)", async () => {
-    const { h, s, p } = await started();
+    const { h, s, p } = await startedIdle();
     h.advance(CREDIT_CAP_MS);
     let acks = 0;
     let limited = 0;
@@ -664,15 +675,16 @@ describe("VerifiedHost: persistence", () => {
     expect(h.store.load()!.baseTick).toBe(COMPACT_TICKS + 20);
   });
 
-  it("the last socket closing compacts and marks the player inactive", async () => {
+  it("the last socket closing compacts; lastActiveAt stays at the last verified progress", async () => {
     const { h, s, p } = await started();
     h.advance(2000);
     only(await h.send(s, p.play(30)), "verified");
+    const progressAt = h.clock.now;
     h.advance(5000);
     await h.close(s);
     const rec = h.store.load()!;
     expect(rec.baseTick).toBe(30);
-    expect(rec.lastActiveAt).toBe(h.clock.now);
+    expect(rec.lastActiveAt).toBe(progressAt);
     expect(h.store.segments()).toEqual([]);
   });
 
@@ -772,14 +784,64 @@ describe("VerifiedHost: offline progress", () => {
     expect(vstate.offline?.elapsedMs).toBe(3_600_000);
   });
 
-  it("is never granted while the client holds pending segments", async () => {
+  it("resume.pending alone (no pendingToTick) never blocks the grant", async () => {
+    const { h, p } = await playedAndLeft();
+    h.advance(120_000);
+    const resume = { tick: p.sim.tick, hash: p.sim.hash(), pending: true };
+    const { vstate } = await h.join(h.connect(), { resume });
+    expect(vstate.offline?.elapsedMs).toBe(120_000);
+    expect(vstate.continued).toBe(false);
+    const again = await h.join(h.connect(), {
+      resume: { ...resume, pendingToTick: p.sim.tick },
+    });
+    // The old resume is no ancestor after the grant's compaction, and nothing more is owed.
+    expect(again.vstate.offline).toBeNull();
+    expect(again.vstate.continued).toBe(false);
+  });
+
+  it("an ancestor resume with pendingToTick <= verifiedTick is granted at once", async () => {
     const { h, p } = await playedAndLeft();
     h.advance(120_000);
     const { vstate } = await h.join(h.connect(), {
-      resume: { tick: p.sim.tick, hash: p.sim.hash(), pending: true },
+      resume: { tick: p.sim.tick, hash: p.sim.hash(), pending: true, pendingToTick: p.sim.tick },
+    });
+    expect(vstate.offline?.elapsedMs).toBe(120_000);
+    expect(vstate.continued).toBe(false);
+  });
+
+  it("real unverified pending defers the grant until it verified (resync offline)", async () => {
+    const { h, p } = await playedAndLeft();
+    // The client played 40 ticks (2 s) that never reached the server, then left.
+    const unsent = [p.play(20), p.play(20)];
+    h.advance(300_000);
+    const s2 = h.connect();
+    const { vstate } = await h.join(s2, {
+      resume: { tick: 30, hash: h.store.load()!.verifiedHash, pending: true, pendingToTick: 70 },
     });
     expect(vstate.offline).toBeNull();
     expect(vstate.continued).toBe(true);
+    expect(h.store.load()).toMatchObject({ offlineDueMs: 300_000 - 40 * 50, offlineDueTick: 70 });
+    only(await h.send(s2, { ...unsent[0]!, epoch: vstate.epoch }), "verified");
+    const out = await h.send(s2, { ...unsent[1]!, epoch: vstate.epoch });
+    expect(out.map((m) => m.t)).toEqual(["verified", "resync"]);
+    const r = out[1] as Resync;
+    expect(r.code).toBe("offline");
+    expect(r.epoch).toBe(vstate.epoch + 1);
+    expect(r.tick).toBe(70);
+    expect(r.offline?.elapsedMs).toBe(300_000 - 40 * 50);
+    expect(r.offline?.events).toEqual([{ type: "tvc.offline.summary", gain: 298 }]);
+    const sim = createSim(V1, { seed: 0, from: await unpackSnapshot(r.snapshot) });
+    expect(sim.hash()).toBe(r.hash);
+    expect(meterOf(sim).offline).toBe(1);
+    expect(h.store.load()).toMatchObject({
+      offlineDueMs: 0,
+      offlineDueTick: 0,
+      creditMs: START_CREDIT_MS,
+      lastActiveAt: h.clock.now,
+      baseTick: 70,
+      verifiedHash: r.hash,
+    });
+    expect(h.store.load()!.counters.byCode.offline).toBeUndefined();
   });
 
   it("is not granted below minMs, nor when not eligible, nor on a fresh join", async () => {
@@ -921,7 +983,7 @@ describe("VerifiedHost: content changes", () => {
 
 describe("VerifiedHost: reports", () => {
   it("appends changed report rows to the outbox at compaction only", async () => {
-    const { h, s, p } = await started();
+    const { h, s, p } = await startedIdle();
     // The first base (tick 0) reported hundreds = 0.
     expect(h.outbox.size()).toBe(1);
     h.advance(CREDIT_CAP_MS);
@@ -984,7 +1046,7 @@ describe("VerifiedHost: frames and pings", () => {
   });
 
   it("handles messages one at a time even when they arrive together", async () => {
-    const { h, s, p } = await started();
+    const { h, s, p } = await startedIdle();
     h.advance(CREDIT_CAP_MS);
     const segs = [p.play(10), p.play(10), p.play(10)];
     await Promise.all(segs.map((seg) => h.host.handleMessage(s, JSON.stringify(seg))));
@@ -1036,6 +1098,31 @@ describe("parseVerifiedClientMessage", () => {
       inputs: [{ tick: 0, name: "a.b", payload: null }],
       hash: "ff",
     });
+  });
+
+  it("keeps a valid resume.pendingToTick and drops an invalid one", () => {
+    const join = (pendingToTick: unknown) =>
+      parseVerifiedClientMessage(
+        JSON.stringify({
+          t: "join",
+          token: "a",
+          mode: "m",
+          resume: { tick: 3, hash: "ab", pending: true, pendingToTick },
+        }),
+      );
+    expect(join(90)).toMatchObject({
+      resume: { tick: 3, hash: "ab", pending: true, pendingToTick: 90 },
+    });
+    expect(join(0)).toMatchObject({ resume: { pendingToTick: 0 } });
+    for (const bad of [-1, 1.5, "90", null, Number.MAX_SAFE_INTEGER + 2]) {
+      const msg = join(bad);
+      expect(msg?.t).toBe("join");
+      expect(msg && msg.t === "join" ? msg.resume : null).toEqual({
+        tick: 3,
+        hash: "ab",
+        pending: true,
+      });
+    }
   });
 
   it("rejects wrong shapes", () => {

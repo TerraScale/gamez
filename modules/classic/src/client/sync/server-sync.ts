@@ -27,6 +27,13 @@
  * paused sim with actor BANK_ACTOR outside the recorder (never a segment
  * input: the server applied it at that same tick) and must reproduce the
  * server's hash, else the client rejoins and the server's state replaces it.
+ *
+ * Offline progress (docs/design/offline-idle.md §2, §5): every join sends
+ * resume.pendingToTick, so the server can grant at once when nothing real is
+ * pending, or defer the grant until the pending play verified (resync
+ * "offline"). A tab hidden for HIDDEN_RECONNECT_MS rejoins on return whatever
+ * is pending. A grant whose state already contains this device's pending play
+ * is not a loss (no "Progress restored" toast).
  */
 import {
   createSim,
@@ -71,7 +78,7 @@ export const DEFAULT_LIMITS: VerifiedState["limits"] = {
 };
 /** Without a cache, wait this long for the server before falling back to local mode. */
 export const BOOT_TIMEOUT_MS = 8000;
-/** A tab hidden this long reconnects on return so the server can grant offline progress. */
+/** A tab hidden this long reconnects on return (even with pending play) so the server can grant offline progress. */
 export const HIDDEN_RECONNECT_MS = 60_000;
 /** SyncView refresh period while ticking. */
 const VIEW_EVERY_MS = 500;
@@ -146,6 +153,14 @@ interface BankFlight {
   phase: "cut" | "sent";
   resolve(r: BankResult): void;
   timer: unknown;
+}
+
+/** What #resume() answers (protocol join resume; pendingToTick per offline-idle.md §5.2). */
+export interface ResumePoint {
+  tick: number;
+  hash: string;
+  pending: boolean;
+  pendingToTick?: number;
 }
 
 /** Result of boot(): the sim to start with and how it was obtained. */
@@ -501,15 +516,24 @@ export class ServerSync implements ServerHooks {
     }
   }
 
-  #resume(): { tick: number; hash: string; pending: boolean } | null {
+  /**
+   * The continuation point of the next join, or null (adopt the server state:
+   * no verified base yet, a restart, an overflow). `pendingToTick` is the
+   * toTick of the last pending segment: the server defers its offline grant
+   * only while that play is past its verified tick (offline-idle.md §5.2).
+   */
+  #resume(): ResumePoint | null {
     if (this.#restarting || this.#overflow || this.#verified === null || this.#boot !== null) {
       return null;
     }
-    return {
+    const last = this.#pending.at(-1);
+    const out: ResumePoint = {
       tick: this.#verified.tick,
       hash: this.#verified.hash,
-      pending: this.#pending.length > 0,
+      pending: last !== undefined,
     };
+    if (last !== undefined) out.pendingToTick = last.toTick;
+    return out;
   }
 
   #onStatus(st: VerifiedStatus): void {
@@ -595,7 +619,9 @@ export class ServerSync implements ServerHooks {
       this.#host?.log("Server state without a snapshot ignored");
       return;
     }
-    const lost = this.#pending.length > 0 || this.#overflow;
+    // Lost = local play the server state does not contain. Pending segments the
+    // server already verified (an offline grant on top of them) are not a loss.
+    const lost = this.#overflow || this.#pending.some((p) => p.toTick > s.tick);
     if (!this.#adopt(s, s.snapshot, host)) return;
     if (s.offline && s.offline.events.length > 0) host.emit(s.offline.events);
     if (lost) host.notify("info", SYNC_TEXT.replacedTitle, SYNC_TEXT.replacedBody);
@@ -654,6 +680,16 @@ export class ServerSync implements ServerHooks {
     if (r.code === "bank") {
       // The server applied a bank op at its verified tick (the slow path): adopt quietly.
       this.#adopt(r, r.snapshot, host, true);
+      return;
+    }
+    if (r.code === "offline") {
+      // A deferred offline grant (offline-idle.md §5.3): our pending play verified and the
+      // server paid the absence on top of it. Adopt it and show the summary; no loss toast.
+      host.log(`Server: ${r.message}`);
+      const grant = (r as VerifiedResync & { offline?: VerifiedState["offline"] }).offline;
+      if (this.#adopt(r, r.snapshot, host) && grant && grant.events.length > 0) {
+        host.emit(grant.events);
+      }
       return;
     }
     this.#lastResync = { code: r.code, message: r.message, at: this.#opts.wall() };
@@ -841,12 +877,14 @@ export class ServerSync implements ServerHooks {
   }
 
   /**
-   * The tab became visible after `hiddenMs`. After a long absence with
-   * nothing pending, rejoin so the server can grant offline progress.
+   * The tab became visible after `hiddenMs`. After a long absence, rejoin so
+   * the server can grant offline progress, whatever is pending: the resume
+   * says how far the pending play goes and the server decides (grant now, or
+   * after that play verified).
    */
   visible(hiddenMs: number): void {
     if (hiddenMs < HIDDEN_RECONNECT_MS || this.#restarting || this.#detached) return;
-    if (this.#pending.length > 0 || this.#overflow) return;
+    if (this.#bank) return;
     if (this.#status === "online") this.reconnect();
   }
 

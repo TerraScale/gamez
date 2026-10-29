@@ -163,19 +163,66 @@ function addSummoners(c: AutoCtx, foes: Foe[]): void {
 
 /**
  * Target score (sub units, lowest wins): distance + 4 tiles for a summon
- * farther than 2 tiles - 6 tiles for an exploder within 4 tiles - 3 for
- * casters/summoners - 2 for bosses/uniques - 2 for the current focus. Ties go
- * to the lower entity id.
+ * farther than 2 tiles (a boss's phase minion: + BOSS_SUMMON_PENALTY instead
+ * when it fights in melee, - BOSS_SHOOTER_BONUS at any distance for a ranged hero
+ * when it shoots) - 6 tiles for an exploder within 4 tiles - 3 for
+ * casters/summoners - BOSS_BONUS for bosses (- 2 for uniques) - 2 for the
+ * current focus. Ties go to the lower entity id.
  */
 export function targetScore(c: AutoCtx, f: Foe): number {
   let s = f.dist;
   // Summons give no XP: only fight them when they are in the way.
-  if (f.rarity === "summon" && f.dist > 2 * TILE) s += 4 * TILE;
+  if (f.rarity === "summon") {
+    const phaseMinion = bossSummon(c, f.e);
+    // A melee phase minion within 2 tiles is fought like any foe: it body-blocks the way to
+    // the boss, and walking past it only feeds the stuck detector.
+    if (phaseMinion && f.melee) {
+      if (f.dist > 2 * TILE) s += BOSS_SUMMON_PENALTY;
+    } else if (phaseMinion && rangedHero(c)) s -= BOSS_SHOOTER_BONUS;
+    else if (f.dist > 2 * TILE) s += 4 * TILE;
+  }
   if (f.behaviour === "exploder" && f.dist <= 4 * TILE) s -= 6 * TILE;
   if (f.behaviour === "caster" || f.behaviour === "summoner") s -= 3 * TILE;
-  if (f.rarity === "boss" || f.rarity === "unique" || f.behaviour === "boss") s -= 2 * TILE;
+  if (f.rarity === "boss" || f.behaviour === "boss") s -= BOSS_BONUS;
+  else if (f.rarity === "unique") s -= 2 * TILE;
   if (f.e === c.st.focus) s -= 2 * TILE;
   return s;
+}
+
+/**
+ * Score bonus (sub) of a boss. Its body is wider than a minion's (its
+ * centre is farther away at the same gap), and a melee hero that swung at
+ * whatever stood closest spent half its swings on the boss's minions
+ * (warrior vs Skarn: 147 of 484 swings hit the boss).
+ */
+export const BOSS_BONUS = 4 * TILE;
+/**
+ * Score penalty (sub) of a boss's melee phase minion (a summon whose owner
+ * is a boss) farther than 2 tiles, in place of the normal summon's 4 tiles:
+ * it gives no XP, dies with its timer, and every swing at it is one the
+ * boss does not take. The hero still fights it when the boss is out of
+ * reach, and like any foe when it is within 2 tiles (body-blocking).
+ */
+export const BOSS_SUMMON_PENALTY = 6 * TILE;
+/**
+ * Score bonus (sub) of a boss's ranged phase minion for a ranged hero: left
+ * alone, Vessa's ash seers dealt a third of the damage that killed a
+ * level-19 rogue with Vessa at 6 % life, and they die to one or two shots. A
+ * melee hero keeps the normal summon rule (the casters flee from melee).
+ */
+export const BOSS_SHOOTER_BONUS = 8 * TILE;
+
+/** True for a hero that fights at range: a projectile weapon, or a caster class. */
+function rangedHero(c: AutoCtx): boolean {
+  if ((c.world.get(c.hero, CombatStats)?.attackProjectile ?? "") !== "") return true;
+  return (c.world.get(c.hero, HeroStats)?.primary ?? c.classProto?.primary) === "mag";
+}
+
+/** True for a summon whose owner is a living boss. */
+function bossSummon(c: AutoCtx, e: Entity): boolean {
+  const owner = c.world.get(e, Summoned)?.owner ?? 0;
+  if (owner === 0 || c.world.has(owner, Dead)) return false;
+  return c.world.get(owner, Monster)?.rarity === "boss";
 }
 
 export function pickTarget(c: AutoCtx, foes: readonly Foe[]): Foe {

@@ -472,6 +472,14 @@ export const AutoState = defineComponent<{
   caution: number;
   /** Hero level last seen (caution decay). */
   levelSeen: number;
+  /**
+   * Boss-fight progress (progress watchdog): the boss last focused and the
+   * lowest life seen on it. A boss-fight tick counts as progress only when
+   * the focus changed to it or its life went below bossHp. Optional: saves
+   * from before the fields have no boss progress yet.
+   */
+  bossE?: Entity;
+  bossHp?: number;
 }>("classic.autoState");
 
 // ---------------------------------------------------------------------------

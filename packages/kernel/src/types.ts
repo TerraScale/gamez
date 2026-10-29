@@ -254,16 +254,21 @@ export interface ClientDrivenPolicy {
   /** Actions only the server may dispatch; a segment containing one is rejected. */
   serverOnlyActions: readonly string[];
   /**
-   * Offline progress: on a join after at least `minMs` of server-measured
-   * absence (and no client continuation), the host dispatches
-   * `action` with payload `{ elapsedMs: min(elapsed, capMs) }` when
-   * `eligible(world)` is true. Failures are ignored.
+   * Offline progress (docs/design/offline-idle.md §5): after at least `minMs`
+   * of server-measured absence the host dispatches `action` with
+   * `payload(elapsedMs, tunables)` (default `{ elapsedMs }`), elapsedMs =
+   * min(absence, capMs), when `eligible(world)` is true. Failures are logged
+   * and ignored. `tunables` are the admin's live numeric config values
+   * (ConfigResponse.tunables; `{}` when unavailable): the payload carries the
+   * effective values so replay stays deterministic (the grant is compacted
+   * at once and never replayed from a client).
    */
   offline?: {
     action: string;
     minMs: number;
     capMs: number;
     eligible(world: World): boolean;
+    payload?(elapsedMs: number, tunables: Readonly<Record<string, number>>): unknown;
   };
   /**
    * Read-model rows derived from verified state (leaderboards, summaries).

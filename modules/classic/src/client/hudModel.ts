@@ -108,6 +108,7 @@ import {
   type SkillView,
   type StatusView,
   type TargetView,
+  type Store,
   type VendorView,
 } from "./contract.ts";
 import { itemLines, skillDetailLines, statDiffs, statTotals } from "./describe.ts";
@@ -872,4 +873,87 @@ export function heroOfWorld(world: World): Entity {
   const g = world.getResource<GameState>(RES.game);
   if (!g || g.hero === 0 || !world.exists(g.hero)) return 0;
   return g.hero;
+}
+
+// ---- away summary (docs/design/offline-idle.md §6) ----------------------------
+
+/** A grant of at least this many credited ms opens the card (zero grants show nothing). */
+export const AWAY_CARD_MIN_MS = 60_000;
+/** Quest lines the card shows; the rest are counted in questsMore. */
+export const AWAY_QUEST_LINES = 3;
+
+export interface AwayQuestLine {
+  name: string;
+  /** "3/10" while running, "complete" when done. */
+  text: string;
+  done: boolean;
+}
+
+/**
+ * The "While you were away" card: one classic.offline.summary and the quest
+ * events of the same event batch. Built by effects.ts, shown by AwaySummary.tsx.
+ */
+export interface AwayView {
+  /** Absence the server (or the local client) measured. */
+  awayMs: number;
+  /** Credited time: min(awayMs, capMs), whole minutes. */
+  creditedMs: number;
+  capMs: number;
+  kills: number;
+  /** Already scaled by xpPct. */
+  xp: number;
+  /** Already scaled by goldPct. */
+  gold: number;
+  /** Upkeep gold already deducted from `gold` (0 for the model). */
+  upkeep: number;
+  /** Gold found before upkeep (absent: an older server; the card then shows the net only). */
+  found?: number;
+  items: number;
+  levels: number;
+  xpPct: number;
+  goldPct: number;
+  itemPct: number;
+  /** "rate": measured online Idle rate. "model": fallback estimate. */
+  source: "rate" | "model";
+  quests: AwayQuestLine[];
+  /** Quest lines not shown. */
+  questsMore: number;
+}
+
+export interface AwayStore extends Store<AwayView | null> {
+  set(view: AwayView | null): void;
+}
+
+export function createAwayStore(): AwayStore {
+  let value: AwayView | null = null;
+  const subs = new Set<() => void>();
+  return {
+    getSnapshot: () => value,
+    subscribe(cb) {
+      subs.add(cb);
+      return () => {
+        subs.delete(cb);
+      };
+    },
+    set(next) {
+      if (next === value) return;
+      value = next;
+      for (const cb of subs) cb();
+    },
+  };
+}
+
+/**
+ * The card's store. game.ts writes it from the "away" visual; index.ts clears
+ * it on mount and teardown, so a remount never shows an old card.
+ */
+export const awayStore: AwayStore = createAwayStore();
+
+/** Player-facing span: "8 h", "2 h 5 min", "42 min". */
+export function awaySpan(ms: number): string {
+  const totalMin = Math.max(0, Math.floor(ms / 60_000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }

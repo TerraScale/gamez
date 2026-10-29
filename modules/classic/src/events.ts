@@ -127,15 +127,39 @@ export type ClassicEvent =
   | { type: "classic.auto.plan"; plan: string; note: string }
   /** The controller changed course on its own (stash full, travel loop, kill drought). */
   | { type: "classic.auto.notice"; code: string; message: string }
+  /**
+   * One offline grant (docs/design/offline-idle.md §6). `ms` = credited time
+   * (min(awayMs, capMs), whole minutes count); `awayMs` = the absence the
+   * server (or the local client) measured; xp/gold/items are already scaled
+   * by xpPct/goldPct/itemPct; `source` = "rate" (measured online Idle rate)
+   * or "model" (fallback estimate); `levels` = levels gained by the XP.
+   */
   | {
       type: "classic.offline.summary";
       ms: number;
+      awayMs: number;
+      capMs: number;
       depth: number;
       kills: number;
       xp: number;
       gold: number;
       items: number;
       levels: number;
+      xpPct: number;
+      goldPct: number;
+      itemPct: number;
+      source: "rate" | "model";
+      /**
+       * Upkeep gold already deducted from `gold` (rate path: potions, scrolls
+       * and repairs at the measured rate; 0 for the model). Optional so older
+       * emitters type-check; the sim always sets it.
+       */
+      upkeep?: number;
+      /**
+       * Gold found before upkeep (scaled by goldPct; equals `gold` for the
+       * model). Optional so older emitters type-check; the sim always sets it.
+       */
+      found?: number;
     }
   // ---- any command owner
   | { type: "classic.command.failed"; op: string; code: string; message: string }

@@ -69,6 +69,10 @@ export const TEST_BALANCE: BalanceProto = {
   vendorItems: 8,
   offlineCapMs: 8 * 3600 * 1000,
   offlineEfficiencyPct: 35,
+  offlineXpPct: 20,
+  offlineGoldPct: 100,
+  offlineItemPct: 100,
+  offlineModelXpPct: 200,
 };
 
 const skill = (

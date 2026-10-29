@@ -16,6 +16,7 @@ export {
   ServerSync,
   SYNC_ACTOR,
   SYNC_TEXT,
+  type ResumePoint,
   type ServerSyncOptions,
   type SyncBoot,
   type SyncHost,

@@ -17,6 +17,13 @@
  * blocked "local". While ServerHooks.paused() (a bank op is out) the sim does
  * not step; dispatches are refused by ServerHooks.refuse.
  *
+ * Offline grants (docs/design/offline-idle.md §6): the classic.offlineProgress
+ * action only queues its grantXp / grantGold / grantItems commands, which land
+ * on the next sim step. A batch carrying classic.offline.summary (a local
+ * dispatch, or a server grant adopted through emit) is therefore held until
+ * the next step and fanned out right after it, with a fresh HUD: the "While
+ * you were away" card never shows next to the pre-grant XP, level or gold.
+ *
  * Errors inside the frame loop never escape: they are shown in ui.error.
  */
 import {
@@ -73,7 +80,7 @@ import {
   type FloatPolicy,
   type Visual,
 } from "./effects.ts";
-import { buildHud, heroOfWorld, minimapData } from "./hudModel.ts";
+import { awayStore, buildHud, heroOfWorld, minimapData } from "./hudModel.ts";
 import { FixedLoop, PerfWindow } from "./loop.ts";
 import { PointerInput, type PointerCommand } from "./input.ts";
 import { SceneSync } from "./scene.ts";
@@ -296,6 +303,8 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
   let backoffUntil = Number.NEGATIVE_INFINITY;
   let appliedZoom = Number.NaN;
   let alpha = 0;
+  /** An offline-grant batch waiting for the step that applies its commands (see the header). */
+  let heldGrant: GameEvent[] | null = null;
   // Wave A: procedural audio (audio/index.ts) and renderer quality.
   const audio = createAudio({ registry, settings });
   let appliedQuality: GraphicsQuality | null = null;
@@ -394,6 +403,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
       case "toast":
         pushToast(v.toastKind, v.title, v.body, v.ms);
         return;
+      case "away":
+        awayStore.set(v.view);
+        return;
       case "panel":
         openPanel(v.panel);
         return;
@@ -418,10 +430,24 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     }
   }
 
+  /**
+   * fanOut, except for a batch with an offline summary: that one waits for the
+   * next step (the grant's commands apply on it). A second batch before that
+   * step joins the first.
+   */
+  function fanOutOrHold(events: readonly GameEvent[]): void {
+    if (!events.some((e) => e.type === "classic.offline.summary")) {
+      fanOut(events);
+      return;
+    }
+    if (heldGrant === null) heldGrant = [...events];
+    else for (const e of events) heldGrant.push(e);
+  }
+
   function fanOut(events: readonly GameEvent[]): void {
     if (events.length === 0) return;
     deps.onEvents?.(events);
-    const env = effectEnv(sim.world);
+    const env = { ...effectEnv(sim.world), batch: events };
     const control = sim.world.getResource<ControlState>(RES.control);
     floats = floatPolicy(control && control.mode === "idle" ? control.speed : 1);
     floatsLeft = floats.perBatch;
@@ -503,7 +529,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
         return res;
       }
       deps.server?.dispatched(tick, name, payload);
-      fanOut(res.events);
+      fanOutOrHold(res.events);
       refreshHud();
       return res;
     } catch (err) {
@@ -664,6 +690,13 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     // Feeds the per-frame sim budget (loop.ts FRAME_BUDGET_MS).
     loop.observe(adv.ticks, spent);
     fanOut(events);
+    if (heldGrant !== null) {
+      // The step applied the grant's queued commands: show the card with the new HUD.
+      const held = heldGrant;
+      heldGrant = null;
+      fanOut(held);
+      refreshHud();
+    }
   }
 
   function renderFrame(): void {
@@ -758,6 +791,9 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     }
     vendorNpc = 0;
     gamblerNpc = 0;
+    // A new game drops a grant that has not shown yet; a resync keeps it (the
+    // server's state already contains it, and its commands run on the next step).
+    if (clearMessages) heldGrant = null;
     if (clearMessages) {
       setUi({ panels: [], toasts: [], error: null, hover: null });
       log.set([]);
@@ -890,7 +926,7 @@ export function createClassicGame(deps: GameDeps): ClassicGame {
     emit(events) {
       if (destroyed) return;
       try {
-        fanOut(events);
+        fanOutOrHold(events);
         refreshHud();
       } catch (err) {
         reportError(err);
