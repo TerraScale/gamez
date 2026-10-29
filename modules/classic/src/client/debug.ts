@@ -23,6 +23,7 @@ import {
   AreaTag,
   AutoState,
   Dead,
+  Equipment,
   Hero,
   Interactable,
   Level,
@@ -46,7 +47,7 @@ import {
   type ControlState,
   type RunStats,
 } from "../resources.ts";
-import { KIND, type NpcProto } from "../types.ts";
+import { EQUIP_SLOTS, KIND, type NpcProto } from "../types.ts";
 import { actingLeaderOf, partyMembers, partyOf } from "../party/shared.ts";
 import type { ClassicClientApi, PanelId, Settings } from "./contract.ts";
 import { heroOfWorld } from "./hudModel.ts";
@@ -263,7 +264,7 @@ export interface ClassicDebugControls {
    * QA grant (classic.debug.grant, `?debug=1&cheats=1` only): gold, levels,
    * items {count, rarity, ilvl, category?}, gems, unlockRift, bossesKilled,
    * deepest, talentPoints, and the QA routes set, riftProgress, spawnBoss,
-   * woundBosses (tools/qa/README.md). Strictly validated by the sim.
+   * woundBosses, party, wearGear (tools/qa/README.md). Strictly validated by the sim.
    */
   cheat(payload: Record<string, unknown>): DispatchResult;
 }
@@ -333,7 +334,20 @@ export function waveASummary(world: World): Record<string, unknown> {
       : null,
     achievements: ach ? { unlocked: ach.unlocked.map((u) => u.id), title: ach.title } : null,
     lootFilter: filter,
+    gear: gearDurability(world, hero),
   };
+}
+
+/** Durability of the hero's equipped items (slot order; items that never wear are left out). */
+function gearDurability(world: World, hero: Entity): { slot: string; cur: number; max: number }[] {
+  const eq = hero !== 0 ? world.get(hero, Equipment) : undefined;
+  if (!eq) return [];
+  const out: { slot: string; cur: number; max: number }[] = [];
+  for (const slot of EQUIP_SLOTS) {
+    const d = eq[slot]?.dur;
+    if (d && d.max > 0) out.push({ slot, cur: d.cur, max: d.max });
+  }
+  return out;
 }
 
 /**
@@ -470,6 +484,7 @@ export function simSummary(
           frontier: auto.frontierX >= 0 ? { x: auto.frontierX, y: auto.frontierY } : null,
           stuck: auto.stuck,
           caution: auto.caution,
+          tripAt: auto.tripAt,
         }
       : null,
     party: partySummary(world),

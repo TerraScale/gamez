@@ -26,7 +26,18 @@ import { ERR } from "../actions.ts";
 import { ensureParty, partySize } from "../party/shared.ts";
 import { execRecruit } from "../party/recruit.ts";
 import { cleanHeroName } from "../progression/hero.ts";
-import { AreaTag, Body, Dead, Level, Life, Monster, Pos, Talents } from "../components.ts";
+import {
+  AreaTag,
+  Body,
+  Dead,
+  Equipment,
+  Level,
+  Life,
+  Monster,
+  Pos,
+  Talents,
+} from "../components.ts";
+import { applyWear } from "../items/wear.ts";
 import { tileCenter, type TilePos } from "../fixed.ts";
 import {
   currentDepth,
@@ -39,6 +50,7 @@ import {
 import {
   bossDisplayName,
   MAIN_DUNGEON_DEPTH,
+  maxDurabilityOf,
   monsterLevel,
   PARTY_MAX,
   xpAtLevel,
@@ -46,12 +58,15 @@ import {
 import { MODULE } from "../ids.ts";
 import {
   BALANCE_ID,
+  EQUIP_SLOTS,
   ITEM_CATEGORIES,
   ITEM_RARITIES,
   KIND,
   RIFT_ID,
   type BalanceProto,
   type ClassProto,
+  type EquipSlot,
+  type ItemBaseProto,
   type ItemCategory,
   type ItemRarity,
   type MonsterProto,
@@ -97,6 +112,12 @@ export interface GrantPayload {
    * charge and in any place. Unlocks the slots they need. Named "<Class> <n>".
    */
   party?: string[];
+  /**
+   * Wears the controlled hero's equipped gear down to this percent of its max
+   * durability (0 = broken; never repairs), through the real wear path
+   * (classic.item.worn / classic.item.broken). QA: Auto repair trips.
+   */
+  wearGear?: number;
 }
 
 const FIELDS = [
@@ -113,6 +134,7 @@ const FIELDS = [
   "spawnBoss",
   "woundBosses",
   "party",
+  "wearGear",
 ] as const;
 
 /** Content ids in payloads: namespaced, short, plain characters. */
@@ -162,6 +184,7 @@ export function parseGrant(payload: unknown): GrantPayload {
   if (p.set !== undefined) out.set = idOf(p.set, "set");
   if (p.spawnBoss !== undefined) out.spawnBoss = idOf(p.spawnBoss, "spawnBoss");
   if (p.woundBosses !== undefined) out.woundBosses = intIn(p.woundBosses, 1, 99, "woundBosses");
+  if (p.wearGear !== undefined) out.wearGear = intIn(p.wearGear, 0, 99, "wearGear");
   if (p.party !== undefined) {
     if (!Array.isArray(p.party)) bad("party must be an array of class ids");
     if (p.party.length < 1 || p.party.length > 3) bad("party must hold 1..3 class ids");
@@ -446,6 +469,7 @@ export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void
     spawnBossNear(world, ctx, hero, g.spawnBoss);
   if (g.woundBosses !== undefined) woundBosses(world, g.woundBosses);
   if (g.party !== undefined) grantParty(world, ctx, g.party);
+  if (g.wearGear !== undefined) wearGear(world, ctx, hero, g.wearGear);
   if (g.talentPoints !== undefined) {
     const t = world.get(hero, Talents);
     if (t) world.update(hero, Talents, { points: t.points + g.talentPoints });
@@ -458,6 +482,28 @@ export function applyGrant(world: World, ctx: SimContext, g: GrantPayload): void
       });
     }
   }
+}
+
+/**
+ * Lowers every wearable equipped item of `hero` to `pct` % of its max
+ * durability (never raises it) with applyWear, so the worn / broken events
+ * and set threshold changes are the real ones. Refused when nothing can wear.
+ */
+function wearGear(world: World, ctx: SimContext, hero: number, pct: number): void {
+  const eq = world.get(hero, Equipment);
+  const losses: { slot: EquipSlot; amount: number }[] = [];
+  for (const slot of EQUIP_SLOTS) {
+    const item = eq?.[slot];
+    if (!item) continue;
+    const base = ctx.registry.get<ItemBaseProto>(KIND.itemBase, item.base);
+    if (!base) continue;
+    const max = item.dur?.max ?? maxDurabilityOf(base);
+    const cur = item.dur?.cur ?? max;
+    const target = Math.floor((max * pct) / 100);
+    if (max > 0 && cur > target) losses.push({ slot, amount: cur - target });
+  }
+  if (losses.length === 0) throw new ActionError(ERR.badTarget, "no equipped item can wear");
+  applyWear(world, ctx, hero, losses);
 }
 
 /**
@@ -493,7 +539,7 @@ const grant: ActionDef<GrantPayload> = {
 
 export const classicDebug = defineModule({
   id: MODULE.debug,
-  version: "0.4.0",
+  version: "0.5.0",
   deps: [MODULE.content, MODULE.core],
   optionalDeps: [MODULE.items, MODULE.progression, MODULE.world, MODULE.rift, MODULE.talents],
   systems: [pendingWoundSystem],

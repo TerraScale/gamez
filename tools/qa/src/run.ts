@@ -38,6 +38,7 @@ import { WAVE_C_RUNNERS } from "./waveC/index.ts";
 import { QUESTS_RUNNERS } from "./quests.ts";
 import { OFFLINE_RUNNERS } from "./offline.ts";
 import { PARTY_RUNNERS } from "./party.ts";
+import { REPAIR_RUNNERS } from "./repair.ts";
 
 interface Args {
   scenario: string;
@@ -99,6 +100,7 @@ const SCENARIOS: readonly string[] = [
   ...Object.keys(QUESTS_RUNNERS),
   ...Object.keys(OFFLINE_RUNNERS),
   ...Object.keys(PARTY_RUNNERS),
+  ...Object.keys(REPAIR_RUNNERS),
 ];
 
 /** Network failures of a dev-server restart (see main): reported as warnings, not game errors. */
@@ -119,6 +121,7 @@ function usage(msg?: string): never {
       "  classic-features <class>              cheats (?debug=1&cheats=1): talents, smith, gambler, sets, rift\n" +
       "  classic-boss <class>                  cheats: a boss beside the hero, its telegraphs, phases and shake\n" +
       "  classic-party <class>                 cheats: a party of four, F2 / Tab control, Idle x8 for a minute\n" +
+      "  classic-repair <class>                cheats: gear broken in the dungeon, Idle repairs it at the smith\n" +
       "  party <class>                         party panel: buy slots, recruit, portrait / F-key / Tab control, camera, outlines\n" +
       "  gallery [--all-facings]\n" +
       "  panels [class], classic-create [class]\n",
@@ -1494,6 +1497,7 @@ const RUNNERS: Record<string, (run: Run) => Promise<void>> = {
   ...QUESTS_RUNNERS,
   ...OFFLINE_RUNNERS,
   ...PARTY_RUNNERS,
+  ...REPAIR_RUNNERS,
   picker,
   "classic-start": classicStart,
   "classic-create": classicCreate,

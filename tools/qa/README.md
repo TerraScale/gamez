@@ -21,6 +21,7 @@ node tools/qa/src/run.ts classic-create rogue          # new-hero screen through
 node tools/qa/src/run.ts classic-idle warrior 1 8      # Idle mode x8 for 1 minute: samples + screenshots, data.descents
 node tools/qa/src/run.ts classic-features warrior      # wave A systems with cheats: talents, smith, gambler, stash, filter, sets, rift
 node tools/qa/src/run.ts classic-boss warrior          # cheats: a boss beside the hero, each telegraph shape, both phases, the shake
+node tools/qa/src/run.ts classic-repair warrior        # cheats: gear broken in the dungeon (wearGear), Idle's repair trip to the smith
 node tools/qa/src/run.ts panels [class]                # every HUD panel, every NPC/station panel
 node tools/qa/src/run.ts gallery [--all-facings]       # ?qa=gallery: every appearance/item/effect/tile/prop
 node tools/qa/src/run.ts steps | duel | plaza          # the other modes: load, a few inputs, screenshots
@@ -71,6 +72,21 @@ kills a cheat hero in seconds). The run polls `sim.lastEvents` for `classic.tele
 Hard checks: the boss spawns, phase 1 starts, its toast names Morrow, and
 `render.shakes` counts up. Each telegraph shape is a warning (the line only comes
 with the phase 2 rush). `data.boss` holds the shapes seen and the shake counts.
+
+### classic-repair (cheats)
+
+Natural wear (1 durability per 8 kills, 10 % per death) never breaks gear in a
+short Idle run, so repairs need a cheat (`src/repair.ts`). The hero gets 5000 gold
+and plays Idle x8 until it is in the dungeon past the voluntary trip cooldown
+(`sim.autoState.tripAt`: repair trips wait 60 sim seconds after a town visit, like
+every voluntary trip). `wearGear: 0` then breaks every equipped item through the
+real wear path while Idle explores. Hard checks: Idle plans `toTown` (event ring; the note
+must be `repair`, or a warning when a fight right after the cheat ended in a `retreat`
+first, whose visit repairs too),
+`classic.repaired` counts up, every broken item is whole again (`sim.gear`:
+`{slot, cur, max}` per equipped item), and Idle goes back down. Shots:
+`in-dungeon`, `gear-broken`, `repaired`, `back-down`; `data.repair` holds the gear
+before and after and the trip notes.
 
 ### party
 
@@ -591,7 +607,9 @@ URL parameters (classic, independent of `?debug`):
   `spawnBoss: "<boss or guardian id>"` (awake beside the hero; `in_town` in town) and
   `woundBosses: 1..99` (every living boss of the area to that % of its life, so phases
   start on demand; `bad_target` with no boss; it may be sent in the same grant as
-  `spawnBoss`, and then applies right after the boss spawns). Unknown or out-of-range fields are
+  `spawnBoss`, and then applies right after the boss spawns), `party: [class ids]` and
+  `wearGear: 0..99` (the hero's equipped gear down to that % of its max durability,
+  0 = broken, through the real wear path; `bad_target` when nothing can wear). Unknown or out-of-range fields are
   rejected (`bad_payload`) and change nothing.
 - `?fresh=1` skips the save carry-over. A save of another content version whose
   modules all still exist is restored under the new hash, stepped 20 ticks as a

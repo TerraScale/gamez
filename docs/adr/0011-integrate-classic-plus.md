@@ -116,3 +116,10 @@ were updated. Code comments that say "ADR 0007 Rn" are the security fixes and ar
 - A party's offline XP per member is close to what a solo hero of the same level gets (each
   member's share of a kill is about 1× a solo kill), so a party does not multiply offline XP.
 - Other players no longer see the names a player gives its companions.
+- Idle repair trips are covered end to end (integration QA found no `classic.repaired` in any short
+  Idle run, because natural wear needs hundreds of kills). The QA cheat `wearGear` (`classic.debug`
+  0.5.0) breaks gear through the real wear path; `tests/auto.repair.test.ts` and the browser
+  scenario `classic-repair` check the repair trip, the smith's repair, the restored durability and
+  the way back down. A repair trip still waits for the voluntary-trip cooldown (60 sim seconds
+  after a town visit), so gear that breaks right after a visit that could not pay the smith waits
+  for it (or a retreat).
