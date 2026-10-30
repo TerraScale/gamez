@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { EntityState, ServerMessage } from "@gamez/protocol";
 import { PresenceClient, presenceUrl } from "../../src/client/presence/connection.ts";
 import { presenceConnector } from "../../src/client/presence/index.ts";
+import { codec } from "../../src/shared/codec.ts";
 
 /** A WebSocket stand-in the test drives by hand (open, receive, drop). */
 class FakeSocket {
@@ -13,17 +14,17 @@ class FakeSocket {
 
   readyState = FakeSocket.CONNECTING;
   binaryType = "";
-  readonly sent: string[] = [];
+  readonly sent: Array<string | Uint8Array> = [];
   closeCalls = 0;
   onopen: (() => void) | null = null;
-  onmessage: ((ev: { data: string }) => void) | null = null;
+  onmessage: ((ev: { data: string | Uint8Array }) => void) | null = null;
   onclose: ((ev: { code: number }) => void) | null = null;
 
   constructor(readonly url: string) {
     FakeSocket.instances.push(this);
   }
 
-  send(data: string): void {
+  send(data: string | Uint8Array): void {
     this.sent.push(data);
   }
 
@@ -37,8 +38,9 @@ class FakeSocket {
     this.onopen?.();
   }
 
+  /** Delivers a server message in the wire codec, as the RelayDO sends it to an announcing client. */
   receive(msg: ServerMessage): void {
-    this.onmessage?.({ data: JSON.stringify(msg) });
+    this.onmessage?.({ data: codec.encodeServer(msg) as Uint8Array });
   }
 
   drop(code: number): void {
@@ -48,7 +50,7 @@ class FakeSocket {
 
   /** Decoded client messages sent so far, filtered by tag. */
   sentOf(t: string): unknown[] {
-    return this.sent.map((s) => JSON.parse(s) as { t: string }).filter((m) => m.t === t);
+    return this.sent.map((s) => codec.decodeClient(s) as { t: string }).filter((m) => m.t === t);
   }
 }
 
@@ -89,10 +91,10 @@ async function socketCount(n: number): Promise<void> {
 describe("presenceUrl", () => {
   it("builds ws and wss URLs with the token and world", () => {
     expect(presenceUrl("game.example", false, "a b+c", "classic-town")).toBe(
-      "ws://game.example/ws?token=a%20b%2Bc&world=classic-town",
+      "ws://game.example/ws?token=a%20b%2Bc&world=classic-town&codec=binary",
     );
     expect(presenceUrl("game.example", true, "t", "plaza")).toBe(
-      "wss://game.example/ws?token=t&world=plaza",
+      "wss://game.example/ws?token=t&world=plaza&codec=binary",
     );
   });
 });
@@ -124,7 +126,7 @@ describe("PresenceClient", () => {
     expect(c.getView()).toEqual({ status: "connecting", selfId: null, others: [] });
     await socketCount(1);
     expect(FakeSocket.instances[0]!.url).toBe(
-      "ws://game.example/ws?token=tok-A&world=classic-town",
+      "ws://game.example/ws?token=tok-A&world=classic-town&codec=binary",
     );
   });
 
