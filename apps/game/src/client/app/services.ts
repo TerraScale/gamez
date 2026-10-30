@@ -6,7 +6,7 @@
 import type { AssetManifest } from "@gamez/assets";
 import type { ModeInfo } from "@gamez/protocol";
 import type { ClientServices, PlatformScreen, PlatformServices, Session } from "@gamez/ui-host";
-import { MODES } from "../../shared/catalog.ts";
+import { MODE_META } from "../../shared/mode-meta.ts";
 import { instanceConnector } from "../instance/index.ts";
 import { verifiedConnector } from "../instance/verified.ts";
 import { createPlatform } from "../platform/index.ts";
@@ -40,7 +40,7 @@ export async function loadManifest(): Promise<AssetManifest> {
 
 /** Picker entries: every catalog mode (classic first), then the multiplayer plaza demo. */
 export function modeInfos(): ModeInfo[] {
-  const catalog = MODES.filter((m) => m.id !== classicInfo.id).map((m): ModeInfo => ({
+  const catalog = MODE_META.filter((m) => m.id !== classicInfo.id).map((m): ModeInfo => ({
     id: m.id,
     name: m.name,
     description: m.description,
