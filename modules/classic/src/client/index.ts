@@ -29,6 +29,7 @@ import {
 import { debugModules, mode, modules } from "../index.ts";
 import { ACTION } from "../actions.ts";
 import { classicOfflineEligible } from "../platform/policy.ts";
+import { RES, type RunStats } from "../resources.ts";
 import { ClassicHud, registerDefaultHud } from "./hud/index.tsx";
 import { hudLayoutFor } from "./hud/layout.ts";
 import { labelInsetsFor } from "./scene.ts";
@@ -86,16 +87,38 @@ export function localAwayDue(world: World, awayMs: number): boolean {
 }
 
 /**
+ * True when the sim already paid an offline grant on its current tick
+ * (RunStats.offlineAt, the same-tick guard of offline-idle.md §4.4): a second
+ * local grant now would be refused (offline_twice).
+ */
+export function grantedThisTick(sim: Sim): boolean {
+  return sim.world.getResource<RunStats>(RES.stats)?.offlineAt === sim.tick;
+}
+
+/**
  * Dispatches the offline grant for `awayMs` of absence, then saves, so a reload
  * right after measures from this save and cannot grant twice. Returns true when
  * it granted.
+ *
+ * A second, different absence on the tick of an earlier grant (a return,
+ * then leaving again before a frame ran; or a boot from a save made on the
+ * grant's tick) would hit the sim's same-tick guard. It is not dispatched or
+ * saved then: `later(awayMs)` gets it to retry after the sim stepped
+ * (offline-idle.md §7), so the absence is paid, not lost. Without `later` it
+ * is dropped, as before.
  */
 export function grantLocalAway(
   game: Pick<ClassicGame, "api" | "save" | "currentSim">,
   awayMs: number,
+  later?: (awayMs: number) => void,
 ): boolean {
   if (!localAwayDue(game.currentSim().world, awayMs)) return false;
-  game.api.act(ACTION.offlineProgress, { elapsedMs: Math.min(awayMs, OFFLINE_MAX_MS) });
+  if (grantedThisTick(game.currentSim())) {
+    later?.(awayMs);
+    return false;
+  }
+  const res = game.api.act(ACTION.offlineProgress, { elapsedMs: Math.min(awayMs, OFFLINE_MAX_MS) });
+  if (!res.ok) return false;
   game.save();
   return true;
 }
@@ -108,10 +131,14 @@ export function grantLocalAway(
 export function bootAwayGrant(
   game: Pick<ClassicGame, "api" | "save" | "currentSim">,
   boot: { server: boolean; fresh: boolean; savedAt: number | null; wall: number },
+  later?: (awayMs: number) => void,
 ): boolean {
   if (boot.server || boot.fresh || boot.savedAt === null) return false;
-  return grantLocalAway(game, boot.wall - boot.savedAt);
+  return grantLocalAway(game, boot.wall - boot.savedAt, later);
 }
+
+/** Retry period (ms) of a local grant that met the same-tick guard. */
+export const LOCAL_AWAY_RETRY_MS = 250;
 
 /** Autosave period (ms). */
 const SAVE_EVERY_MS = 10_000;
@@ -270,6 +297,19 @@ export const classicView: ClientModeView = {
     let sync: ServerSync | null = null;
     let presence: TownPresence | null = null;
     let hiddenAt: number | null = null;
+    // Local absences that met the same-tick guard (grantLocalAway), paid once the sim stepped.
+    let owedAway = 0;
+    let owedTimer: number | null = null;
+    const payLater = (away: number): void => {
+      owedAway += away;
+      if (owedTimer !== null) return;
+      owedTimer = window.setTimeout(() => {
+        owedTimer = null;
+        const owed = owedAway;
+        owedAway = 0;
+        if (!sync && game) grantLocalAway(game, owed, payLater);
+      }, LOCAL_AWAY_RETRY_MS);
+    };
     const onVisibility = (): void => {
       if (document.visibilityState === "hidden") {
         hiddenAt = Date.now();
@@ -280,7 +320,7 @@ export const classicView: ClientModeView = {
         hiddenAt = null;
         sync?.visible(away);
         // Local play credits the absence here; server play is granted by the server (sync).
-        if (!sync && game) grantLocalAway(game, away);
+        if (!sync && game) grantLocalAway(game, away, payLater);
       }
     };
     const onPageHide = (): void => {
@@ -290,6 +330,9 @@ export const classicView: ClientModeView = {
     const teardown = (): void => {
       if (saveTimer !== null) window.clearInterval(saveTimer);
       saveTimer = null;
+      if (owedTimer !== null) window.clearTimeout(owedTimer);
+      owedTimer = null;
+      owedAway = 0;
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);
       awayStore.set(null);
@@ -451,12 +494,16 @@ export const classicView: ClientModeView = {
 
       // Offline progress for a long absence, when the hero is in play and the controller drives it.
       // (Server mode: the server grants it from its own clock; the client never dispatches it.)
-      bootAwayGrant(game, {
-        server: activeSync !== null,
-        fresh,
-        savedAt: base?.savedAt ?? null,
-        wall,
-      });
+      bootAwayGrant(
+        game,
+        {
+          server: activeSync !== null,
+          fresh,
+          savedAt: base?.savedAt ?? null,
+          wall,
+        },
+        payLater,
+      );
 
       const slots = createSlotRegistry();
       registerDefaultHud(slots);

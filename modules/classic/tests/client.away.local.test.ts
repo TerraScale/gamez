@@ -18,7 +18,12 @@ import type { AssetManifest } from "@gamez/assets";
 import type { TileMap } from "@gamez/world";
 import { createClassicGame, type ClassicGame } from "../src/client/game.ts";
 import { awayStore } from "../src/client/hudModel.ts";
-import { bootAwayGrant, grantLocalAway, localAwayDue } from "../src/client/index.ts";
+import {
+  bootAwayGrant,
+  grantedThisTick,
+  grantLocalAway,
+  localAwayDue,
+} from "../src/client/index.ts";
 import {
   createSaveStore,
   DEFAULT_SETTINGS,
@@ -214,6 +219,43 @@ describe("local play: return from a hidden tab", () => {
     // The sim caps the credit again at offlineCapMs (8 h).
     expect(sums[0]?.ms).toBe(8 * 3600 * 1000);
     expect(sums[0]?.awayMs).toBe(7 * 24 * 3600 * 1000);
+  });
+});
+
+describe("local play: a second absence on the tick of a grant (same-tick guard)", () => {
+  it("is not dispatched or saved but handed to `later`, and paid after one step", () => {
+    const { game, storage, clock, events, step } = setup("idle");
+    expect(grantLocalAway(game, 2 * 60_000)).toBe(true);
+    expect(grantedThisTick(game.currentSim())).toBe(true);
+    const contentHash = game.currentSim().loaded.contentHash;
+    const savedAt = createSaveStore(storage).load(contentHash)?.savedAt;
+    // The player leaves again before a frame ran and returns 5 min later.
+    clock.wall += 5 * 60_000;
+    const owed: number[] = [];
+    expect(grantLocalAway(game, 5 * 60_000, (ms) => owed.push(ms))).toBe(false);
+    expect(owed).toEqual([5 * 60_000]);
+    // No error from the sim's guard, no save over the absence.
+    expect(game.api.ui.getSnapshot().error).toBeNull();
+    expect(createSaveStore(storage).load(contentHash)?.savedAt).toBe(savedAt);
+    step();
+    expect(grantedThisTick(game.currentSim())).toBe(false);
+    expect(grantLocalAway(game, owed[0]!)).toBe(true);
+    step();
+    const away = summaries(events).map((e) => (e as unknown as { awayMs: number }).awayMs);
+    expect(away).toEqual([2 * 60_000, 5 * 60_000]);
+  });
+
+  it("a boot from a save made on the grant's tick retries instead of losing the absence", () => {
+    const { game, clock, events, step } = setup("idle");
+    expect(grantLocalAway(game, 2 * 60_000)).toBe(true);
+    const owed: number[] = [];
+    const boot = { server: false, fresh: false, savedAt: clock.wall - 3 * 60_000, wall: clock.wall };
+    expect(bootAwayGrant(game, boot, (ms) => owed.push(ms))).toBe(false);
+    expect(owed).toEqual([3 * 60_000]);
+    step();
+    expect(grantLocalAway(game, owed[0]!)).toBe(true);
+    step();
+    expect(summaries(events)).toHaveLength(2);
   });
 });
 
