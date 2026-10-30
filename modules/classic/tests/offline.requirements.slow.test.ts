@@ -264,3 +264,62 @@ describe("requirement: a rejected grant changes nothing", () => {
     expect(sim.hash()).toBe(before);
   });
 });
+
+/**
+ * A hero that is still growing (offline-idle.md §4.3): its online XP per
+ * minute rises with every level, so the measured rate must follow recent play.
+ * With the old 30-minute window an L12 hero measured about 0.6x of its last 10
+ * minutes online, and "20 %" paid 11-14 % of the XP the player saw.
+ */
+interface Grown {
+  snap: SimSnapshot;
+  minute: number;
+  level: number;
+  /** Online kill XP per minute over the last 10 minutes before the snapshot. */
+  last10: number;
+}
+
+/** Idle at x1 until the hero is at least `level` (and 20 minutes in), at most 70 minutes. */
+function growTo(classId: string, seed: number, level: number): Grown {
+  const sim = newIdleSim(classId, seed);
+  const perMin: number[] = [];
+  for (let minute = 1; minute <= 70; minute++) {
+    let xp = 0;
+    for (const e of sim.step(60 * CLASSIC_HZ) as ClassicEvent[])
+      if (e.type === "classic.xp" && e.reason === "kill") xp += e.amount;
+    perMin.push(xp);
+    const lvl = sim.world.read(heroOf(sim.world), Level).level;
+    if (lvl >= level && minute >= 20) {
+      const last10 = perMin.slice(-10).reduce((a, b) => a + b, 0) / 10;
+      return { snap: sim.snapshot(), minute, level: lvl, last10 };
+    }
+  }
+  throw new Error(`${classId} seed ${seed} did not reach L${level} in 70 minutes`);
+}
+
+describe("requirement: offline XP is 20 % of the recent online Idle rate at L12+", () => {
+  for (const [classId, seed] of [
+    ["classic.warrior", 7],
+    ["classic.rogue", 2026],
+    ["classic.sorcerer", 11],
+  ] as const) {
+    it(`${classId} (seed ${seed}): 10 min, 1 h and 8 h pay 15-27 % of the last 10 minutes online`, () => {
+      const g = growTo(classId, seed, 12);
+      for (const ms of [10 * MINUTE, HOUR, CAP_MS]) {
+        const d = grant(restore(g.snap), ms).summary;
+        expect(d.source).toBe("rate");
+        const ratio = d.xp / (ms / MINUTE) / g.last10;
+        const at = `L${g.level} minute ${g.minute}, ${ms / MINUTE} min away`;
+        expect(ratio, at).toBeGreaterThanOrEqual(0.15);
+        expect(ratio, at).toBeLessThanOrEqual(0.27);
+      }
+      const d20 = grant(restore(g.snap), HOUR).summary;
+      const d50 = grant(restore(g.snap), HOUR, 50).summary;
+      const d0 = grant(restore(g.snap), HOUR, 0).summary;
+      // 50 % pays 2.5x the 20 % grant (floors aside); 0 % pays no XP, the kills stay.
+      expect(Math.abs(d50.xp * 2 - d20.xp * 5)).toBeLessThanOrEqual(5);
+      expect(d0.xp).toBe(0);
+      expect(d0.kills).toBe(d20.kills);
+    }, 240_000);
+  }
+});

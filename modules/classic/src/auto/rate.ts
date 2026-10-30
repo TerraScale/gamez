@@ -12,7 +12,7 @@
  *  - the upkeep paid since the last run (alchemist potions and scrolls, smith
  *    repairs: noteUpkeepGold) is added to upkeep.
  * When ticks exceed AUTO_RATE_WINDOW_TICKS, ticks, kills, xp, pool, gold and upkeep
- * are halved (floor), a decaying window of about 30 minutes at x1.
+ * are halved (floor), a decaying window of about 10 minutes at x1.
  *
  * Ineligible ticks only drop the pending loot and upkeep, so manual pickups
  * and manual purchases never count.
@@ -28,8 +28,13 @@ import { partySize } from "../party/shared.ts";
 import { partyKillXp, partyProtoOf, xpForKill } from "../rules.ts";
 import { BALANCE_ID, KIND, type BalanceProto } from "../types.ts";
 
-/** The decaying window: halve everything once the window is exceeded (30 min at x1). */
-export const AUTO_RATE_WINDOW_TICKS = 36_000;
+/**
+ * The decaying window: halve everything once the window is exceeded (10 min at
+ * x1), so the window holds 5-10 minutes of play plus a halved tail. A 30-minute
+ * window trailed a growing hero: at L8-L12 it measured a median 0.69x of the
+ * last 10 minutes online, so "20 %" paid about 14 % (offline-idle.md §4.3).
+ */
+export const AUTO_RATE_WINDOW_TICKS = 12_000;
 /** Minimum measured ticks (5 min at x1) before the rate replaces the fallback model. */
 export const AUTO_RATE_MIN_TICKS = 6_000;
 

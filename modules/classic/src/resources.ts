@@ -51,7 +51,7 @@ export const RES = {
  * only. `ticks`, `kills`, `xp`, `gold` cover sim ticks with control.mode !==
  * "manual" and phase "play" (town trips, deaths and fights included). When
  * `ticks` exceeds AUTO_RATE_WINDOW_TICKS those four and `upkeep` are halved (floor), so the
- * rate follows the hero's current power (a ~30 minute decaying window).
+ * rate follows the hero's current power (a ~10 minute decaying window).
  */
 export interface AutoRate {
   ticks: number;

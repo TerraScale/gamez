@@ -249,7 +249,12 @@ describe("local play: a second absence on the tick of a grant (same-tick guard)"
     const { game, clock, events, step } = setup("idle");
     expect(grantLocalAway(game, 2 * 60_000)).toBe(true);
     const owed: number[] = [];
-    const boot = { server: false, fresh: false, savedAt: clock.wall - 3 * 60_000, wall: clock.wall };
+    const boot = {
+      server: false,
+      fresh: false,
+      savedAt: clock.wall - 3 * 60_000,
+      wall: clock.wall,
+    };
     expect(bootAwayGrant(game, boot, (ms) => owed.push(ms))).toBe(false);
     expect(owed).toEqual([3 * 60_000]);
     step();

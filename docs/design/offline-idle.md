@@ -1,8 +1,9 @@
 # Offline and idle progress (classic)
 
-Status: implemented (first pass: §1–§10). Second pass (this revision, §12): upkeep-net offline
-gold, a same-tick double-grant guard, low-level fallback calibration, the local boot save, the
-away card's turn-in hint and a permanent browser QA lens.
+Status: implemented (first pass: §1–§10). Second pass (§12): upkeep-net offline gold, a same-tick
+double-grant guard, low-level fallback calibration, the local boot save, the away card's turn-in
+hint and a permanent browser QA lens. Integration (§13), fix round 2 (§14) and the verification
+pass (§15: a 10-minute rate window, no loss on a refused grant).
 Related docs: `classic.md` §15 (Auto and Full Idle), `wave-B.md` §2 (verified play, VerifiedHost),
 `admin-dashboard.md` §8 and §11 (tunables, analytics call sites), ADR 0005.
 
@@ -100,8 +101,9 @@ tick:
    `loot = 0`, `upkeep = (upkeep ?? 0) + (spent ?? 0)`, `spent = 0`. A new resource starts with
    `upkeep: 0, spent: 0`; a rate saved before the second pass reads both as 0 and gets them
    written on its next eligible tick.
-3. If `ticks > AUTO_RATE_WINDOW_TICKS` (36 000 = 30 min at x1): halve `ticks`, `kills`, `xp`,
-   `gold` and `upkeep` (floor each). This keeps a decaying window that follows the hero's current
+3. If `ticks > AUTO_RATE_WINDOW_TICKS` (12 000 = 10 min at x1; 36 000 before the verification
+   pass, §15): halve `ticks`, `kills`, `xp`, `pool`, `gold` and `upkeep` (floor each). This keeps
+   a decaying window (5–10 minutes of play plus a halved tail) that follows the hero's current
    power.
 4. `setResource`.
 
@@ -212,7 +214,8 @@ excluded).
   rate (0.23–0.94× the next 10 minutes online, point 2), which errs on the safe side: never more
   than the requirement. The model stays the fallback for heroes with less than 5 minutes of
   measured play.
-- Unchanged: `AUTO_RATE_MIN_TICKS` 6 000 and `AUTO_RATE_WINDOW_TICKS` 36 000. A lower minimum
+- Unchanged: `AUTO_RATE_MIN_TICKS` 6 000. `AUTO_RATE_WINDOW_TICKS` was 36 000 here; the
+  verification pass (§15) set it to 12 000. A lower minimum
   only swaps the calibrated model for a short, trailing rate (0.37–0.74× at minute 2–3).
 
 **Before / after** (per minute; the ratio is grant / online). Online = the mean over the 10
@@ -370,6 +373,10 @@ assumes x1. At x2..x8 it subtracts more than the real local play time, so it can
 - An import never grants.
 - Backstop for local play: the sim rejects a second local grant on the same tick (§4.4); the
   server's grants are exempt.
+- A grant the sim refuses (verification pass) is never dropped: `#joinOffline` and
+  `#deferredGrant` clear the due fields only after a grant succeeded. A refused grant keeps the
+  absence owed (`offlineDueMs`, `lastActiveAt = now` so it is not counted twice) and the deferred
+  grant retries it after `OFFLINE_RETRY_TICKS` (1 200) of verified play, or the next join adds it.
 - A client that never received the vstate (socket died) rejoins with a resume that cannot
   continue. It adopts the base, which already contains the grant, but the summary is gone. That
   is acceptable: the progress itself is not lost.
@@ -429,6 +436,11 @@ eligible). Tests: `verified-offline.exit.test.ts` ("a page frozen with its socke
   OFFLINE_MAX_MS)` and then `game.save()`. The FixedLoop drops gaps over 1 s, so nothing is
   counted twice.
 - A later reload measures from the save made right after the grant, so there is no double grant.
+- A second absence on the tick of an earlier grant (a return, then leaving again before a frame
+  ran; or a boot from a save written on the grant's tick) would hit the same-tick guard
+  (verification pass). `grantLocalAway` checks `RunStats.offlineAt` first: it neither dispatches
+  nor saves then, and the mount retries the absence every `LOCAL_AWAY_RETRY_MS` (250 ms) once
+  the sim stepped. Before, the save after the refused dispatch erased the absence.
 
 ## 8. Admin: changing the offline XP factor
 
@@ -446,8 +458,9 @@ eligible). Tests: `verified-offline.exit.test.ts` ("a page frozen with its socke
 - Time is measured by the server. Clients cannot dispatch the action, and the payload is capped at
   7 d by the host and 8 h by the sim.
 - The rate is measured only from verified Auto/Idle ticks. Grants and bank moves never count
-  toward it. There is a `× 3` model cap, and the 30-minute decaying window means a short burst
-  cannot be banked.
+  toward it. There is a `× 3` model cap, and the decaying window (5–10 minutes plus a halved
+  tail, §15) means a short burst is diluted: in the 1 458 measured minute points the window
+  read at most 1.94× the last 10 minutes online (a boss streak), p90 1.09×.
 - Manual heroes earn nothing offline, so there is no "AFK in manual" farming. Switching to Idle
   just before leaving uses the measured rate if there is one, otherwise the conservative model.
 - A grant restarts the speed ledger at `START_CREDIT_MS` (no double dip with the speed credit).
@@ -533,3 +546,61 @@ Decisions (ADR 0009):
 | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Gold for rogue and warrior is zero or near zero after upkeep (major)           | By design, verified: the online wallet is flat too and the grant matches the online farming net (§3 numbers). The summary now carries `found`; the card shows `(found F, net of N upkeep)` and explains a 0 (§6). Requirement test `offline.economy.test.ts` "offline gold tracks the online Idle farming net" |
 | classic-offline C and D: XP since leaving < the card's XP (sample at adoption) | Real client race, not only a harness read: the card showed one step before the grant's queued XP landed (and up to one 100 ms HUD period after). `game.ts` holds the grant batch until the next step (§6). Tests: `client.away.local.test.ts`, `client.sync.test.ts` (hidden-tab rejoin)                       |
+
+## 15. Verification pass (offline-xp-verify)
+
+Measured with the real catalog: Idle x1 from a fresh hero, seeds 7, 2026 and 11; solo warrior,
+rogue and sorcerer, and parties of 2 (warrior, rogue), 3 (rogue, sorcerer, warrior) and 4
+(sorcerer, warrior, rogue, warrior). Grants were taken the first minute the controlled hero was
+L5 (minutes 5–9) and L12 (minutes 25–48), for 10 min, 1 h, 8 h and 24 h, with the default, xpPct
+50 and xpPct 0, dispatched as the server actor on a restored snapshot. "Online" is the hero's
+(each member's) own kill XP per minute over the last 10 minutes before the grant.
+
+**Finding: the 30-minute window paid 11–16 % at L12.** The grant was exactly 20 % of the measured
+rate at every point, but the measured rate trailed a growing hero: at L12 it read 0.55–0.75× of
+the last 10 minutes online. An emulation of the window over 1 458 minute points (exact against the
+real resource at every checkpoint) gave these medians of measured / last 10 minutes:
+
+| Window (min) | L<8  | L8–12 | L13+ | p10–p90, all |
+| ------------ | ---- | ----- | ---- | ------------ |
+| 30 (before)  | 0.92 | 0.69  | 0.79 | 0.62–1.02    |
+| 20           | 0.92 | 0.78  | 0.88 | 0.71–1.08    |
+| 15           | 0.93 | 0.83  | 0.93 | 0.78–1.08    |
+| 10 (chosen)  | 0.99 | 0.94  | 0.98 | 0.85–1.09    |
+
+**Change:** `AUTO_RATE_WINDOW_TICKS` 36 000 → 12 000 (`classic.auto` 0.6.3). 12 000 is the
+shortest window that keeps a halved rate at `AUTO_RATE_MIN_TICKS` (6 000). Offline XP / online XP
+per minute at the default 20 % (min / median / max):
+
+| Point (n)        | Before                | After                 | xpPct 50, after       |
+| ---------------- | --------------------- | --------------------- | --------------------- |
+| L5 solo (9)      | 0.200 / 0.200 / 0.200 | 0.200 / 0.200 / 0.200 | 0.500 / 0.500 / 0.500 |
+| L5 party (27)    | 0.186 / 0.208 / 0.232 | unchanged             | 0.465 / 0.520 / 0.580 |
+| L12 solo (9)     | 0.110 / 0.119 / 0.136 | 0.157 / 0.173 / 0.189 | 0.392 / 0.433 / 0.472 |
+| L12 party 2 (6)  | 0.114 / 0.133 / 0.157 | 0.165 / 0.182 / 0.234 | 0.413 / 0.456 / 0.586 |
+| L12 party 3 (9)  | 0.111 / 0.132 / 0.145 | 0.162 / 0.177 / 0.199 | 0.406 / 0.443 / 0.498 |
+| L12 party 4 (12) | 0.111 / 0.125 / 0.132 | 0.165 / 0.170 / 0.176 | 0.413 / 0.424 / 0.440 |
+
+Tolerance: 15–27 % at the default (±25 % of the requirement, plus the swing of a 10-minute
+reference). The remaining shortfall at L12 (about 0.87×) is the hero still growing inside the last
+10 minutes; it errs on the safe side. Against the **next** 10 minutes online the grant is lower
+still (L12 solo 0.13–0.19), because the hero keeps levelling online and no offline rule can know
+that.
+
+Checked at every point, unchanged by the fix:
+
+- 10 min, 1 h and 8 h give the same XP per minute (the ratio is identical to 3 decimals); 24 h
+  equals 8 h (cap); xpPct 50 is exactly 2.5× the default; xpPct 0 pays 0 XP with the same kills
+  and quest credit.
+- The XP applied to each hero (party members included) equals the summary's share.
+- Determinism: the same snapshot and grant give the same hash.
+- Gold is net of upkeep and never negative. Warriors and some early points grant 0 gold (upkeep ≥
+  gold found, as online, §3). L12 solo 80–380 gold a minute, parties 109–726. Items are capped at
+  20 per grant, whatever the absence.
+
+Also fixed in this pass: a refused server grant kept the owed time (§5.5) and local play no longer
+loses a second absence on a grant's tick (§7). Tests: `offline.requirements.slow.test.ts` ("20 %
+of the recent online Idle rate at L12+", 3 classes × 10 min / 1 h / 8 h, 50 %, 0 %),
+`party.offline.slow.test.ts` (party of 3), `verified-offline.exit.test.ts` ("a refused grant is
+never lost"), `client.away.local.test.ts` (same-tick guard). The L12 tests fail on the old window
+(0.11–0.12).

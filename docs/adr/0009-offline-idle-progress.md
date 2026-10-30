@@ -9,7 +9,8 @@ decisions taken there and the ones changed when the work was integrated.
 ## 1. The measured online Idle rate is the reference
 
 `classic.auto.rate` measures kills, kill XP, ground gold and upkeep (potions, scrolls, repairs) on
-verified Auto/Idle ticks, in a decaying 30-minute window. An absence pays `xpPct` of that XP rate
+verified Auto/Idle ticks, in a decaying 10-minute window (30 minutes until the verification pass,
+§6). An absence pays `xpPct` of that XP rate
 (default 20 %), with gold and items at 100 % of the net rate. Kills (quest credit) are not scaled.
 Deaths, wear and potion drinking are not modelled offline; their gold cost is in upkeep.
 
@@ -54,6 +55,14 @@ grant.
 
 Every grant goes through one host helper, which also reports `sim.offline` to the admin dashboard
 (ADR 0008). Verified segments feed `sim.tally` through the classic `ModeAnalytics` hooks.
+
+## 6. The window follows recent play (verification pass)
+
+The 30-minute window measured 0.55–0.75× of an L12 hero's last 10 minutes online, so "20 %" paid
+11–16 % of the XP the player saw. The window is now 10 minutes (`AUTO_RATE_WINDOW_TICKS` 12 000),
+the shortest that keeps a halved rate above the 5-minute minimum: L12 grants pay 16–23 % (solo and
+parties of 2–4, seeds 7, 2026, 11). A boss streak can lift the window to about 2× the last 10
+minutes, and the × 3 model cap still bounds it. Data: design §15.
 
 ## Unverified
 

@@ -243,7 +243,12 @@ describe("upkeep measurement (AutoRate.upkeep, §4.1)", () => {
     const events = idle.step(1);
     expect(upkeepPaid(idle, events)).toBe(0);
     // 777 + 25 = 802, halved (floor) with the window: 401.
-    expect(rateOf(idle)).toMatchObject({ ticks: 18_000, upkeep: 401, spent: 0, gold: 500 });
+    expect(rateOf(idle)).toMatchObject({
+      ticks: AUTO_RATE_WINDOW_TICKS / 2,
+      upkeep: 401,
+      spent: 0,
+      gold: 500,
+    });
   }, 120_000);
 });
 
@@ -414,16 +419,19 @@ describe("low-level calibration (§4.3)", () => {
 /**
  * Requirement (offline-idle.md §3, QA verifier "gold for rogue and warrior is
  * zero"): offline gold is the online Idle farming net, not a bonus. Over the
- * same 20 minutes a hero earns online (ground gold + vendor sales - alchemist
- * potions/scrolls - smith repairs), the 20-minute grant pays about that, and 0
+ * same 10 minutes a hero earns online (ground gold + vendor sales - alchemist
+ * potions/scrolls - smith repairs), the 10-minute grant pays about that, and 0
  * when the online net is negative. Quest and achievement gold are one-offs a
  * grant never repeats; smith purchases and gambling are discretionary.
- * Measured (seed: online farm net -> grant gold): warrior 7: -662 -> 0,
- * rogue 41: 702 -> 680; 60-minute probes show the online wallet flat for both
+ * Measured over the first 10 minutes (the 10-minute rate window, seed: online
+ * farm net -> grant gold): warrior 7: -26 -> 0, warrior 41: -205 -> 0, rogue
+ * 2026: 424 -> 445, sorcerer 7: 581 -> 604, sorcerer 2026: 1 355 -> 1 307
+ * (before the window change, 20 minutes: warrior 7 -662 -> 0, rogue 41
+ * 702 -> 680); 60-minute probes show the online wallet flat for both
  * classes (potions eat what Idle finds), so a 0 here matches the online play.
  */
 describe("offline gold tracks the online Idle farming net (requirement)", () => {
-  const SPAN = 24_000; // 20 min at x1: inside the rate window, which is not halved yet.
+  const SPAN = AUTO_RATE_WINDOW_TICKS; // 10 min at x1: the whole window, not halved yet.
 
   function farm(classId: string, seed: number) {
     const sim = newSim(classId, seed, "idle");
@@ -438,13 +446,13 @@ describe("offline gold tracks the online Idle farming net (requirement)", () => 
       }
     }
     expect(rateOf(sim).upkeep).toBe(upkeep);
-    const g = offlineGrant(sim.world, sim.loaded.registry, heroOf(sim.world), 20 * MINUTE, 100);
+    const g = offlineGrant(sim.world, sim.loaded.registry, heroOf(sim.world), 10 * MINUTE, 100);
     return { sim, online: found - upkeep, pickupAndSales: found, upkeep, g };
   }
 
   it.each([
-    ["classic.warrior", 7, 0, -662],
-    ["classic.rogue", 41, 680, 702],
+    ["classic.warrior", 7, 0, -26],
+    ["classic.rogue", 2026, 445, 424],
   ] as const)(
     "%s seed %i: grant gold %i for an online farm net of %i",
     (classId, seed, gold, online) => {

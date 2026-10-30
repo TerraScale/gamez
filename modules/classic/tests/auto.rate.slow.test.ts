@@ -159,7 +159,7 @@ describe("classic.auto.rate: measurement", () => {
     });
     sim.step(1);
     expect(rateOf(sim)).toEqual({
-      ticks: 36_000,
+      ticks: AUTO_RATE_WINDOW_TICKS,
       kills: 101,
       xp: 1001,
       gold: 401,
@@ -169,7 +169,7 @@ describe("classic.auto.rate: measurement", () => {
     });
     sim.step(1);
     expect(rateOf(sim)).toEqual({
-      ticks: 18_000,
+      ticks: AUTO_RATE_WINDOW_TICKS / 2,
       kills: 50,
       xp: 500,
       gold: 200,
@@ -191,7 +191,7 @@ describe("classic.auto.rate: measurement", () => {
   }, 120_000);
 
   it("pins the hash after a fixed script", () => {
-    expect(rateScript().hash()).toBe("bca52c4e7875dc05");
+    expect(rateScript().hash()).toBe("ff30eaea5063c731");
   }, 120_000);
 });
 
