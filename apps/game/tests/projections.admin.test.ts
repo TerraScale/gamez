@@ -13,6 +13,7 @@ import { AccountActivityStore, DAY_MS } from "../src/server/account/activity.ts"
 import { AccountEconomy } from "../src/server/account/economy.ts";
 import { AccountPass } from "../src/server/account/pass.ts";
 import { AccountProfileStore } from "../src/server/account/profile.ts";
+import { AccountPurchases } from "../src/server/account/purchases.ts";
 import { AccountVault } from "../src/server/account/vault.ts";
 import type { AccountNotices } from "../src/server/account/notices.ts";
 import { projections } from "../src/server/projections.ts";
@@ -338,5 +339,72 @@ describe("chaos: shuffled, duplicated and split batches", () => {
       }
       expect(dump(chaos), `seed ${seed}`).toEqual(expected);
     }
+  });
+});
+
+describe("purchase projection (migration 0011)", () => {
+  it("carries the reported charge and the fail reason of an order whose amount did not match", async () => {
+    const store = fakeSqlStore();
+    const outbox = new Outbox(store.sql, "account:acc-pay");
+    outbox.init();
+    const economy = new AccountEconomy(store, () => S1_START);
+    economy.init();
+    const vault = new AccountVault(store, economy, outbox, "acc-pay", () => S1_START);
+    vault.init();
+    const purchases = new AccountPurchases(
+      store,
+      economy,
+      vault,
+      new RecordingNotices() as unknown as AccountNotices,
+      outbox,
+      "acc-pay",
+      () => S1_START,
+    );
+    purchases.init();
+    const price = { currency: "BRL" as const, amountMinor: 490 };
+    const good = "o00000000000000000000bb01";
+    const bad = "o00000000000000000000bb02";
+    for (const orderId of [good, bad])
+      purchases.createOrder({ orderId, sku: "gems.small", provider: "asaas", price });
+    purchases.fulfillOrder({
+      orderId: good,
+      providerRef: "pay_1",
+      eventId: "e1",
+      provider: "asaas",
+      paid: price,
+    });
+    purchases.fulfillOrder({
+      orderId: bad,
+      providerRef: "pay_2",
+      eventId: "e2",
+      provider: "asaas",
+      paid: { currency: "BRL", amountMinor: 1 },
+    });
+    const d1 = new ChaosD1();
+    await applyOrdered(d1, [outbox]);
+    expect(
+      d1.all(
+        "SELECT id, status, currency, amount_minor, paid_currency, paid_minor, fail_reason FROM purchase ORDER BY id",
+      ),
+    ).toEqual([
+      {
+        id: good,
+        status: "paid",
+        currency: "BRL",
+        amount_minor: 490,
+        paid_currency: "BRL",
+        paid_minor: 490,
+        fail_reason: null,
+      },
+      {
+        id: bad,
+        status: "failed",
+        currency: "BRL",
+        amount_minor: 490,
+        paid_currency: "BRL",
+        paid_minor: 1,
+        fail_reason: "amount_mismatch: paid BRL 0.01, the order is BRL 4.90",
+      },
+    ]);
   });
 });

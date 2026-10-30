@@ -8,6 +8,7 @@
 import type { FiatCurrency, PaymentProviderId } from "@gamez/protocol";
 import type { VerifiedWebhook } from "../contracts.ts";
 import type { CheckoutInput, CheckoutSession, PaymentProvider } from "./provider.ts";
+import { minorAmount } from "./amount.ts";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto.ts";
 
 export const STUB_CHECKOUT_PATH = "/api/pay/stub/checkout";
@@ -21,6 +22,9 @@ export interface StubWebhookBody {
   orderId: string;
   accountId: string;
   providerRef: string;
+  /** The charge, like a real provider reports it (the stub page charges the order's price). */
+  currency?: string;
+  amountMinor?: number;
 }
 
 export class StubProvider implements PaymentProvider {
@@ -67,6 +71,7 @@ export class StubProvider implements PaymentProvider {
       orderId: body.orderId,
       accountId: typeof body.accountId === "string" ? body.accountId : null,
       providerRef: typeof body.providerRef === "string" ? body.providerRef : null,
+      paid: kind === "paid" ? minorAmount(body.amountMinor, body.currency) : null,
     };
   }
 

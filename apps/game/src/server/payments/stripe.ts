@@ -12,6 +12,7 @@
 import type { FiatCurrency, PaymentProviderId } from "@gamez/protocol";
 import type { VerifiedWebhook } from "../contracts.ts";
 import type { CheckoutInput, CheckoutSession, PaymentProvider } from "./provider.ts";
+import { minorAmount } from "./amount.ts";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto.ts";
 
 export const STRIPE_API = "https://api.stripe.com/v1";
@@ -142,20 +143,22 @@ export class StripeProvider implements PaymentProvider {
         orderId,
         accountId,
         providerRef: asString(object.id),
+        // The session total after discounts, in the smallest unit, and its lower-case code.
+        paid: minorAmount(object.amount_total, object.currency),
       };
     }
     if (type === "charge.refunded") {
       const intent = asString(object.payment_intent);
       // A partial refund leaves the purchase in place: only a full refund revokes it.
       if (object.refunded === false)
-        return { eventId, kind: "ignored", orderId, accountId, providerRef: intent };
+        return { eventId, kind: "ignored", orderId, accountId, providerRef: intent, paid: null };
       // Stripe does not copy the payment intent's metadata onto its charges, so a
       // charge without our ids is resolved through the (already verified) intent.
       let ids = { orderId, accountId };
       if ((!orderId || !accountId) && intent) ids = await this.#intentIds(intent);
-      return { eventId, kind: "refunded", ...ids, providerRef: intent };
+      return { eventId, kind: "refunded", ...ids, providerRef: intent, paid: null };
     }
-    return { eventId, kind: "ignored", orderId, accountId, providerRef: null };
+    return { eventId, kind: "ignored", orderId, accountId, providerRef: null, paid: null };
   }
 
   /** Our ids from a payment intent's metadata. Throws on an API failure so the webhook is retried. */

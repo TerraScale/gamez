@@ -11,6 +11,9 @@
  *
  * orderId = "o" + first 24 hex of SHA-256("<accountId>:<opId>"): a retried checkout
  * is the same order. Fulfilment and refunds are idempotent by orderId in AccountDO.
+ * A paid webhook carries the provider-reported amount and currency; AccountDO
+ * grants only when they equal the order's price and otherwise fails the order
+ * (200 with applied: false, status "failed", so the provider stops retrying).
  */
 import {
   PAYMENT_PROVIDER_IDS,
@@ -236,6 +239,8 @@ export async function applyWebhook(
             orderId: verified.orderId,
             providerRef: verified.providerRef,
             eventId: verified.eventId,
+            provider: p.id,
+            paid: verified.paid,
           })
         : await acct.refundOrder({ orderId: verified.orderId, eventId: verified.eventId });
     if (!result.ok) {
@@ -243,6 +248,19 @@ export async function applyWebhook(
         return json({ received: true, applied: false, reason: "unknown_order" });
       console.error(`store: ${verified.kind} failed`, result.code, result.message);
       return apiError(500, "internal", "could not record the payment; retry");
+    }
+    if (verified.kind === "paid" && result.value.status === "failed") {
+      // Verified, but it does not match the order: recorded for the admin, never granted.
+      if (!result.replayed)
+        console.error(
+          `store: ${p.id} order ${verified.orderId} failed: ${result.value.failReason ?? "?"}`,
+        );
+      return json({
+        received: true,
+        applied: false,
+        status: "failed",
+        reason: result.value.failReason,
+      });
     }
     return json({ received: true, applied: true, status: result.value.status });
   } catch (err) {
@@ -295,13 +313,18 @@ async function stubComplete(c: RouteContext): Promise<Response> {
     return apiError(400, "bad_request", "order and account are malformed");
   if (result === "cancel") return redirect("/#store=cancel");
   if (result !== "paid") return apiError(400, "bad_request", "result must be paid or cancel");
+  const order = await findOrder(c, accountId, orderId);
+  if (!order) return apiError(404, "not_found", "no such order");
 
+  // The sandbox charges exactly the order's price, as a real provider would report it.
   const body: StubWebhookBody = {
     id: `stub_${orderId}_paid`,
     kind: "paid",
     orderId,
     accountId,
     providerRef: stubRefOf(orderId),
+    currency: order.price.currency,
+    amountMinor: order.price.amountMinor,
   };
   const raw = stubWebhookBody(body);
   const signature = await signStubBody(c.env.AUTH_SECRET, raw);

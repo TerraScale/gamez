@@ -51,6 +51,25 @@ function gems(h: Harness): number {
   return h.economy.wallet().balances.gem;
 }
 
+/** A matching paid event: the order's provider and exactly its price. */
+function fulfil(
+  h: Harness,
+  input: { orderId: string; providerRef: string | null; eventId: string },
+) {
+  return h.purchases.fulfillOrder({ provider: "stub", paid: price, ...input });
+}
+
+function orderRow(h: Harness, orderId: string) {
+  return h.store.fake.db
+    .prepare("SELECT status, fail_reason, paid_currency, paid_minor FROM orders WHERE order_id = ?")
+    .get(orderId) as {
+    status: string;
+    fail_reason: string | null;
+    paid_currency: string | null;
+    paid_minor: number | null;
+  };
+}
+
 describe("orders", () => {
   it("creates a pending order once; a replay returns the same row", () => {
     const h = harness();
@@ -78,9 +97,10 @@ describe("orders", () => {
 
   it("answers not_found for an unknown order", () => {
     const h = harness();
-    expect(
-      h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" }),
-    ).toMatchObject({ ok: false, code: "not_found" });
+    expect(fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" })).toMatchObject({
+      ok: false,
+      code: "not_found",
+    });
     expect(h.purchases.refundOrder({ orderId: ORDER, eventId: "e" })).toMatchObject({
       ok: false,
       code: "not_found",
@@ -92,7 +112,7 @@ describe("fulfilment", () => {
   it("credits the gems once, marks the order paid, notifies and appends the outbox row", () => {
     const h = harness();
     h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
-    const r = h.purchases.fulfillOrder({ orderId: ORDER, providerRef: "stub_1", eventId: "evt-1" });
+    const r = fulfil(h, { orderId: ORDER, providerRef: "stub_1", eventId: "evt-1" });
     expect(r).toMatchObject({
       ok: true,
       replayed: false,
@@ -108,8 +128,8 @@ describe("fulfilment", () => {
   it("is a no-op on replay: no second credit, no second notice", () => {
     const h = harness();
     h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: "stub_1", eventId: "evt-1" });
-    const replay = h.purchases.fulfillOrder({
+    fulfil(h, { orderId: ORDER, providerRef: "stub_1", eventId: "evt-1" });
+    const replay = fulfil(h, {
       orderId: ORDER,
       providerRef: "stub_1",
       eventId: "evt-2",
@@ -127,12 +147,12 @@ describe("fulfilment", () => {
       provider: "stub",
       price,
     });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     expect(h.economy.entitlements().map((e) => [e.id, e.sku, e.source])).toEqual([
       [`store:${ORDER}:pass.premium.2026-s1`, "pass.premium.2026-s1", "store"],
     ]);
     h.purchases.createOrder({ orderId: ORDER_B, sku: "bundle.ember", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER_B, providerRef: null, eventId: "e2" });
+    fulfil(h, { orderId: ORDER_B, providerRef: null, eventId: "e2" });
     expect(h.economy.cosmetics().owned).toEqual([
       "cosmetic.chatColor.ember",
       "cosmetic.nameplate.ember",
@@ -143,7 +163,7 @@ describe("fulfilment", () => {
 
   it("does not grant anything for an order that was never created", () => {
     const h = harness();
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     expect(gems(h)).toBe(0);
     expect(h.economy.entitlements()).toHaveLength(0);
   });
@@ -153,7 +173,7 @@ describe("refunds", () => {
   it("debits the gems it granted and revokes the entitlements", () => {
     const h = harness();
     h.purchases.createOrder({ orderId: ORDER, sku: "gems.medium", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     expect(gems(h)).toBe(550);
     const r = h.purchases.refundOrder({ orderId: ORDER, eventId: "r1" });
     expect(r).toMatchObject({ ok: true, value: { status: "refunded" } });
@@ -163,7 +183,7 @@ describe("refunds", () => {
   it("debits at most the gems still held: spent gems are not clawed back below zero", () => {
     const h = harness();
     h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     h.economy.applyWalletTx({ txId: "spend-1", currency: "gem", amount: -60, reason: "test" });
     h.purchases.refundOrder({ orderId: ORDER, eventId: "r1" });
     expect(gems(h)).toBe(0);
@@ -172,11 +192,11 @@ describe("refunds", () => {
   it("replays a refund without a second debit, and a late paid event does not grant again", () => {
     const h = harness();
     h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     h.purchases.refundOrder({ orderId: ORDER, eventId: "r1" });
     const again = h.purchases.refundOrder({ orderId: ORDER, eventId: "r2" });
     expect(again).toMatchObject({ ok: true, replayed: true, value: { status: "refunded" } });
-    const late = h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e3" });
+    const late = fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e3" });
     expect(late).toMatchObject({ ok: true, value: { status: "refunded" } });
     expect(gems(h)).toBe(0);
   });
@@ -199,7 +219,7 @@ describe("refunds", () => {
       provider: "stub",
       price,
     });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     h.purchases.refundOrder({ orderId: ORDER, eventId: "r" });
     const rows = h.store.fake.db
       .prepare("SELECT tx_id, sku, revoked_at FROM entitlements ORDER BY tx_id")
@@ -218,7 +238,7 @@ describe("refunds", () => {
   it("a refunded cosmetic bundle is no longer owned or shown equipped", () => {
     const h = harness();
     h.purchases.createOrder({ orderId: ORDER, sku: "bundle.ember", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     const owned = h.economy.cosmetics().owned;
     expect(owned.length).toBeGreaterThan(0);
     const first = owned[0]!;
@@ -234,11 +254,192 @@ describe("refunds", () => {
     h.purchases.init();
     h.economy.grantEntitlement({ txId: "pass:free:1", sku: "cosmetic.title.x", source: "pass" });
     h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
-    h.purchases.fulfillOrder({ orderId: ORDER, providerRef: null, eventId: "e" });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
     h.purchases.refundOrder({ orderId: ORDER, eventId: "r" });
     const row = h.store.fake.db
       .prepare("SELECT revoked_at FROM entitlements WHERE tx_id = 'pass:free:1'")
       .get() as { revoked_at: number | null };
     expect(row.revoked_at).toBeNull();
+  });
+});
+
+describe("paid amount must match the order", () => {
+  const cases: {
+    name: string;
+    provider?: "stub" | "stripe";
+    paid: { currency: "USD" | "BRL" | "EUR"; amountMinor: number } | null;
+    reason: RegExp;
+  }[] = [
+    {
+      name: "a lower amount",
+      paid: { currency: "USD", amountMinor: 1 },
+      reason: /^amount_mismatch: paid USD 0\.01, the order is USD 0\.99$/,
+    },
+    {
+      name: "a higher amount",
+      paid: { currency: "USD", amountMinor: 100 },
+      reason: /^amount_mismatch: paid USD 1\.00/,
+    },
+    {
+      name: "another currency with the same number",
+      paid: { currency: "BRL", amountMinor: 99 },
+      reason: /^currency_mismatch: paid BRL 0\.99, the order is USD 0\.99$/,
+    },
+    {
+      name: "no usable amount",
+      paid: null,
+      reason: /^amount_unknown: stub reported no usable amount/,
+    },
+    {
+      name: "another provider",
+      provider: "stripe",
+      paid: price,
+      reason: /^provider_mismatch: paid through stripe, the order is for stub$/,
+    },
+  ];
+  for (const c of cases) {
+    it(`fails the order and grants nothing on ${c.name}`, () => {
+      const h = harness();
+      h.purchases.createOrder({
+        orderId: ORDER,
+        sku: "pass.premium.2026-s1",
+        provider: "stub",
+        price,
+      });
+      const r = h.purchases.fulfillOrder({
+        orderId: ORDER,
+        providerRef: "ref_1",
+        eventId: "evt-bad",
+        provider: c.provider ?? "stub",
+        paid: c.paid,
+      });
+      expect(r).toMatchObject({ ok: true, replayed: false, value: { status: "failed" } });
+      if (!r.ok) throw new Error("unreachable");
+      expect(r.value.failReason).toMatch(c.reason);
+      expect(h.economy.entitlements()).toHaveLength(0);
+      expect(gems(h)).toBe(0);
+      expect(orderRow(h, ORDER)).toMatchObject({ status: "failed" });
+      expect(orderRow(h, ORDER).fail_reason).toMatch(c.reason);
+      expect(h.notes.map((n) => [n.id, n.kind])).toEqual([
+        [`store:${ORDER}:failed`, "store.failed"],
+      ]);
+    });
+  }
+
+  it("records the reported charge on a match and on a mismatch (admin view)", () => {
+    const h = harness();
+    h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
+    h.purchases.createOrder({ orderId: ORDER_B, sku: "gems.small", provider: "stub", price });
+    fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e" });
+    h.purchases.fulfillOrder({
+      orderId: ORDER_B,
+      providerRef: null,
+      eventId: "e",
+      provider: "stub",
+      paid: { currency: "USD", amountMinor: 5 },
+    });
+    expect(orderRow(h, ORDER)).toEqual({
+      status: "paid",
+      fail_reason: null,
+      paid_currency: "USD",
+      paid_minor: 99,
+    });
+    expect(orderRow(h, ORDER_B)).toMatchObject({
+      status: "failed",
+      paid_currency: "USD",
+      paid_minor: 5,
+    });
+    const records = h.purchases.orders();
+    expect(records.find((o) => o.orderId === ORDER)).toMatchObject({
+      paid: price,
+      failReason: null,
+    });
+    expect(records.find((o) => o.orderId === ORDER_B)?.failReason).toMatch(/^amount_mismatch/);
+  });
+
+  it("is terminal and idempotent: a later matching event replays the failure and grants nothing", () => {
+    const h = harness();
+    h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
+    h.purchases.fulfillOrder({
+      orderId: ORDER,
+      providerRef: null,
+      eventId: "e1",
+      provider: "stub",
+      paid: { currency: "USD", amountMinor: 1 },
+    });
+    const outboxAfterFail = h.outbox.size();
+    const again = h.purchases.fulfillOrder({
+      orderId: ORDER,
+      providerRef: null,
+      eventId: "e1",
+      provider: "stub",
+      paid: { currency: "USD", amountMinor: 1 },
+    });
+    expect(again).toMatchObject({ ok: true, replayed: true, value: { status: "failed" } });
+    const matching = fulfil(h, { orderId: ORDER, providerRef: null, eventId: "e2" });
+    expect(matching).toMatchObject({ ok: true, replayed: true, value: { status: "failed" } });
+    expect(gems(h)).toBe(0);
+    expect(h.notes).toHaveLength(1);
+    expect(h.outbox.size()).toBe(outboxAfterFail);
+  });
+
+  it("a failed order can still be refunded; nothing is revoked because nothing was granted", () => {
+    const h = harness();
+    h.purchases.createOrder({ orderId: ORDER, sku: "gems.small", provider: "stub", price });
+    h.economy.applyWalletTx({ txId: "own", currency: "gem", amount: 40, reason: "test" });
+    h.purchases.fulfillOrder({
+      orderId: ORDER,
+      providerRef: null,
+      eventId: "e1",
+      provider: "stub",
+      paid: { currency: "USD", amountMinor: 1 },
+    });
+    const r = h.purchases.refundOrder({ orderId: ORDER, eventId: "r1" });
+    expect(r).toMatchObject({ ok: true, value: { status: "refunded" } });
+    expect(gems(h)).toBe(40);
+  });
+
+  it("adds the paid/fail columns to an orders table created before them", () => {
+    const store = fakeSqlStore();
+    store.sql.exec(`CREATE TABLE orders (
+      order_id TEXT PRIMARY KEY, sku TEXT NOT NULL, provider TEXT NOT NULL, currency TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL, status TEXT NOT NULL, provider_ref TEXT, last_event TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    store.sql.exec(
+      "INSERT INTO orders VALUES (?, 'gems.small', 'stub', 'USD', 99, 'pending', NULL, NULL, 1, 1)",
+      ORDER,
+    );
+    const economy = new AccountEconomy(store, () => 1);
+    economy.init();
+    const outbox = new Outbox(store.sql, "account:acc_abc");
+    outbox.init();
+    const notices = { notify: () => {} } as unknown as AccountNotices;
+    const vault = {
+      walletTx: (tx: Parameters<AccountEconomy["applyWalletTx"]>[0]) => economy.applyWalletTx(tx),
+    } as unknown as AccountVault;
+    const purchases = new AccountPurchases(
+      store,
+      economy,
+      vault,
+      notices,
+      outbox,
+      "acc_abc",
+      () => 2,
+    );
+    purchases.init();
+    purchases.init();
+    expect(purchases.orders()[0]).toMatchObject({
+      status: "pending",
+      paid: null,
+      failReason: null,
+    });
+    const r = purchases.fulfillOrder({
+      orderId: ORDER,
+      providerRef: null,
+      eventId: "e",
+      provider: "stub",
+      paid: price,
+    });
+    expect(r).toMatchObject({ ok: true, value: { status: "paid", paid: price } });
   });
 });

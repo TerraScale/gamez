@@ -17,6 +17,8 @@ const body = {
   orderId: ORDER,
   accountId: "acc_abc",
   providerRef: stubRefOf(ORDER),
+  currency: "USD",
+  amountMinor: 99,
 };
 
 function req(raw: string, sig: string | null): Request {
@@ -41,7 +43,18 @@ describe("stub provider", () => {
       orderId: ORDER,
       accountId: "acc_abc",
       providerRef: stubRefOf(ORDER),
+      paid: { currency: "USD", amountMinor: 99 },
     });
+  });
+
+  it("answers paid: null when the signed body carries no usable amount", async () => {
+    const { currency: _c, amountMinor: _a, ...bare } = body;
+    for (const b of [bare, { ...body, amountMinor: 0.5 }, { ...body, currency: "XYZ" }]) {
+      const raw = stubWebhookBody(b);
+      const v = await stub.verifyWebhook(req(raw, await signStubBody(SECRET, raw)));
+      expect(v?.kind).toBe("paid");
+      expect(v?.paid).toBeNull();
+    }
   });
 
   it("rejects a signature made with another secret, a tampered body and a missing header", async () => {

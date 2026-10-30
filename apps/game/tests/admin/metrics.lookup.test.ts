@@ -45,6 +45,7 @@ const MIGRATIONS = [
   "0008_arena.sql",
   "0009_economy.sql",
   "0010_admin.sql",
+  "0011_purchase_fail_reason.sql",
 ];
 
 interface AnyQuery {
@@ -374,6 +375,20 @@ function seedHero(d1: FakeD1): void {
     created_at: BASE + 10,
     updated_at: BASE + 20,
   });
+  insert(d1, "purchase", {
+    id: "pur-0",
+    account_id: "hero-1",
+    sku: "gems.100",
+    provider: "stripe",
+    currency: "BRL",
+    amount_minor: 990,
+    status: "failed",
+    paid_currency: "BRL",
+    paid_minor: 1,
+    fail_reason: "amount_mismatch: paid BRL 0.01, the order is BRL 9.90",
+    created_at: BASE - 10,
+    updated_at: BASE - 5,
+  });
   // Reports against hero-1: two without a verdict (null and ''), one decided.
   insert(d1, "chat_report", { id: "r1", reported_id: "hero-1", at: 1, verdict: null });
   insert(d1, "chat_report", { id: "r2", reported_id: "hero-1", at: 2, verdict: "" });
@@ -484,7 +499,7 @@ describe("readPlayer", () => {
     });
     expect(out!.ledger[49]!.amount).toBe(10);
 
-    expect(out!.purchases.map((p) => p.id)).toEqual(["pur-2", "pur-1"]);
+    expect(out!.purchases.map((p) => p.id)).toEqual(["pur-2", "pur-1", "pur-0"]);
     expect(out!.purchases[0]).toEqual({
       id: "pur-2",
       sku: "gems.100",
@@ -493,6 +508,11 @@ describe("readPlayer", () => {
       amountMinor: 990,
       status: "refunded",
       at: BASE + 20,
+      failReason: null,
+    });
+    expect(out!.purchases[2]).toMatchObject({
+      status: "failed",
+      failReason: "amount_mismatch: paid BRL 0.01, the order is BRL 9.90",
     });
   });
 

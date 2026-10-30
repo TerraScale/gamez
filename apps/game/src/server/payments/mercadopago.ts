@@ -10,6 +10,7 @@
 import type { FiatCurrency, PaymentProviderId } from "@gamez/protocol";
 import type { VerifiedWebhook } from "../contracts.ts";
 import type { CheckoutInput, CheckoutSession, PaymentProvider } from "./provider.ts";
+import { decimalAmount } from "./amount.ts";
 import { constantTimeEqual, hmacSha256Hex, parseOrderRef, toMillis } from "./crypto.ts";
 
 export const MERCADOPAGO_API = "https://api.mercadopago.com";
@@ -147,6 +148,7 @@ export class MercadoPagoProvider implements PaymentProvider {
         orderId: null,
         accountId: null,
         providerRef: null,
+        paid: null,
       };
     if (!res.ok) throw new Error(`mercadopago payment lookup failed: HTTP ${res.status}`);
     const payment = asObject(await res.json().catch(() => null));
@@ -164,6 +166,9 @@ export class MercadoPagoProvider implements PaymentProvider {
       orderId: ref?.orderId ?? null,
       accountId: ref?.accountId ?? null,
       providerRef: asString(payment.id) ?? dataId,
+      // transaction_amount is the decimal price of the items (installment interest
+      // the payer chose is in transaction_details.total_paid_amount, not here).
+      paid: kind === "paid" ? decimalAmount(payment.transaction_amount, payment.currency_id) : null,
     };
   }
 

@@ -282,6 +282,10 @@ export const purchase: Projection<PurchasePayload> = {
     provider_ref: o.providerRef,
     created_at: num(o.createdAt),
     updated_at: num(o.updatedAt),
+    // Migration 0011. Older payloads (before the amount check) carry neither.
+    paid_currency: o.paid?.currency ?? null,
+    paid_minor: o.paid ? num(o.paid.amountMinor) : null,
+    fail_reason: o.failReason ?? null,
   }),
 };
 

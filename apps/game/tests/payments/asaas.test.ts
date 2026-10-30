@@ -9,7 +9,7 @@ function paymentEvent(event: string, id = "evt_9"): string {
   return JSON.stringify({
     id,
     event,
-    payment: { id: "pay_1", externalReference: REF, status: "RECEIVED" },
+    payment: { id: "pay_1", externalReference: REF, status: "RECEIVED", value: 4.9 },
   });
 }
 
@@ -36,6 +36,7 @@ describe("Asaas webhook verification", () => {
         orderId: ORDER,
         accountId: "acc_abc",
         providerRef: "pay_1",
+        paid: { currency: "BRL", amountMinor: 490 },
       });
     }
   });
@@ -156,5 +157,76 @@ describe("Asaas checkout", () => {
     const p = new AsaasProvider({ apiKey: "aak_fake", webhookToken: TOKEN, fetch: fake });
     expect((await p.refund("pay_1")).ok).toBe(true);
     expect(calls[0]).toBe(`${ASAAS_SANDBOX}/payments/pay_1/refund`);
+  });
+});
+
+/** A PAYMENT_RECEIVED webhook as the Asaas sandbox posts it (fields we read and their neighbours). */
+function sandboxPayment(payment: Record<string, unknown>, event = "PAYMENT_RECEIVED"): string {
+  return JSON.stringify({
+    id: "evt_05b708f961d739ea7eba7e4db318f621&368604920",
+    event,
+    dateCreated: "2026-10-30 10:00:00",
+    payment: {
+      object: "payment",
+      id: "pay_080225913252",
+      dateCreated: "2026-10-30",
+      customer: "cus_G7Dvo4iphUNk",
+      value: 4.9,
+      netValue: 3.91,
+      originalValue: null,
+      billingType: "PIX",
+      status: "RECEIVED",
+      externalReference: REF,
+      deleted: false,
+      ...payment,
+    },
+  });
+}
+
+describe("Asaas paid amount (sandbox fixtures)", () => {
+  const verify = (raw: string) => provider().verifyWebhook(req(raw, TOKEN));
+
+  it("converts the decimal BRL value exactly (never netValue)", async () => {
+    expect((await verify(sandboxPayment({})))?.paid).toEqual({ currency: "BRL", amountMinor: 490 });
+    expect((await verify(sandboxPayment({ value: 19.9 })))?.paid).toEqual({
+      currency: "BRL",
+      amountMinor: 1990,
+    });
+    expect((await verify(sandboxPayment({ value: 0.29 })))?.paid).toEqual({
+      currency: "BRL",
+      amountMinor: 29,
+    });
+    expect((await verify(sandboxPayment({ value: 1234.56 })))?.paid).toEqual({
+      currency: "BRL",
+      amountMinor: 123456,
+    });
+    expect((await verify(sandboxPayment({ value: 49 })))?.paid).toEqual({
+      currency: "BRL",
+      amountMinor: 4900,
+    });
+  });
+
+  it("reports PAYMENT_CONFIRMED (card) amounts too", async () => {
+    const v = await verify(
+      sandboxPayment({ billingType: "CREDIT_CARD", status: "CONFIRMED" }, "PAYMENT_CONFIRMED"),
+    );
+    expect(v).toMatchObject({ kind: "paid", paid: { currency: "BRL", amountMinor: 490 } });
+  });
+
+  it("answers paid: null for a value it cannot convert exactly", async () => {
+    for (const value of [undefined, null, "abc", 4.905, -4.9, Number.NaN, "4,90"]) {
+      const v = await verify(sandboxPayment({ value }));
+      expect(v?.kind).toBe("paid");
+      expect(v?.paid).toBeNull();
+    }
+  });
+
+  it("never reports an amount for refunds or ignored events", async () => {
+    expect(
+      (await verify(sandboxPayment({ status: "REFUNDED" }, "PAYMENT_REFUNDED")))?.paid,
+    ).toBeNull();
+    expect(
+      (await verify(sandboxPayment({ status: "PENDING" }, "PAYMENT_CREATED")))?.paid,
+    ).toBeNull();
   });
 });

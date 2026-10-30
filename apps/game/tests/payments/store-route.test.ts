@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach } from "vite-plus/test";
+import { createHmac } from "node:crypto";
+import { afterEach, describe, expect, it, beforeEach } from "vite-plus/test";
 import type { OrderRecord } from "../../src/server/contracts.ts";
 import type { Env } from "../../src/server/contracts.ts";
 import { AccountEconomy } from "../../src/server/account/economy.ts";
@@ -267,7 +268,13 @@ describe("POST /api/store/checkout", () => {
     });
     expect(other.status).toBe(409);
     const stub = env.ACCOUNT.getByName("acc_reg3");
-    await stub.fulfillOrder({ orderId: first.orderId, providerRef: null, eventId: "x" });
+    await stub.fulfillOrder({
+      orderId: first.orderId,
+      providerRef: null,
+      eventId: "x",
+      provider: "stub",
+      paid: { currency: "USD", amountMinor: 99 },
+    });
     const paid = await call({
       path: "/api/store/checkout",
       env,
@@ -438,6 +445,8 @@ describe("POST /api/pay/webhook/:provider", () => {
       orderId: order.orderId,
       accountId: "acc_wh2",
       providerRef: `stub_${order.orderId}`,
+      currency: "USD",
+      amountMinor: 99,
     });
     const sig = await signStubBody(SECRET, raw);
     const post = () =>
@@ -564,5 +573,268 @@ describe("GET /api/store/orders", () => {
   it("needs a session", async () => {
     const { env } = makeEnv();
     expect((await call({ path: "/api/store/orders", env })).status).toBe(401);
+  });
+});
+
+// ---- paid amount vs the order (ADR 0006 §13) ------------------------------------
+
+const AMOUNT_ACCOUNT = "acc_amt1";
+/** gems.small: USD 0.99 / BRL 4.90, 100 gems. */
+const ORDER_OK = "o00000000000000000000aa01";
+const ORDER_BAD = "o00000000000000000000aa02";
+
+type Provider = "stripe" | "asaas" | "mercadopago" | "stub";
+
+async function seedOrders(env: Env, provider: Provider, currency: "USD" | "BRL") {
+  const acct = env.ACCOUNT.getByName(AMOUNT_ACCOUNT) as unknown as Fake;
+  const price = { currency, amountMinor: currency === "USD" ? 99 : 490 } as const;
+  for (const orderId of [ORDER_OK, ORDER_BAD])
+    await acct.createOrder({ orderId, sku: "gems.small", provider, price });
+  return acct;
+}
+
+async function statusOf(acct: Fake, orderId: string) {
+  return (await acct.orders()).find((o) => o.orderId === orderId);
+}
+
+async function expectMatchGrantsAndMismatchFails(
+  acct: Fake,
+  post: (orderId: string, amount: string) => Promise<Response>,
+  good: string,
+  bad: string,
+  reason: RegExp,
+) {
+  const ok = await post(ORDER_OK, good);
+  expect(ok.status).toBe(200);
+  expect(await json(ok)).toMatchObject({ applied: true, status: "paid" });
+  expect((await acct.wallet()).balances.gem).toBe(100);
+
+  const wrong = await post(ORDER_BAD, bad);
+  expect(wrong.status).toBe(200);
+  const body = await json<{ applied: boolean; status: string; reason: string }>(wrong);
+  expect(body).toMatchObject({ applied: false, status: "failed" });
+  expect(body.reason).toMatch(reason);
+  expect((await acct.wallet()).balances.gem).toBe(100);
+  expect(await statusOf(acct, ORDER_BAD)).toMatchObject({ status: "failed" });
+  expect((await statusOf(acct, ORDER_BAD))?.failReason).toMatch(reason);
+
+  // A redelivery with the right amount does not revive a failed order.
+  const again = await post(ORDER_BAD, good);
+  expect(await json(again)).toMatchObject({ applied: false, status: "failed" });
+  expect((await acct.wallet()).balances.gem).toBe(100);
+}
+
+describe("webhooks grant only when the paid amount equals the order", () => {
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+  const realFetch = globalThis.fetch;
+
+  it("stripe: amount_total + currency", async () => {
+    const whsec = "whsec_route_fake";
+    const { env } = makeEnv({
+      STRIPE_SECRET_KEY: "sk_test_fake",
+      STRIPE_WEBHOOK_SECRET: whsec,
+    } as unknown as Partial<Env>);
+    const acct = await seedOrders(env, "stripe", "USD");
+    const post = (orderId: string, amount: string) => {
+      const [currency, total] = amount.split(" ");
+      const raw = JSON.stringify({
+        id: `evt_${orderId}_${amount}`,
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: `cs_test_${orderId}`,
+            payment_status: "paid",
+            amount_total: Number(total),
+            currency,
+            metadata: { accountId: AMOUNT_ACCOUNT, orderId },
+          },
+        },
+      });
+      const t = Math.floor(Date.now() / 1000);
+      const v1 = createHmac("sha256", whsec).update(`${t}.${raw}`).digest("hex");
+      return call({
+        path: "/api/pay/webhook/stripe",
+        env,
+        url: PROD,
+        raw,
+        headers: { "stripe-signature": `t=${t},v1=${v1}` },
+      });
+    };
+    await expectMatchGrantsAndMismatchFails(
+      acct,
+      post,
+      "usd 99",
+      "usd 9",
+      /^amount_mismatch: paid USD 0\.09, the order is USD 0\.99$/,
+    );
+  });
+
+  it("stripe: the same number in another currency fails", async () => {
+    const whsec = "whsec_route_fake";
+    const { env } = makeEnv({
+      STRIPE_SECRET_KEY: "sk_test_fake",
+      STRIPE_WEBHOOK_SECRET: whsec,
+    } as unknown as Partial<Env>);
+    const acct = await seedOrders(env, "stripe", "BRL");
+    const raw = JSON.stringify({
+      id: "evt_cur",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_cur",
+          payment_status: "paid",
+          amount_total: 490,
+          currency: "usd",
+          metadata: { accountId: AMOUNT_ACCOUNT, orderId: ORDER_BAD },
+        },
+      },
+    });
+    const t = Math.floor(Date.now() / 1000);
+    const v1 = createHmac("sha256", whsec).update(`${t}.${raw}`).digest("hex");
+    const res = await call({
+      path: "/api/pay/webhook/stripe",
+      env,
+      url: PROD,
+      raw,
+      headers: { "stripe-signature": `t=${t},v1=${v1}` },
+    });
+    expect(await json(res)).toMatchObject({ applied: false, status: "failed" });
+    expect((await statusOf(acct, ORDER_BAD))?.failReason).toMatch(/^currency_mismatch/);
+    expect((await acct.wallet()).balances.gem).toBe(0);
+  });
+
+  it("asaas: the decimal value in BRL", async () => {
+    const { env } = makeEnv({
+      ASAAS_API_KEY: "aak_fake",
+      ASAAS_WEBHOOK_TOKEN: "asaas-route-token",
+    } as unknown as Partial<Env>);
+    const acct = await seedOrders(env, "asaas", "BRL");
+    const post = (orderId: string, amount: string) =>
+      call({
+        path: "/api/pay/webhook/asaas",
+        env,
+        url: PROD,
+        raw: JSON.stringify({
+          id: `evt_${orderId}_${amount}`,
+          event: "PAYMENT_RECEIVED",
+          payment: {
+            id: `pay_${orderId}`,
+            value: Number(amount),
+            netValue: 0.01,
+            status: "RECEIVED",
+            externalReference: `${AMOUNT_ACCOUNT}|${orderId}`,
+          },
+        }),
+        headers: { "asaas-access-token": "asaas-route-token" },
+      });
+    await expectMatchGrantsAndMismatchFails(
+      acct,
+      post,
+      "4.9",
+      "4.8",
+      /^amount_mismatch: paid BRL 4\.80, the order is BRL 4\.90$/,
+    );
+  });
+
+  it("mercadopago: transaction_amount + currency_id from the payment API", async () => {
+    const secret = "mp-route-secret";
+    const { env } = makeEnv({
+      MERCADOPAGO_ACCESS_TOKEN: "APP_USR-route",
+      MERCADOPAGO_WEBHOOK_SECRET: secret,
+    } as unknown as Partial<Env>);
+    const acct = await seedOrders(env, "mercadopago", "BRL");
+    const payments = new Map<string, Record<string, unknown>>();
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const id =
+        String(input instanceof Request ? input.url : input)
+          .split("/")
+          .pop() ?? "";
+      const p = payments.get(id);
+      return new Response(JSON.stringify(p ?? {}), { status: p ? 200 : 404 });
+    }) as typeof fetch;
+    let n = 0;
+    const post = (orderId: string, amount: string) => {
+      const [currency, value] = amount.split(" ");
+      const dataId = String(1000 + n++);
+      payments.set(dataId, {
+        id: Number(dataId),
+        status: "approved",
+        external_reference: `${AMOUNT_ACCOUNT}|${orderId}`,
+        transaction_amount: Number(value),
+        currency_id: currency,
+      });
+      const ts = String(Math.floor(Date.now() / 1000));
+      const v1 = createHmac("sha256", secret)
+        .update(`id:${dataId};request-id:req-${dataId};ts:${ts};`)
+        .digest("hex");
+      return call({
+        path: `/api/pay/webhook/mercadopago?data.id=${dataId}`,
+        env,
+        url: PROD,
+        raw: JSON.stringify({ type: "payment", data: { id: dataId } }),
+        headers: { "x-signature": `ts=${ts},v1=${v1}`, "x-request-id": `req-${dataId}` },
+      });
+    };
+    await expectMatchGrantsAndMismatchFails(
+      acct,
+      post,
+      "BRL 4.9",
+      "USD 4.9",
+      /^currency_mismatch: paid USD 4\.90, the order is BRL 4\.90$/,
+    );
+  });
+
+  it("stub: a signed body with another amount fails; the sandbox page charges the order price", async () => {
+    const { env } = makeEnv();
+    const acct = await seedOrders(env, "stub", "USD");
+    const post = async (orderId: string, amount: string) => {
+      const raw = stubWebhookBody({
+        id: `stub_${orderId}_${amount}`,
+        kind: "paid",
+        orderId,
+        accountId: AMOUNT_ACCOUNT,
+        providerRef: `stub_${orderId}`,
+        currency: "USD",
+        amountMinor: Number(amount),
+      });
+      return call({
+        path: "/api/pay/webhook/stub",
+        env,
+        raw,
+        headers: { "x-stub-signature": await signStubBody(SECRET, raw) },
+      });
+    };
+    await expectMatchGrantsAndMismatchFails(
+      acct,
+      post,
+      "99",
+      "1",
+      /^amount_mismatch: paid USD 0\.01/,
+    );
+  });
+
+  it("a paid event from another provider than the order's fails it", async () => {
+    const { env } = makeEnv();
+    const acct = await seedOrders(env, "stripe", "USD");
+    const raw = stubWebhookBody({
+      id: "stub_cross",
+      kind: "paid",
+      orderId: ORDER_BAD,
+      accountId: AMOUNT_ACCOUNT,
+      providerRef: "x",
+      currency: "USD",
+      amountMinor: 99,
+    });
+    const res = await call({
+      path: "/api/pay/webhook/stub",
+      env,
+      raw,
+      headers: { "x-stub-signature": await signStubBody(SECRET, raw) },
+    });
+    expect(await json(res)).toMatchObject({ applied: false, status: "failed" });
+    expect((await statusOf(acct, ORDER_BAD))?.failReason).toMatch(/^provider_mismatch/);
+    expect((await acct.wallet()).balances.gem).toBe(0);
   });
 });

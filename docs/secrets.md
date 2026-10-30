@@ -203,6 +203,29 @@ Replace `<origin>` with the public origin of the deployment (`PUBLIC_ORIGIN`):
 Checkout sends the browser back to `<origin>/#store=paid&order=<id>` or `<origin>/#store=cancel`.
 The success page is not proof of payment: the webhook is.
 
+### Paid amount check
+
+A verified paid webhook grants the order only when the provider-reported charge equals the price
+stored on the order, in currency and minor units, and comes from the order's own provider
+(`account/purchases.ts`, `payments/amount.ts`). Each provider reports the charge differently:
+
+| Provider     | Field read                                        | Conversion to minor units                                        |
+| ------------ | ------------------------------------------------- | ---------------------------------------------------------------- |
+| Stripe       | session `amount_total` + `currency` (`"usd"`)     | already the smallest unit (USD/BRL/EUR: cents); code upper-cased |
+| Asaas        | `payment.value` (decimal reais), never `netValue` | exact decimal parse x 100; the account is BRL only               |
+| Mercado Pago | `transaction_amount` + `currency_id` from the API | exact decimal parse x 100 (installment interest is not included) |
+| Stub         | `amountMinor` + `currency` in the signed body     | as is; `/api/pay/stub/complete` fills them from the order        |
+
+Anything else (another amount, another currency, another provider, or a value we cannot convert
+exactly, such as `4.905`) marks the order `failed` and grants nothing. The order keeps the reported
+charge (`paid_currency`, `paid_minor`) and a `fail_reason` such as
+`amount_mismatch: paid BRL 0.01, the order is BRL 4.90`. Both reach D1 (`purchase` table, migration 0011) and show in the admin player lookup ("Purchases", Reason column); the Worker also logs
+`store: <provider> order <id> failed: <reason>`. The webhook answers 200
+(`{applied: false, status: "failed", reason}`) so the provider stops retrying, and the player gets a
+`store.failed` notice. `failed` is terminal: a later delivery, even with the right amount, replays
+it. Refund the payment in the provider's dashboard; its refund webhook moves the order to
+`refunded` (nothing to revoke, nothing was granted).
+
 ### Stripe
 
 1. Dashboard → Developers → API keys: copy the secret key into `STRIPE_SECRET_KEY`. Use the test
@@ -291,8 +314,9 @@ key beyond `AUTH_SECRET`, which is declared.
 - Stripe `charge.refunded`: a partial refund (`refunded: false`) is ignored; a full refund reads our
   ids from the payment intent (`GET /v1/payment_intents/<id>`) because charges do not carry the
   intent's metadata. **Unverified** against Stripe itself.
-- The webhook carries no amount, so a paid event is not checked against the price charged. Adding
-  the amount to `VerifiedWebhook` would close that.
+- The paid amount check (above) compares the charge before discounts are possible: we never create
+  Stripe promotion codes or Asaas discounts. If they are ever added, a discounted order fails until
+  the order stores the discounted price.
 
 ## Admin dashboard analytics
 

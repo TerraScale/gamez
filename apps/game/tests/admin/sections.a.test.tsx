@@ -211,6 +211,17 @@ const DETAIL: AdminPlayerDetail = {
       amountMinor: 499,
       status: "paid",
       at: T0,
+      failReason: null,
+    },
+    {
+      id: "p2",
+      sku: "gems.100",
+      provider: "asaas",
+      currency: "BRL",
+      amountMinor: 2490,
+      status: "failed",
+      at: T0,
+      failReason: "amount_mismatch: paid BRL 0.01, the order is BRL 24.90",
     },
   ],
   reports: { against: 3, open: 1 },
@@ -353,6 +364,7 @@ describe("lookup section", () => {
     expect(html).toContain("Ashe");
     expect(html).toContain("shop buy");
     expect(html).toContain("USD 4.99");
+    expect(html).toContain("amount_mismatch: paid BRL 0.01, the order is BRL 24.90");
     expect(html).toContain("1 open");
     expect(html).toContain("Mute for 60 min");
     expect(html).toContain("Missing data: AccountDO (unreachable)");

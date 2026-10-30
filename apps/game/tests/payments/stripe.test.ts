@@ -20,6 +20,8 @@ const checkoutBody = JSON.stringify({
     object: {
       id: "cs_test_1",
       payment_status: "paid",
+      amount_total: 99,
+      currency: "usd",
       metadata: { accountId: "acc_abc", orderId: "o0123456789abcdef01234567" },
     },
   },
@@ -52,6 +54,7 @@ describe("Stripe webhook verification", () => {
       orderId: "o0123456789abcdef01234567",
       accountId: "acc_abc",
       providerRef: "cs_test_1",
+      paid: { currency: "USD", amountMinor: 99 },
     });
   });
 
@@ -254,5 +257,106 @@ describe("Stripe checkout", () => {
         customerEmail: null,
       }),
     ).rejects.toThrow(/HTTP 402/);
+  });
+});
+
+/**
+ * A checkout.session.completed event as the Stripe test mode sends it
+ * (trimmed to the fields we read plus the neighbours that could be confused
+ * with them: amount_subtotal before discounts, total_details).
+ */
+function sandboxSession(object: Record<string, unknown>): string {
+  return JSON.stringify({
+    id: "evt_1Q2w3E4r5T6y7U8i",
+    object: "event",
+    api_version: "2024-06-20",
+    livemode: false,
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_test_a1B2c3D4",
+        object: "checkout.session",
+        mode: "payment",
+        status: "complete",
+        payment_status: "paid",
+        amount_subtotal: 490,
+        amount_total: 490,
+        currency: "brl",
+        total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0 },
+        client_reference_id: "o0123456789abcdef01234567",
+        payment_intent: "pi_3Q2w3E4r5T6y7U8i",
+        metadata: { accountId: "acc_abc", orderId: "o0123456789abcdef01234567" },
+        ...object,
+      },
+    },
+  });
+}
+
+describe("Stripe paid amount (sandbox fixtures)", () => {
+  const t = Math.floor(NOW_MS / 1000);
+  const verify = (raw: string) => provider().verifyWebhook(req(raw, `t=${t},v1=${sign(t, raw)}`));
+
+  it("reports amount_total in minor units with the upper-case currency", async () => {
+    expect((await verify(sandboxSession({})))?.paid).toEqual({ currency: "BRL", amountMinor: 490 });
+    expect((await verify(sandboxSession({ amount_total: 99, currency: "usd" })))?.paid).toEqual({
+      currency: "USD",
+      amountMinor: 99,
+    });
+    expect((await verify(sandboxSession({ amount_total: 1999, currency: "eur" })))?.paid).toEqual({
+      currency: "EUR",
+      amountMinor: 1999,
+    });
+  });
+
+  it("uses amount_total (after discounts), not amount_subtotal", async () => {
+    const v = await verify(sandboxSession({ amount_subtotal: 490, amount_total: 1 }));
+    expect(v?.paid).toEqual({ currency: "BRL", amountMinor: 1 });
+  });
+
+  it("reports async_payment_succeeded amounts too", async () => {
+    const raw = JSON.stringify({
+      ...JSON.parse(sandboxSession({})),
+      type: "checkout.session.async_payment_succeeded",
+    });
+    expect(await verify(raw)).toMatchObject({
+      kind: "paid",
+      paid: { currency: "BRL", amountMinor: 490 },
+    });
+  });
+
+  it("answers paid: null for an amount or currency it cannot read (the order then fails)", async () => {
+    for (const bad of [
+      { amount_total: undefined },
+      { amount_total: null },
+      { amount_total: "490" },
+      { amount_total: 4.9 },
+      { amount_total: -490 },
+      { currency: "jpy" },
+      { currency: undefined },
+    ]) {
+      const v = await verify(sandboxSession(bad));
+      expect(v?.kind).toBe("paid");
+      expect(v?.paid).toBeNull();
+    }
+  });
+
+  it("never reports an amount for refunds or ignored events", async () => {
+    const refund = JSON.stringify({
+      id: "evt_r",
+      type: "charge.refunded",
+      data: {
+        object: {
+          id: "ch_1",
+          amount: 490,
+          currency: "brl",
+          refunded: true,
+          payment_intent: "pi_1",
+          metadata: { accountId: "acc_abc", orderId: "o0123456789abcdef01234567" },
+        },
+      },
+    });
+    expect((await verify(refund))?.paid).toBeNull();
+    const unpaid = await verify(sandboxSession({ payment_status: "unpaid" }));
+    expect(unpaid).toMatchObject({ kind: "ignored" });
   });
 });

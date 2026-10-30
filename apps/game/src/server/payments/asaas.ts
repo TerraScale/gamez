@@ -11,6 +11,7 @@
 import type { FiatCurrency, PaymentProviderId } from "@gamez/protocol";
 import type { VerifiedWebhook } from "../contracts.ts";
 import type { CheckoutInput, CheckoutSession, PaymentProvider } from "./provider.ts";
+import { decimalAmount } from "./amount.ts";
 import { constantTimeEqual, parseOrderRef } from "./crypto.ts";
 
 export const ASAAS_SANDBOX = "https://api-sandbox.asaas.com/v3";
@@ -141,6 +142,9 @@ export class AsaasProvider implements PaymentProvider {
       orderId: ref?.orderId ?? null,
       accountId: ref?.accountId ?? null,
       providerRef: paymentId,
+      // `value` is the charge in reais (decimal); Asaas accounts are BRL only.
+      // netValue (after Asaas fees) is not what the payer was charged.
+      paid: kind === "paid" ? decimalAmount(payment.value, "BRL") : null,
     };
   }
 

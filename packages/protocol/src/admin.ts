@@ -368,6 +368,8 @@ export interface AdminPlayerDetail {
     amountMinor: number;
     status: string;
     at: number;
+    /** Why a "failed" order failed (paid amount/currency/provider did not match); null otherwise. */
+    failReason: string | null;
   }[];
   reports: { against: number; open: number };
   guild: { guildId: string; name: string } | null;

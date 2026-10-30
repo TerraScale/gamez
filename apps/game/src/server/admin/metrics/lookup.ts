@@ -245,11 +245,12 @@ export async function readPlayer(
         amountMinor: number;
         status: string;
         at: number;
+        failReason: string | null;
       }>(
         d.db,
         `SELECT id, COALESCE(sku, '') AS sku, COALESCE(provider, '') AS provider,
           COALESCE(currency, '') AS currency, amount_minor AS amountMinor,
-          COALESCE(status, '') AS status, updated_at AS at
+          COALESCE(status, '') AS status, updated_at AS at, fail_reason AS failReason
          FROM purchase WHERE account_id = ? AND _deleted = 0
          ORDER BY updated_at DESC, id DESC LIMIT ?`,
         accountId,
@@ -263,6 +264,7 @@ export async function readPlayer(
       amountMinor: num(r.amountMinor),
       status: String(r.status),
       at: num(r.at),
+      failReason: typeof r.failReason === "string" && r.failReason !== "" ? r.failReason : null,
     })),
   );
 

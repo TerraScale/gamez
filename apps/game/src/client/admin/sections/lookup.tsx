@@ -307,6 +307,7 @@ const PURCHASE_COLUMNS: readonly DataColumn<AdminPlayerDetail["purchases"][numbe
     align: "right",
   },
   { key: "status", label: "Status", value: (p) => p.status },
+  { key: "reason", label: "Reason", value: (p) => p.failReason ?? "" },
 ];
 
 const SOURCE_WORD: Record<AdminSourceKind, string> = {

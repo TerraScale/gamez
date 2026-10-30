@@ -73,7 +73,13 @@ describe("Mercado Pago webhook verification", () => {
     const p = provider(
       paymentFetch(
         200,
-        { id: 98765, status: "approved", external_reference: `acc_abc|${ORDER}` },
+        {
+          id: 98765,
+          status: "approved",
+          external_reference: `acc_abc|${ORDER}`,
+          transaction_amount: 4.9,
+          currency_id: "BRL",
+        },
         seen,
       ),
     );
@@ -84,6 +90,7 @@ describe("Mercado Pago webhook verification", () => {
       orderId: ORDER,
       accountId: "acc_abc",
       providerRef: "98765",
+      paid: { currency: "BRL", amountMinor: 490 },
     });
     expect(seen[0]).toBe(`https://api.mercadopago.com/v1/payments/98765 Bearer ${TOKEN}`);
   });
@@ -232,5 +239,66 @@ describe("Mercado Pago checkout", () => {
       notification_url: "https://a.test/w",
       items: [{ currency_id: "BRL", unit_price: 4.9, quantity: 1 }],
     });
+  });
+});
+
+/** GET /v1/payments/<id> as the Mercado Pago sandbox answers it (fields we read and their neighbours). */
+function sandboxPayment(fields: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: 98765,
+    date_created: "2026-10-30T10:00:00.000-03:00",
+    date_approved: "2026-10-30T10:00:05.000-03:00",
+    live_mode: false,
+    status: "approved",
+    status_detail: "accredited",
+    payment_type_id: "credit_card",
+    currency_id: "BRL",
+    transaction_amount: 4.9,
+    transaction_amount_refunded: 0,
+    installments: 3,
+    transaction_details: {
+      net_received_amount: 4.42,
+      total_paid_amount: 5.2,
+      installment_amount: 1.73,
+    },
+    external_reference: `acc_abc|${ORDER}`,
+    metadata: { account_id: "acc_abc", order_id: ORDER },
+    ...fields,
+  };
+}
+
+describe("Mercado Pago paid amount (sandbox fixtures)", () => {
+  const verify = (fields: Record<string, unknown>) =>
+    provider(paymentFetch(200, sandboxPayment(fields))).verifyWebhook(req({}));
+
+  it("converts transaction_amount exactly with currency_id (not total_paid_amount)", async () => {
+    expect((await verify({}))?.paid).toEqual({ currency: "BRL", amountMinor: 490 });
+    expect((await verify({ transaction_amount: 0.99, currency_id: "USD" }))?.paid).toEqual({
+      currency: "USD",
+      amountMinor: 99,
+    });
+    expect((await verify({ transaction_amount: 24.9 }))?.paid).toEqual({
+      currency: "BRL",
+      amountMinor: 2490,
+    });
+  });
+
+  it("answers paid: null for an amount or currency it cannot read", async () => {
+    for (const fields of [
+      { transaction_amount: undefined },
+      { transaction_amount: 4.901 },
+      { transaction_amount: "x" },
+      { currency_id: "ARS" },
+      { currency_id: null },
+    ]) {
+      const v = await verify(fields);
+      expect(v?.kind).toBe("paid");
+      expect(v?.paid).toBeNull();
+    }
+  });
+
+  it("never reports an amount for refunds or pending payments", async () => {
+    expect((await verify({ status: "refunded" }))?.paid).toBeNull();
+    expect((await verify({ status: "in_process" }))?.paid).toBeNull();
   });
 });

@@ -2,7 +2,9 @@
  * Wave C e2e: payments: stub checkout -> stub complete -> gems credited once,
  * a signed webhook re-posted changes nothing, a bad signature is 401, the premium
  * pass and the cosmetic bundle are granted, cancel changes nothing, guests may
- * not buy (docs/design/wave-C.md §8, §13). OWNER: T-pay.
+ * not buy, and a signed paid webhook whose amount differs from the order's
+ * price fails the order without granting, even when redelivered with the right
+ * amount (docs/design/wave-C.md §8, §13; ADR 0006 §13). OWNER: T-pay.
  *
  * The signed webhooks are built here with node:crypto and AUTH_SECRET from the
  * local apps/game/.dev.vars (git-ignored), so the test does not reuse the code
@@ -12,6 +14,7 @@ import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type {
   CosmeticsView,
+  NoticesResponse,
   OrdersResponse,
   PassView,
   StoreResponse,
@@ -163,6 +166,80 @@ export const paymentsFeature: E2eFeature = {
       check(
         (await gems(ctx.url, a.token)) === before + 100,
         "payments: the bad signature changes nothing",
+      );
+
+      // A verified paid event for less than the price: the order fails, nothing is granted.
+      const short = await api<CheckoutBody>(ctx.url, "/api/store/checkout", {
+        token: a.token,
+        body: {
+          opId: `e2e-short-${Date.now().toString(36)}`,
+          sku: "gems.small",
+          provider: "stub",
+          currency: "USD",
+        },
+      });
+      const shortId = short.body.orderId;
+      const paidEvent = (amountMinor: number, n: number) =>
+        JSON.stringify({
+          id: `stub_${shortId}_paid_${n}`,
+          kind: "paid",
+          orderId: shortId,
+          accountId: a.accountId,
+          providerRef: `stub_${shortId}`,
+          currency: "USD",
+          amountMinor,
+        });
+      const postSigned = (raw: string) =>
+        fetch(`${ctx.url}/api/pay/webhook/stub`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-stub-signature": signed(secret, raw) },
+          body: raw,
+        });
+      const underpaid = await postSigned(paidEvent(1, 1));
+      const underBody = (await underpaid.json()) as {
+        applied?: boolean;
+        status?: string;
+        reason?: string;
+      };
+      check(
+        underpaid.status === 200 && underBody.applied === false && underBody.status === "failed",
+        `payments: an underpaid webhook is answered 200 with status failed (got ${underpaid.status} ${JSON.stringify(underBody)})`,
+      );
+      check(
+        /^amount_mismatch: paid USD 0\.01, the order is USD 0\.99$/.test(underBody.reason ?? ""),
+        "payments: the failure names the paid and expected amounts",
+      );
+      check(
+        (await gems(ctx.url, a.token)) === before + 100,
+        "payments: the underpaid order grants no gems",
+      );
+      const redelivered = await postSigned(paidEvent(99, 2));
+      const redeliveredBody = (await redelivered.json()) as { applied?: boolean; status?: string };
+      check(
+        redelivered.status === 200 &&
+          redeliveredBody.applied === false &&
+          redeliveredBody.status === "failed",
+        "payments: a later event with the right amount does not revive the failed order",
+      );
+      check(
+        (await gems(ctx.url, a.token)) === before + 100,
+        "payments: the failed order still grants nothing",
+      );
+      const afterFail = await api<OrdersResponse>(ctx.url, "/api/store/orders", {
+        token: a.token,
+      });
+      check(
+        afterFail.body.orders?.some((o) => o.orderId === shortId && o.status === "failed") === true,
+        "payments: the underpaid order is failed in /api/store/orders",
+      );
+      const inbox = await api<NoticesResponse>(ctx.url, "/api/account/notices", {
+        token: a.token,
+      });
+      check(
+        inbox.body.notices?.some(
+          (n) => n.kind === "store.failed" && n.data["orderId"] === shortId,
+        ) === true,
+        "payments: the player gets a store.failed notice for it",
       );
     }
 
