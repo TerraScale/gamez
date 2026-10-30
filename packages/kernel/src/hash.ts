@@ -186,6 +186,17 @@ export function cloneJson<T>(value: T, path: string | (() => string) = "$"): T {
 }
 
 /**
+ * cloneJson() for a component value or field, without a path closure (add()
+ * and update() run in every hot loop). The error path is
+ * `owner[entity]` or `owner[entity].key`.
+ */
+export function cloneValue(value: unknown, owner: string, e: number, key: string | null): unknown {
+  const fast = fastClone(value, 0);
+  if (fast !== INVALID) return fast;
+  return cloneJson(value, key === null ? `${owner}[${e}]` : `${owner}[${e}].${key}`);
+}
+
+/**
  * Deep copy of data that is already stored in the world, for the rollback
  * log. Stored data is plain JSON (it was validated on the way in), so it is
  * not validated again. Keys keep their order, so restoring the copy is exact.

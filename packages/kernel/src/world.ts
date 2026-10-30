@@ -19,13 +19,20 @@
  *   through the world any more. A live value is deep-copied before it is handed
  *   out, because the caller may mutate it in place. Value entries are written
  *   once per slot per transaction (slot.txn); later touches need nothing.
+ * - Field: update() of a slot not yet logged, when every patched key already
+ *   exists and none is deleted, saves only the old values of those keys (by
+ *   reference: update() replaces them with clones and never mutates them), so
+ *   a small patch of a big value costs no deep copy. Key order cannot change.
+ *   If the slot is then handed out live or replaced in the same transaction,
+ *   the field entry is promoted to a value entry (a copy of the value with the
+ *   saved fields put back).
  * Entities created in the transaction are exactly the ids from the saved
  * nextEntity upwards; destroyed older ids are listed. rollback() replays the
  * log in reverse, so each table key and each slot ends with the state it had
  * at begin(); commit() drops the log. Both cost what the transaction touched,
  * not the size of the world.
  */
-import { cloneJson, compareStrings, copyStored } from "./hash.ts";
+import { cloneJson, cloneValue, compareStrings, copyStored } from "./hash.ts";
 import type { ComponentType, Entity, World, WorldSnapshot } from "./types.ts";
 
 /**
@@ -61,6 +68,8 @@ export function componentHandle<T>(name: string): ComponentType<T> {
 /** Undo-log marker: the key had no slot before the logged change. */
 const ABSENT: unique symbol = Symbol("absent");
 
+const hasOwn = Object.prototype.hasOwnProperty;
+
 /** Values that sim code can mutate in place. */
 const isMutable = (v: unknown): v is object => typeof v === "object" && v !== null;
 
@@ -71,6 +80,10 @@ class Slot {
   txn: number;
   /** Value at the start of transaction `txn`, while that transaction is open and the slot is in valueLog. */
   prev: unknown = undefined;
+  /** Transaction whose field entry this slot holds (in fieldLog), 0: none. */
+  fieldTxn = 0;
+  /** Field entry: key, old value, key, old value... (each key once). */
+  fields: unknown[] | null = null;
 
   constructor(value: unknown, txn: number) {
     this.value = value;
@@ -99,6 +112,8 @@ export class WorldImpl implements World {
   private valueLog: Slot[] = [];
   /** Membership entries, three items each: table, key, previous slot or ABSENT. */
   private memberLog: unknown[] = [];
+  /** Field entries: slots whose `fields` hold the begin values of the keys update() patched. */
+  private fieldLog: Slot[] = [];
 
   /** Starts an undo log. Transactions do not nest. */
   begin(): void {
@@ -119,6 +134,13 @@ export class WorldImpl implements World {
     // Slot contents and table membership are independent: each slot's value
     // entry is unique, and membership entries replay in reverse.
     for (const slot of this.valueLog) slot.value = slot.prev;
+    for (const slot of this.fieldLog) {
+      // Promoted entries (fieldTxn reset) were restored through valueLog.
+      if (slot.fieldTxn !== this.txn) continue;
+      const target = slot.value as Record<string, unknown>;
+      const f = slot.fields!;
+      for (let i = 0; i < f.length; i += 2) target[f[i] as string] = f[i + 1];
+    }
     const log = this.memberLog;
     for (let i = log.length - 3; i >= 0; i -= 3) {
       const table = log[i] as Table<unknown>;
@@ -134,7 +156,12 @@ export class WorldImpl implements World {
 
   private endTxn(): void {
     for (const slot of this.valueLog) slot.prev = undefined;
+    for (const slot of this.fieldLog) {
+      slot.fieldTxn = 0;
+      slot.fields = null;
+    }
     this.valueLog = [];
+    this.fieldLog = [];
     this.memberLog = [];
     this.txnDestroyed = [];
     this.txn = 0;
@@ -151,10 +178,59 @@ export class WorldImpl implements World {
    */
   private logValue(slot: Slot, copy: boolean): void {
     if (slot.txn === this.txn) return;
+    if (slot.fieldTxn === this.txn) {
+      this.promote(slot);
+      return;
+    }
     slot.txn = this.txn;
     const v = slot.value;
     slot.prev = copy && isMutable(v) ? copyStored(v) : v;
     this.valueLog.push(slot);
+  }
+
+  /**
+   * Turns a slot's field entry into a value entry: its begin value is a copy of
+   * the current value with the saved fields put back.
+   */
+  private promote(slot: Slot): void {
+    const begin = copyStored(slot.value) as Record<string, unknown>;
+    const f = slot.fields!;
+    for (let i = 0; i < f.length; i += 2) begin[f[i] as string] = f[i + 1];
+    slot.fieldTxn = 0;
+    slot.fields = null;
+    slot.txn = this.txn;
+    slot.prev = begin;
+    this.valueLog.push(slot);
+  }
+
+  /**
+   * Logs the begin values of the keys `update(patch)` is about to replace in
+   * `target`. Returns false (nothing logged) when the patch deletes or adds a
+   * key: the caller then logs the whole value.
+   */
+  private logFields(slot: Slot, target: Record<string, unknown>, keys: string[], patch: object): boolean {
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!;
+      if ((patch as Record<string, unknown>)[k] === undefined || !hasOwn.call(target, k)) return false;
+    }
+    let f = slot.fields;
+    if (slot.fieldTxn !== this.txn) {
+      slot.fieldTxn = this.txn;
+      f = slot.fields = [];
+      this.fieldLog.push(slot);
+    }
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!;
+      let saved = false;
+      for (let j = 0; j < f!.length; j += 2) {
+        if (f![j] === k) {
+          saved = true;
+          break;
+        }
+      }
+      if (!saved) f!.push(k, target[k]);
+    }
+    return true;
   }
 
   /** Reads a live value; in a transaction, logs a copy first if it is mutable. */
@@ -162,9 +238,12 @@ export class WorldImpl implements World {
     if (slot === undefined) return undefined;
     const v = slot.value;
     if (this.txn !== 0 && slot.txn !== this.txn && isMutable(v)) {
-      slot.txn = this.txn;
-      slot.prev = copyStored(v);
-      this.valueLog.push(slot);
+      if (slot.fieldTxn === this.txn) this.promote(slot);
+      else {
+        slot.txn = this.txn;
+        slot.prev = copyStored(v);
+        this.valueLog.push(slot);
+      }
     }
     return v;
   }
@@ -219,7 +298,7 @@ export class WorldImpl implements World {
   add<T>(e: Entity, c: ComponentType<T>, value: T): void {
     this.assertAlive(e, "add", c.name);
     this.assertNotReserved(c.name);
-    const stored = cloneJson(value, () => `${c.name}[${e}]`);
+    const stored = cloneValue(value, c.name, e, null);
     let table = this.tableOf(c);
     if (!table) {
       table = new Map();
@@ -237,11 +316,20 @@ export class WorldImpl implements World {
     if (typeof current !== "object" || current === null || Array.isArray(current)) {
       throw new TypeError(`world.update(${e}, "${c.name}"): component value is not an object`);
     }
-    if (this.txn !== 0) this.logValue(slot!, true);
     const target = current as Record<string, unknown>;
-    for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+    const keys = Object.keys(patch);
+    if (
+      this.txn !== 0 &&
+      slot!.txn !== this.txn &&
+      !this.logFields(slot!, target, keys, patch)
+    ) {
+      this.logValue(slot!, true);
+    }
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!;
+      const v = (patch as Record<string, unknown>)[k];
       if (v === undefined) delete target[k];
-      else target[k] = cloneJson(v, () => `${c.name}[${e}].${k}`);
+      else target[k] = cloneValue(v, c.name, e, k);
     }
   }
 

@@ -71,6 +71,27 @@ describe("peek (read-only view, no rollback copy)", () => {
   });
 });
 
+describe("field entries of update()", () => {
+  it("restore patched fields, also after promotion, replacement and destroy", () => {
+    const sim = simWith((w) => {
+      w.update(1, Bag, { items: [{ id: "silver", n: 1 }] });
+      w.update(1, Bag, { items: [{ id: "copper", n: 2 }] }); // same key: first save wins
+      w.update(1, Pos, { x: 50 });
+      w.read(1, Pos).y = 60; // promotion: field entry -> value entry
+      w.update(2, Pos, { y: 40 });
+      w.add(2, Pos, { x: 0, y: 0 }); // replaced after a field entry
+      w.update(1, Bag, { meta: { tags: ["b"] } });
+      w.destroy(1);
+    }, populate);
+    const before = JSON.stringify(sim.world.snapshot());
+    expect(sim.dispatch("r.go", { fail: true }, null).ok).toBe(false);
+    expect(JSON.stringify(sim.world.snapshot())).toBe(before);
+    expect(sim.dispatch("r.go", { fail: false }, null).ok).toBe(true);
+    expect(sim.world.exists(1)).toBe(false);
+    expect(sim.world.peek(2, Pos)).toEqual({ x: 0, y: 0 });
+  });
+});
+
 describe("rollback of in-place mutation", () => {
   it("restores values mutated through get() and read(), including nested arrays", () => {
     const sim = simWith((w) => {
@@ -303,7 +324,7 @@ describe("world transactions", () => {
       const e = alive.length > 0 ? rng.pick(alive) : w.create();
       const ci = rng.int(0, 2);
       const c = comps[ci]!;
-      switch (rng.int(0, 11)) {
+      switch (rng.int(0, 14)) {
         case 0:
           w.create();
           break;
@@ -354,6 +375,27 @@ describe("world transactions", () => {
           }
           break;
         }
+        case 11:
+          // A field entry (existing keys only), nested value replaced.
+          if (w.has(e, Bag)) w.update(e, Bag, { items: [{ id: `u${rng.int(0, 9)}`, n: 1 }] });
+          break;
+        case 12: {
+          // A field entry, then the same value handed out live and mutated (promotion).
+          if (!w.has(e, Bag)) break;
+          w.update(e, Bag, { meta: { tags: [`m${rng.int(0, 9)}`] } });
+          const b = w.get(e, Bag)!;
+          b.items.push({ id: "late", n: 2 });
+          b.meta.tags.push("late");
+          break;
+        }
+        case 13:
+          // Adds or deletes a key: logs the whole value.
+          if (w.has(e, Pos)) {
+            w.update(e, Pos as ComponentType<Record<string, number | undefined>>, {
+              z: rng.chance(0.5) ? undefined : rng.int(0, 9),
+            });
+          }
+          break;
         default:
           w.add(w.create(), Pos, { x: 0, y: 0 });
       }
