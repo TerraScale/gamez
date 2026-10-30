@@ -123,7 +123,7 @@ modules can patch):
   about 1.1 ms per tick. Monster think is throttled to every 2 ticks in a party of 2+
   (`PARTY_THINK_EVERY`). Flow fields are memoised per targeted member, and followers re-plan every
   8 ticks, staggered by slot.
-- **Update (ADR 0012, 2026-10-30):** the sim hot path work cut the every-module melee tick by
+- **Update (ADR 0013, 2026-10-30):** the sim hot path work cut the every-module melee tick by
   21–27 % with identical hashes; the old idle-box 2.3 ms best window and 2.6 ms mean scale to
   about 1.7–1.8 ms and 1.9–2.05 ms ([`docs/bench/2026-10-sim-perf.md`](../bench/2026-10-sim-perf.md)).
 - Timing asserts in tests now scale with the measured machine load (`tests/support/perf.ts`,

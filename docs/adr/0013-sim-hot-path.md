@@ -1,4 +1,4 @@
-# ADR 0012: Sim hot path (field undo entries, peekResource, fast-property clones)
+# ADR 0013: Sim hot path (field undo entries, peekResource, fast-property clones)
 
 - Status: accepted (branch `sim-perf`)
 - Date: 2026-10-30

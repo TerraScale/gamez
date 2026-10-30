@@ -3,7 +3,7 @@
 Follow-up to [`2026-10-party.md`](2026-10-party.md) and party.md §12. With every module, the
 classic sim cost about 2.3–2.6 ms per tick in the 300-monster melee on the dev box, above the
 2 ms budget. This round cut the tick by about a quarter without changing behaviour. Decisions
-are in [ADR 0012](../adr/0012-sim-hot-path.md).
+are in [ADR 0013](../adr/0013-sim-hot-path.md).
 
 ## Method
 
@@ -95,5 +95,5 @@ monster AI, the auto brains, movement and the grid; no single item is above 5 % 
 - The aggro memory: a dense layout (sorted `[entity, tick]` pairs) would make its copy cheap,
   but it changes the state and the hashes (needs a version bump).
 - `Map<Entity, Slot>` lookups are now the largest kernel cost (about 13 000 per tick). A
-  faster store must keep `query()`'s cheap ascending iteration and bounded memory (ADR 0012 §4).
+  faster store must keep `query()`'s cheap ascending iteration and bounded memory (ADR 0013 §4).
 - The leader's twelve-tile foe scan tests line of sight to about 150 monsters per think.

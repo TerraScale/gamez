@@ -137,7 +137,7 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 
 Load order comes from `deps` and `optionalDeps`, with ties broken by id. Patching, wrapping and overriding apply in that order, so a later module wraps an earlier one.
 
-`get()`/`read()`/`getResource()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only code (every monster, every tick) use `world.peek(e, C)` and `world.peekResource(key)`: same value, no copy. Never mutate what they return; `update()` after a `peek()` is fine and logs only the fields it replaces, so hot writers peek, change a shallow copy and `update()` the changed fields (ADR 0010, ADR 0012).
+`get()`/`read()`/`getResource()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only code (every monster, every tick) use `world.peek(e, C)` and `world.peekResource(key)`: same value, no copy. Never mutate what they return; `update()` after a `peek()` is fine and logs only the fields it replaces, so hot writers peek, change a shallow copy and `update()` the changed fields (ADR 0010, ADR 0013).
 
 ## Determinism rules (enforced by lint + tests)
 
