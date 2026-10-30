@@ -191,7 +191,7 @@ describe("classic.auto.rate: measurement", () => {
   }, 120_000);
 
   it("pins the hash after a fixed script", () => {
-    expect(rateScript().hash()).toBe("7ad861944bfa1dc7");
+    expect(rateScript().hash()).toBe("77011527ca627172");
   }, 120_000);
 });
 

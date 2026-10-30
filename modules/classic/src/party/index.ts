@@ -21,7 +21,7 @@ export { CLASS_ROLES, MEND_ALLY_RADIUS } from "./content.ts";
 
 export const classicParty = defineModule({
   id: MODULE.party,
-  version: "1.0.0",
+  version: "1.0.1",
   // Like classic.talents: only core is required, so partial module sets (tests,
   // fixtures) still load; the rest only fixes the load order when present.
   deps: [MODULE.core],

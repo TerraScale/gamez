@@ -388,6 +388,6 @@ describe("determinism", () => {
   it("pins the hash of a scripted bank sequence", () => {
     const sim = script(SEED);
     expect(gold(sim)).toBe(27);
-    expect(sim.hash()).toMatchInlineSnapshot(`"903316c119b815c4"`);
+    expect(sim.hash()).toMatchInlineSnapshot(`"184c46649f2b0233"`);
   });
 });

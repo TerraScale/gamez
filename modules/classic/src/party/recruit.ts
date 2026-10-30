@@ -98,15 +98,19 @@ export function execRecruit(world: World, ctx: SimContext, req: RecruitRequest):
   const e = spawnHeroEntity(world, ctx, cls, req.classId, req.name);
   if (level > 1) addXp(world, ctx, e, xpAtLevel(bal, level), "recruit");
 
-  // Next to the controlled hero (or the town spawn when it has no position).
-  const map = getMap(world, ctx.registry, 0);
+  // Next to the controlled hero, in the party's current area (a free QA
+  // recruit can join in the dungeon; a town-only recruit is in town anyway).
+  // The area's spawn when the hero has no position there.
+  const depth = currentDepth(world);
+  const map = getMap(world, ctx.registry, depth);
   const leader = heroOf(world);
-  const from = world.get(leader, Pos) ?? { x: tileCenter(map.spawn.x), y: tileCenter(map.spawn.y) };
+  const lp = world.get(leader, AreaTag)?.depth === depth ? world.get(leader, Pos) : undefined;
+  const from = lp ?? { x: tileCenter(map.spawn.x), y: tileCenter(map.spawn.y) };
   const fx = from.x >> 8;
   const fy = from.y >> 8;
-  const spot = freeTileNear(world, map, 0, fx, fy, e) ?? { x: fx, y: fy };
+  const spot = freeTileNear(world, map, depth, fx, fy, e) ?? { x: fx, y: fy };
   world.add(e, Pos, { x: tileCenter(spot.x), y: tileCenter(spot.y) });
-  world.add(e, AreaTag, { depth: 0 });
+  world.add(e, AreaTag, { depth });
 
   const uid = party.nextUid;
   world.add(e, PartyMember, {

@@ -340,6 +340,6 @@ describe("party determinism", () => {
     expect(one.world.read(one.world.getResource<{ hero: Entity }>(RES.game)!.hero, Level)).toEqual(
       two.world.read(two.world.getResource<{ hero: Entity }>(RES.game)!.hero, Level),
     );
-    expect(one.hash()).toBe("f898f7f1018fb123");
+    expect(one.hash()).toBe("397bf34f2eb71d8f");
   });
 });

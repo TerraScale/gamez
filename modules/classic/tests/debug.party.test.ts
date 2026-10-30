@@ -6,7 +6,7 @@
 import { createSim, loadMode, type Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
 import { ACTION } from "../src/actions.ts";
-import { Hero, Wallet } from "../src/components.ts";
+import { AreaTag, Hero, Wallet } from "../src/components.ts";
 import { DEBUG_GRANT, parseGrant } from "../src/debug/index.ts";
 import { mode, modules, debugModules } from "../src/index.ts";
 import { partyMembers, partyGold } from "../src/party/shared.ts";
@@ -55,6 +55,8 @@ describe("debug grant: party", () => {
     expect(r.ok, r.error?.message).toBe(true);
     expect(partyMembers(sim.world)).toHaveLength(2);
     expect(partyStateOf(sim.world)?.slotsBought).toBe(1);
+    // The recruit joins the party's current area, never the town while the party is away.
+    expect(sim.world.read(partyMembers(sim.world)[1]!, AreaTag).depth).toBe(1);
   });
 
   it("refuses to exceed four members with party_full and changes nothing", () => {

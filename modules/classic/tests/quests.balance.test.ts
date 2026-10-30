@@ -50,6 +50,6 @@ describe("determinism", () => {
     expect(a.hash()).toBe(b.hash());
     expect(a.world.read(heroOf(a.world), Level).level).toBeGreaterThanOrEqual(7);
     // Re-pinned for classic.debug 0.5.0 (wearGear): the debug module version is in the hash.
-    expect(a.hash()).toBe("02d6c4197cd94869");
+    expect(a.hash()).toBe("73e56ff1c099060d");
   }, 120_000);
 });
