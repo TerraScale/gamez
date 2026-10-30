@@ -21,6 +21,22 @@ export const GRID_CELL = 1024;
 /** Ascending ids (hoisted so queries allocate no comparator). */
 const byId = (a: Entity, b: Entity): number => a - b;
 
+/** Scratch for sorting big query results natively (Float64Array sorts numbers in C++). */
+let scratch = new Float64Array(256);
+
+/** Sorts entity ids ascending in place (same order as sort(byId)). */
+function sortIds(ids: Entity[]): Entity[] {
+  const n = ids.length;
+  if (n < 2) return ids;
+  // Small lists: the comparator sort is cheap. Big ones (wide foe scans) sort natively.
+  if (n <= 32) return ids.sort(byId);
+  if (scratch.length < n) scratch = new Float64Array(Math.max(n, scratch.length * 2));
+  for (let i = 0; i < n; i++) scratch[i] = ids[i]!;
+  const sorted = scratch.subarray(0, n).sort();
+  for (let i = 0; i < n; i++) ids[i] = sorted[i]!;
+  return ids;
+}
+
 export class SpatialGrid {
   private cols = 0;
   private rows = 0;
@@ -160,7 +176,7 @@ export class SpatialGrid {
         }
       }
     }
-    return out.length > 1 ? out.sort(byId) : out;
+    return sortIds(out);
   }
 
   /**
