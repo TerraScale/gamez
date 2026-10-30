@@ -1,4 +1,4 @@
-import { binaryCodec, jsonCodec, type ServerMessage } from "@gamez/protocol";
+import { binaryCodec, jsonCodec, type ClientMessage, type ServerMessage } from "@gamez/protocol";
 import { describe, expect, it } from "vite-plus/test";
 import {
   codec,
@@ -6,6 +6,8 @@ import {
   codecByName,
   decodeClientFrame,
   decodeServerFrame,
+  encodeClientFrame,
+  encodeServerFrame,
   legacyCodec,
 } from "../../src/shared/codec.ts";
 
@@ -41,5 +43,22 @@ describe("presence wire codec", () => {
     const ping = { t: "ping" as const, clientTime: 7 };
     expect(decodeClientFrame(legacyCodec.encodeClient(ping))).toEqual(ping);
     expect(decodeClientFrame(codec.encodeClient(ping))).toEqual(ping);
+  });
+
+  it("falls back to a JSON text frame when a message does not fit the binary codec", () => {
+    // seq is a uint32 in the binary codec; JSON carries any number.
+    const delta: ServerMessage = { t: "delta", chunkId: "c", seq: -1, upserts: [], removes: [] };
+    expect(() => codec.encodeServer(delta)).toThrow(RangeError);
+    const frame = encodeServerFrame(codec, delta);
+    expect(typeof frame).toBe("string");
+    expect(decodeServerFrame(frame)).toEqual(delta);
+    expect(encodeServerFrame(codec, pong)).toBeInstanceOf(Uint8Array);
+    expect(typeof encodeServerFrame(legacyCodec, pong)).toBe("string");
+
+    const pose: ClientMessage = { t: "pose", pos: { x: -1, y: 0 }, path: [], speed: 4 };
+    const sent = encodeClientFrame(pose);
+    expect(typeof sent).toBe("string");
+    expect(decodeClientFrame(sent)).toEqual(pose);
+    expect(encodeClientFrame({ t: "ping", clientTime: 7 })).toBeInstanceOf(Uint8Array);
   });
 });

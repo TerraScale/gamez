@@ -49,5 +49,27 @@ export function decodeServerFrame(frame: Frame | ArrayBuffer): ServerMessage {
   return (typeof frame === "string" ? legacyCodec : codec).decodeServer(frame);
 }
 
+/**
+ * Encodes a server message for a socket that speaks `wire`. The binary codec
+ * rejects values outside its ranges (JSON never did), so such a message falls
+ * back to a JSON text frame, which every client decodes (decodeServerFrame).
+ */
+export function encodeServerFrame(wire: Codec, msg: ServerMessage): Frame {
+  try {
+    return wire.encodeServer(msg);
+  } catch {
+    return legacyCodec.encodeServer(msg);
+  }
+}
+
+/** Encodes a client message, falling back to JSON text like encodeServerFrame (the RelayDO accepts both). */
+export function encodeClientFrame(msg: ClientMessage): Frame {
+  try {
+    return codec.encodeClient(msg);
+  } catch {
+    return legacyCodec.encodeClient(msg);
+  }
+}
+
 /** WebSocket close code: the token is invalid, log in again (don't just reconnect). */
 export const CLOSE_UNAUTHORIZED = 4401;

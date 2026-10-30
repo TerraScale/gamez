@@ -8,7 +8,7 @@ import type {
 import { DurableObject } from "cloudflare:workers";
 import type { Codec, Frame } from "@gamez/protocol";
 import { RELAY_HEADERS, type CharacterRecord, type Env, type RelayApi } from "../contracts.ts";
-import { codecByName, decodeClientFrame } from "../../shared/codec.ts";
+import { codecByName, decodeClientFrame, encodeServerFrame } from "../../shared/codec.ts";
 import { presenceEntityId, presenceWorld, type PresenceWorldSpec } from "../../shared/worlds.ts";
 import { SocketLimiter, type LimitedKind } from "../rate-limit.ts";
 import { defaultWorld } from "../presence/world.ts";
@@ -446,7 +446,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       const wire = codecByName(info.codec);
       let frame = frames.get(wire);
       if (frame === undefined) {
-        frame = wire.encodeServer(msg);
+        frame = encodeServerFrame(wire, msg);
         frames.set(wire, frame);
       }
       try {
@@ -460,7 +460,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   #send(ws: WebSocket, msg: ServerMessage): void {
     const info = ws.deserializeAttachment() as SocketInfo | null;
     try {
-      ws.send(codecByName(info?.codec).encodeServer(msg));
+      ws.send(encodeServerFrame(codecByName(info?.codec), msg));
     } catch {
       // Closed.
     }
