@@ -29,7 +29,29 @@ function notJson(path: string, value: unknown): Error {
 
 /** Plain-object keys sorted by UTF-16 code units (locale independent). */
 function sortedKeys(obj: object): string[] {
-  return Object.keys(obj).sort(compareStrings);
+  return sortKeys(Object.keys(obj));
+}
+
+/**
+ * Sorts distinct strings in place by UTF-16 code units, like `keys.sort()`.
+ * Object key lists are short (and often already in order), where an
+ * insertion sort with `<` is several times faster than the sort builtin;
+ * every component clone sorts its keys.
+ */
+export function sortKeys(keys: string[]): string[] {
+  const n = keys.length;
+  if (n > 32) return keys.sort(compareStrings);
+  for (let i = 1; i < n; i++) {
+    const k = keys[i]!;
+    let j = i - 1;
+    if (!(keys[j]! > k)) continue;
+    while (j >= 0 && keys[j]! > k) {
+      keys[j + 1] = keys[j]!;
+      j--;
+    }
+    keys[j + 1] = k;
+  }
+  return keys;
 }
 
 /** Locale-independent string comparison used for every kernel sort. */
@@ -117,8 +139,8 @@ function fastClone(v: unknown, depth: number): unknown {
         return arr;
       }
       if (!isPlainObject(v)) return INVALID;
-      // Default sort compares UTF-16 code units, like compareStrings().
-      const keys = Object.keys(v).sort();
+      // UTF-16 code unit order, like compareStrings().
+      const keys = sortKeys(Object.keys(v));
       const obj: Record<string, unknown> = {};
       for (let i = 0; i < keys.length; i++) {
         const k = keys[i]!;

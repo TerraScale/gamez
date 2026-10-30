@@ -4,7 +4,7 @@
  * rollback restores the exact snapshot and commit matches a plain run.
  */
 import { describe, expect, it } from "vite-plus/test";
-import { cloneJson } from "../src/hash.ts";
+import { cloneJson, sortKeys } from "../src/hash.ts";
 import { ActionError, createRng, createSim, defineComponent, loadMode } from "../src/index.ts";
 import type { ComponentType, Rng, Sim, World } from "../src/index.ts";
 import { WorldImpl } from "../src/world.ts";
@@ -445,6 +445,20 @@ describe("world transactions", () => {
       expect(JSON.stringify(journaled.snapshot())).toBe(JSON.stringify(plain.snapshot()));
       // Ids continue identically after rollback + commit.
       expect(journaled.create()).toBe(plain.create());
+    }
+  });
+});
+
+describe("sortKeys", () => {
+  it("orders like the default sort (UTF-16 code units) for any input order and size", () => {
+    const rng = createRng(5);
+    const pool = ["a", "B", "b", "aa", "a0", "10", "9", "_x", "é", "\u{1f600}", "Z", "zz", "", "$"];
+    for (let round = 0; round < 300; round++) {
+      const n = rng.int(0, 40);
+      const keys = new Set<string>();
+      for (let i = 0; i < n; i++) keys.add(rng.chance(0.5) ? rng.pick(pool) : `k${rng.int(0, 99)}`);
+      const list = rng.shuffle([...keys]);
+      expect(sortKeys([...list])).toEqual([...list].sort());
     }
   });
 });
