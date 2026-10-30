@@ -210,8 +210,9 @@ optimize dep" answers in the client module-graph check.
 - `vault-codec.ts` (sim code) imports the pure formatters `itemLines`/`STAT_TEXT` from
   `modules/classic/src/client/describe.ts`. Moving them, and `hud/format.ts`, into a non-client file
   would put them under the determinism lint. They only produce display text.
-- The arena pays rewards only to the attacker. A live defender spends a daily fight and earns
-  nothing.
+- ~~The arena pays rewards only to the attacker. A live defender spends a daily fight and earns
+  nothing.~~ Resolved in arena.core 1.1.0: a live defender's daily fight is refunded (no new
+  faucet). Arena balance and the remaining class gap: [docs/bench/2026-10-arena-balance.md](../bench/2026-10-arena-balance.md).
 - `BankResult.balance` is 0 when the wallet cannot be read after a provisional deposit credit. The
   re-drive credits it later.
 - A trade or market delivery blocked by a full vault retries indefinitely, at most hourly. A notice

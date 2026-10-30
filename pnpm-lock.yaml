@@ -540,6 +540,9 @@ importers:
       '@gamez/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@gamez/mode-arena':
+        specifier: workspace:*
+        version: link:../../modules/arena
       '@gamez/mode-classic':
         specifier: workspace:*
         version: link:../../modules/classic

@@ -9,6 +9,7 @@
   "scripts": {
     "bench:ecs": "node --expose-gc --experimental-transform-types src/ecs.ts",
     "bench:kernel": "node --experimental-transform-types src/kernel.ts",
+    "bench:arena-balance": "node --experimental-transform-types src/arena-balance.ts",
     "bench:sync": "node --experimental-transform-types src/sync.ts",
     "bench:verify": "node --experimental-transform-types src/verify.ts",
     "bench:machine": "node --experimental-transform-types src/machine.ts",
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@gamez/kernel": "workspace:*",
+    "@gamez/mode-arena": "workspace:*",
     "@gamez/mode-classic": "workspace:*",
     "@gamez/sync": "workspace:*"
   },
