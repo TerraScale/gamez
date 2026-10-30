@@ -19,6 +19,7 @@ import { useSelect, useVisibleUntil } from "../hooks.ts";
 import { Btn, Row, useHudInsets, useHudLayout, type SlotProps } from "../common.tsx";
 import { tipLayout } from "../layout.ts";
 import { C, panelStyle } from "../styles.ts";
+import { deathInfoOf } from "./DeathScreen.tsx";
 
 // Stable references (useSyncExternalStore re-subscribes when they change).
 const subscribeTips = (onChange: () => void) => tipsStore.subscribe(onChange);
@@ -33,8 +34,11 @@ export function Tips({ api }: SlotProps) {
   const dismissed = useSyncExternalStore(subscribeTips, readDismissed, readDismissed);
   const layout = useHudLayout(api);
   const insets = useHudInsets();
+  // The party's "<Name> is down" banner (DeathScreen) takes the top band on phones; the tip waits.
+  const downed = useSelect(api.hud, deathInfoOf);
+  const downedBannerShown = downed !== null && downed.standingKey !== "";
   const id = pickTip(facts, { enabled, panels, dismissed });
-  const placement = tipLayout(layout, insets, panels.length > 0, toastShown);
+  const placement = tipLayout(layout, insets, panels.length > 0, toastShown, downedBannerShown);
 
   // Actions that answer a tip (a walk, a spent point, the panel it names) dismiss it for good.
   const prevFacts = useRef<TipFacts | null>(null);

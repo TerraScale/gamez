@@ -314,16 +314,23 @@ export function deathBannerTop(insets: HudInsets): number {
 /**
  * Onboarding tip card (overlay). It never sits over the centre of the playfield: desktop puts it in
  * the bottom-right corner above the bottom bar; phone portrait under the top region, clear of the
- * minimap column (full width when the top region is taller than that column); phone landscape in the bottom-right corner above the bar. Hidden while any panel
- * is open, and on phones while toasts show (they take that space). Null = hidden.
+ * minimap column (full width when the top region is taller than that column); phone landscape in the
+ * bottom-right corner above the bar. Hidden while any panel is open, and on phones while toasts show
+ * (they take that space). Null = hidden.
+ *
+ * A phone portrait card sits in the same top band as the party's "<Name> is down" banner
+ * (deathBannerTop), so it is hidden while that banner shows: the two never overlap, and the tip
+ * comes back after the banner goes. Desktop and landscape keep the banner and tip apart.
  */
 export function tipLayout(
   layout: HudLayout,
   insets: HudInsets,
   panelOpen: boolean,
   toastsShown: boolean,
+  downedBannerShown = false,
 ): CSSProperties | null {
   if (panelOpen) return null;
+  if (layout === "compact" && downedBannerShown) return null;
   if (layout === "desktop") {
     return {
       position: "absolute",

@@ -24,6 +24,7 @@ import {
   SHORT_MAX_HEIGHT,
   PANEL_ROW_RIGHT,
   TOAST_WIDTH,
+  deathBannerTop,
   tipLayout,
 } from "../src/client/hud/layout.ts";
 import { HERO_MIN_DIAMETER, MARKER } from "../src/client/hud/widgets/Minimap.tsx";
@@ -268,5 +269,25 @@ describe("onboarding tip placement", () => {
     for (const layout of ["desktop", "compact", "short"] as const) {
       expect(tipLayout(layout, NO_INSETS, true, false)).toBeNull();
     }
+  });
+
+  it("phones: waits while the party's is-down banner shows, so the two never overlap", () => {
+    // The phone tip starts in the same top band as the banner (deathBannerTop), so while the
+    // banner is up the tip is hidden, and it returns once the banner goes.
+    for (const insets of [
+      { top: 40, bottom: 310 },
+      { top: 150, bottom: 310 },
+    ]) {
+      expect(tipLayout("compact", insets, false, false, true)).toBeNull();
+      expect(tipLayout("compact", insets, false, false, false)).not.toBeNull();
+      expect(tipLayout("compact", insets, false, false)).not.toBeNull();
+      // The card's top band is the band the banner sits in.
+      expect(insets.top + HUD_EDGE).toBeLessThan(deathBannerTop(insets));
+    }
+  });
+
+  it("desktop and landscape keep the tip while the is-down banner shows", () => {
+    expect(tipLayout("desktop", NO_INSETS, false, false, true)).not.toBeNull();
+    expect(tipLayout("short", { top: 0, bottom: 156 }, false, false, true)).not.toBeNull();
   });
 });
