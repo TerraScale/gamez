@@ -4,6 +4,7 @@ import { DO_ACTIVE_MAX_KEYS, markDoActive } from "../../src/server/analytics/do-
 import {
   chatWsMode,
   WS_ABNORMAL_CLOSE,
+  WsCloseOnce,
   wsClosed,
   wsOpened,
 } from "../../src/server/analytics/ws.ts";
@@ -62,6 +63,28 @@ describe("chatWsMode", () => {
     expect(chatWsMode("mode:classic")).toBe("classic");
     expect(chatWsMode("guild:forest-wardens")).toBe("guild");
     expect(chatWsMode("whatever")).toBe("unknown");
+  });
+});
+
+describe("WsCloseOnce", () => {
+  it("records a host close once, even when the runtime reports the same socket later", () => {
+    const a = new RecordingAnalytics();
+    const once = new WsCloseOnce<object>();
+    const socket = {};
+    expect(once.record(socket, a, "chat", "guild", 4403, 1_000, 3_000)).toBe(true);
+    expect(once.record(socket, a, "chat", "guild", 1000, 1_000, 4_000)).toBe(false);
+    const closes = a.of("ws.close");
+    expect(closes).toHaveLength(1);
+    expect(closes[0]?.blobs).toEqual({ kind: "chat", mode: "guild", code: "4403" });
+    expect(closes[0]?.doubles.durationS).toBe(2);
+  });
+
+  it("counts each socket separately", () => {
+    const a = new RecordingAnalytics();
+    const once = new WsCloseOnce<object>();
+    once.record({}, a, "chat", "global", 1000, undefined, 1);
+    once.record({}, a, "chat", "global", 1013, undefined, 1);
+    expect(a.of("ws.close").map((p) => p.blobs.code)).toEqual(["1000", "1013"]);
   });
 });
 

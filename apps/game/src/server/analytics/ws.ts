@@ -51,3 +51,28 @@ export function wsClosed(
     // Instrumentation never breaks a socket.
   }
 }
+
+/**
+ * Records at most one "ws.close" per socket. A host that closes a socket itself
+ * (a guild revoke, a membership sweep) records the close at that moment; the
+ * runtime's later webSocketClose for the same socket is then skipped, so each
+ * close is counted once whichever side reports it.
+ */
+export class WsCloseOnce<S extends object> {
+  readonly #seen = new WeakSet<S>();
+
+  record(
+    socket: S,
+    analytics: Analytics,
+    kind: WsKind,
+    mode: string,
+    code: number,
+    openedAt: number | undefined,
+    now: number,
+  ): boolean {
+    if (this.#seen.has(socket)) return false;
+    this.#seen.add(socket);
+    wsClosed(analytics, kind, mode, code, openedAt, now);
+    return true;
+  }
+}

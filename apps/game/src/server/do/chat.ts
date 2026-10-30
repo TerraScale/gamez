@@ -20,7 +20,7 @@ import { ChatStore } from "../chat/store.ts";
 import { CHAT_HEADERS, sqlStoreOf, type ChatChannelApi, type Env } from "../contracts.ts";
 import { analyticsFor } from "../analytics/index.ts";
 import { markDoActive } from "../analytics/do-active.ts";
-import { chatWsMode, wsClosed, wsOpened } from "../analytics/ws.ts";
+import { chatWsMode, WsCloseOnce, wsOpened } from "../analytics/ws.ts";
 
 const FLUSH_BATCH = 200;
 /** Same default delay as Outbox.scheduleFlush. */
@@ -37,6 +37,8 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
   readonly #store: ChatStore;
   readonly #outbox: Outbox;
   readonly #wrappers = new WeakMap<WebSocket, ChatSocket>();
+  /** One ws.close per socket, whether the host closed it or the runtime reported it. */
+  readonly #closes = new WsCloseOnce<WebSocket>();
   #host: ChatHost | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -99,15 +101,7 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    const info = ws.deserializeAttachment() as ChatSocketInfo | null;
-    wsClosed(
-      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
-      "chat",
-      chatWsMode(this.#store.channel),
-      code,
-      info?.openedAt,
-      Date.now(),
-    );
+    this.#recordClose(ws, code);
     try {
       ws.close(code, reason);
     } catch {
@@ -118,6 +112,20 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
 
   async webSocketError(ws: WebSocket): Promise<void> {
     this.#released(ws);
+  }
+
+  /** One ws.close point per socket (see WsCloseOnce). */
+  #recordClose(ws: WebSocket, code: number): void {
+    const info = ws.deserializeAttachment() as ChatSocketInfo | null;
+    this.#closes.record(
+      ws,
+      analyticsFor(this.env, (p) => this.ctx.waitUntil(p)),
+      "chat",
+      chatWsMode(this.#store.channel),
+      code,
+      info?.openedAt,
+      Date.now(),
+    );
   }
 
   /** R9: the account's cached block rows go when its last socket here does. */
@@ -238,7 +246,12 @@ export class ChatChannelDO extends DurableObject<Env> implements ChatChannelApi 
           return ws.deserializeAttachment() as ChatSocketInfo;
         },
         send: (frame) => ws.send(frame),
-        close: (code, reason) => ws.close(code, reason),
+        // A host close (guild revoke, membership sweep) does not reach webSocketClose
+        // on this DO, so it is recorded here.
+        close: (code, reason) => {
+          this.#recordClose(ws, code);
+          ws.close(code, reason);
+        },
       };
       this.#wrappers.set(ws, w);
     }
