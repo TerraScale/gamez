@@ -127,7 +127,7 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 - **Registry**: Prototype tables (items, spells, creatures…) built in 3 stages, then frozen API: `reg.define / patch / remove / get / all`
 - **Data stages**: `data` (define) → `dataUpdates` (patch others) → `dataFinal` (last fixes), each run across _all_ modules in load order API: Factorio model
 - **Component**: Plain-JSON data attached to an entity API: `defineComponent<T>("steps.health")`
-- **World**: ECS store with sorted queries and resources API: `world.create / add / update / read / peek / query / setResource`
+- **World**: ECS store with sorted queries and resources API: `world.create / add / update / read / peek / peekResource / query / setResource`
 - **System**: Runs every tick (fixed) or after each action (event), ordered by stage → order → load order → id API: `{ id, stage, order, run(world, ctx) }`
 - **Action**: A validated player intent; atomic, so any throw rolls everything back API: `{ name, parse(world, payload, ctx), apply(world, p, ctx) }`
 - **Override**: Change another module's runtime behaviour API: `{ kind: "system" | "action", target, op: "disable" | "replace" | "wrap" }`
@@ -137,7 +137,7 @@ DO SQLite (truth) ── transactional outbox ──► Queue ──► D1 (read
 
 Load order comes from `deps` and `optionalDeps`, with ties broken by id. Patching, wrapping and overriding apply in that order, so a later module wraps an earlier one.
 
-`get()`/`read()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only loops (every monster, every tick) use `world.peek(e, C)`: same value, no copy. Never mutate what `peek()` returns; `update()` after a `peek()` is fine (ADR 0010).
+`get()`/`read()`/`getResource()` hand out live values and log a rollback copy the first time in each `dispatch()`/`step()`. In hot read-only code (every monster, every tick) use `world.peek(e, C)` and `world.peekResource(key)`: same value, no copy. Never mutate what they return; `update()` after a `peek()` is fine and logs only the fields it replaces, so hot writers peek, change a shallow copy and `update()` the changed fields (ADR 0010, ADR 0012).
 
 ## Determinism rules (enforced by lint + tests)
 

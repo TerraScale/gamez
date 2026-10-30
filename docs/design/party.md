@@ -654,6 +654,13 @@ for load, because the shared box runs other workflows. Measure with
   are peeked (no rollback copy), and `World.query()` runs without closures and skips the sort
   when ids already come in order.
 
+**Update (2026-10-30, ADR 0012):** the solo-sim cuts named above are done (field undo entries,
+`World.peekResource`, fast-property clones, the grid rebuild, read-only peeks). The melee tick
+fell by 21–27 % with identical hashes: on beta 4 heroes 0.835 → 0.630 ms, solo 0.754 → 0.568
+ms; on the loaded dev box 4 heroes 3.89 → 3.09 ms mean and 2.90 → 2.13 ms best window. Scaled
+to the old idle-box reading (2.3 ms best, 2.6 ms mean) that is about 1.7–1.8 ms best and
+1.9–2.05 ms mean ([`docs/bench/2026-10-sim-perf.md`](../bench/2026-10-sim-perf.md)).
+
 - Kernel `world.peek()` (ADR 0010 §6): hot read-only loops take no rollback copy. This halved
   the tick for solo and party alike.
 - Monster think: picking a target scans at most 4 members (no allocation). Flow fields are

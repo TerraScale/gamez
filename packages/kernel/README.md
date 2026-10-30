@@ -120,7 +120,9 @@ Rollback uses an undo log, not a snapshot. Each `dispatch()`/`step()` call is a 
 
 - Mutate only values you got from the world in the same call. A value cached across calls and mutated later is not rolled back.
 - Do not assign one live value into another (`a.items = world.read(b, Inv).items`). Use `add`/`update`/`setResource`, which clone.
-- `world.peek(e, C)` returns the same value as `get()` without logging a copy. Use it in hot read-only loops (a monster's think, the movement index, spatial rebuilds) and never mutate what it returns; `update()` after a `peek()` is fine, because `update()` logs its own copy.
+- `world.peek(e, C)` returns the same value as `get()` without logging a copy, and `world.peekResource(key)` does the same for `getResource()`. Use them in hot read-only code (a monster's think, the movement index, spatial rebuilds, helpers like "current depth") and never mutate what they return; `update()` after a `peek()` is fine, because `update()` logs its own entry.
+- `update()` of a value not yet logged in the call saves only the old values of the keys it replaces, when they all exist and none is deleted (a "field entry"), so a small patch of a big value costs no deep copy. A hot system that changes a few fields of a big value should peek it, work on a shallow copy and `update()` the fields that changed, instead of mutating a `read()` (ADR 0012).
+- Stored objects with more than 16 keys are rebuilt once with a spread copy, because V8 turns an object built key by key into a slow dictionary past 16 properties (ADR 0012).
 
 ## Determinism rules
 
