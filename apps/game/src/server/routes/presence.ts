@@ -14,7 +14,7 @@ import { authenticateRequest } from "../auth/session.ts";
 import { RELAY_HEADERS } from "../contracts.ts";
 import { apiError, isDevHost, json, readJson, rejectSocket } from "../http.ts";
 import { relayLocation } from "../routing.ts";
-import { CLOSE_UNAUTHORIZED } from "../../shared/codec.ts";
+import { CLOSE_UNAUTHORIZED, CODEC_PARAM, codecByName } from "../../shared/codec.ts";
 import { presenceWorld, relayName, relayShard } from "../../shared/worlds.ts";
 import { worldFromParam } from "../presence/world.ts";
 import type { RouteContext, RouteHandler } from "./types.ts";
@@ -46,6 +46,8 @@ export const presenceRoutes: RouteHandler = async (c) => {
   headers.set(RELAY_HEADERS.name, identity.name);
   headers.set(RELAY_HEADERS.relay, relay);
   headers.set(RELAY_HEADERS.world, world.id);
+  // Old clients announce nothing and get the legacy JSON format (shared/codec.ts).
+  headers.set(RELAY_HEADERS.codec, codecByName(url.searchParams.get(CODEC_PARAM)).name);
   return stub.fetch(new Request(request, { headers }));
 };
 

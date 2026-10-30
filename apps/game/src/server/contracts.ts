@@ -206,6 +206,8 @@ export const RELAY_HEADERS = {
   relay: "x-gamez-relay",
   /** Wave B: presence world id (shared/worlds.ts); absent = "plaza". */
   world: "x-gamez-world",
+  /** Presence wire codec the socket announced (shared/codec.ts codecByName); set by the route from the URL. */
+  codec: "x-gamez-codec",
 } as const;
 
 export const PHASE0_MODE: ModeId = "classic";

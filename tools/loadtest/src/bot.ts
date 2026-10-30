@@ -14,8 +14,8 @@
  *   upper bound of chunk -> client latency, reported for comparison.
  */
 import type { ClientMessage, EntityId, ServerMessage, TilePos } from "@gamez/protocol";
-// The same codec constant the browser client uses, so the swarm follows a wire-format switch.
-import { codec } from "../../../apps/game/src/shared/codec.ts";
+// The same codec constants the browser client uses, so the swarm follows a wire-format switch.
+import { codec, CODEC_QUERY, decodeServerFrame } from "../../../apps/game/src/shared/codec.ts";
 import { Histogram } from "./stats.ts";
 import { latencyTag, parseLatencyTag } from "./tag.ts";
 
@@ -119,7 +119,7 @@ export class PoseBot {
     const wsStarted = performance.now();
     const base = this.opts.url.replace(/^http/, "ws");
     const ws = new WebSocket(
-      `${base}/ws?token=${encodeURIComponent(this.guest.token)}&world=${encodeURIComponent(this.opts.world)}`,
+      `${base}/ws?token=${encodeURIComponent(this.guest.token)}&world=${encodeURIComponent(this.opts.world)}&${CODEC_QUERY}`,
     );
     ws.binaryType = "arraybuffer";
     this.#ws = ws;
@@ -197,7 +197,7 @@ export class PoseBot {
     this.sink.bytes += typeof data === "string" ? data.length : data.byteLength;
     let msg: ServerMessage;
     try {
-      msg = codec.decodeServer(data);
+      msg = decodeServerFrame(data);
     } catch {
       this.sink.error("decode");
       return;

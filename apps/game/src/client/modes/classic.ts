@@ -6,6 +6,7 @@
 import { townMap } from "@gamez/classic.town";
 import type { EntityId, ServerMessage } from "@gamez/protocol";
 import type { ClientModeView } from "@gamez/ui-host";
+import { CODEC_QUERY } from "../../shared/codec.ts";
 import { planWalk, walkAt } from "../../shared/walk.ts";
 import { ClockSync } from "../clock.ts";
 import { Connection, type NetStatus } from "../net.ts";
@@ -19,7 +20,7 @@ export { classicInfo } from "./plaza-info.ts";
 
 function wsUrl(token: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}`;
+  return `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}&${CODEC_QUERY}`;
 }
 
 export const classicMode: ClientModeView = {

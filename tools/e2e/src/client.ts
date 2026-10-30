@@ -1,6 +1,6 @@
 import type { ClientMessage, ServerMessage } from "@gamez/protocol";
-// The same codec constant the browser client uses, so the e2e follows a wire-format switch.
-import { codec } from "../../../apps/game/src/shared/codec.ts";
+// The same codec constants the browser client uses, so the e2e follows a wire-format switch.
+import { codec, CODEC_QUERY, decodeServerFrame } from "../../../apps/game/src/shared/codec.ts";
 
 export interface Guest {
   token: string;
@@ -32,11 +32,11 @@ export class BotClient {
 
   constructor(baseUrl: string, guest: Guest) {
     this.guest = guest;
-    const url = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(guest.token)}`;
+    const url = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(guest.token)}&${CODEC_QUERY}`;
     this.ws = new WebSocket(url);
     this.ws.binaryType = "arraybuffer";
     this.ws.addEventListener("message", (ev: MessageEvent<string | ArrayBuffer>) => {
-      this.log.push({ msg: codec.decodeServer(ev.data), at: performance.now() });
+      this.log.push({ msg: decodeServerFrame(ev.data), at: performance.now() });
       for (const wake of this.waiters) wake();
     });
     this.closed = new Promise((resolve) => this.ws.addEventListener("close", resolve));

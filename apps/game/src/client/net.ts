@@ -1,5 +1,5 @@
-import type { ClientMessage, ServerMessage } from "@gamez/protocol";
-import { CLOSE_UNAUTHORIZED, codec } from "../shared/codec.ts";
+import type { ClientMessage, Frame, ServerMessage } from "@gamez/protocol";
+import { CLOSE_UNAUTHORIZED, codec, decodeServerFrame } from "../shared/codec.ts";
 import type { ClockSync } from "./clock.ts";
 
 export type NetStatus = "connecting" | "online" | "offline";
@@ -54,7 +54,15 @@ export class Connection {
 
   send(msg: ClientMessage): boolean {
     if (this.#ws?.readyState !== WebSocket.OPEN) return false;
-    this.#ws.send(codec.encodeClient(msg));
+    let frame: Frame;
+    try {
+      frame = codec.encodeClient(msg);
+    } catch (err) {
+      // The binary codec rejects values outside its ranges; drop the message rather than throw into the game loop.
+      console.warn("could not encode message", err);
+      return false;
+    }
+    this.#ws.send(frame);
     return true;
   }
 
@@ -84,7 +92,7 @@ export class Connection {
     ws.onmessage = (ev: MessageEvent<string | ArrayBuffer>) => {
       let msg: ServerMessage;
       try {
-        msg = codec.decodeServer(ev.data);
+        msg = decodeServerFrame(ev.data);
       } catch (err) {
         console.warn("bad frame", err);
         return;

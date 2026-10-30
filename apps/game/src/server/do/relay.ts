@@ -6,8 +6,9 @@ import type {
   ServerMessage,
 } from "@gamez/protocol";
 import { DurableObject } from "cloudflare:workers";
+import type { Codec, Frame } from "@gamez/protocol";
 import { RELAY_HEADERS, type CharacterRecord, type Env, type RelayApi } from "../contracts.ts";
-import { codec } from "../../shared/codec.ts";
+import { codecByName, decodeClientFrame } from "../../shared/codec.ts";
 import { presenceEntityId, presenceWorld, type PresenceWorldSpec } from "../../shared/worlds.ts";
 import { SocketLimiter, type LimitedKind } from "../rate-limit.ts";
 import { defaultWorld } from "../presence/world.ts";
@@ -23,6 +24,8 @@ interface SocketInfo {
   name: string;
   /** True once the socket got its welcome; only ready sockets receive deltas. */
   ready: boolean;
+  /** Codec name the socket announced (shared/codec.ts). Absent = legacy JSON (sockets accepted before the switch). */
+  codec?: string;
   /** Accept time (epoch ms), for ws.close durationS. Absent on sockets accepted before analytics. */
   openedAt?: number;
 }
@@ -111,6 +114,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
       characterId: presenceEntityId(accountId, world),
       name,
       ready: false,
+      codec: codecByName(request.headers.get(RELAY_HEADERS.codec)).name,
       openedAt: Date.now(),
     };
     server.serializeAttachment(info);
@@ -175,7 +179,7 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     if (!info) return;
     let msg: ClientMessage;
     try {
-      msg = codec.decodeClient(message);
+      msg = decodeClientFrame(message);
     } catch {
       this.#send(ws, { t: "error", code: "bad-message", message: "could not decode message" });
       return;
@@ -434,11 +438,17 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
     };
   }
 
-  /** Encodes once and sends to every ready socket. */
+  /** Encodes once per codec in use and sends to every ready socket in its own format. */
   #broadcast(msg: ServerMessage): void {
-    const frame = codec.encodeServer(msg);
+    const frames = new Map<Codec, Frame>();
     for (const [ws, info] of this.#sockets()) {
       if (!info.ready) continue;
+      const wire = codecByName(info.codec);
+      let frame = frames.get(wire);
+      if (frame === undefined) {
+        frame = wire.encodeServer(msg);
+        frames.set(wire, frame);
+      }
       try {
         ws.send(frame);
       } catch {
@@ -448,8 +458,9 @@ export class RelayDO extends DurableObject<Env> implements RelayApi {
   }
 
   #send(ws: WebSocket, msg: ServerMessage): void {
+    const info = ws.deserializeAttachment() as SocketInfo | null;
     try {
-      ws.send(codec.encodeServer(msg));
+      ws.send(codecByName(info?.codec).encodeServer(msg));
     } catch {
       // Closed.
     }

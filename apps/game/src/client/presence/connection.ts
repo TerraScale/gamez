@@ -6,6 +6,7 @@
  */
 import type { PoseUpdate, ServerMessage } from "@gamez/protocol";
 import type { PresenceConnection, PresenceView } from "@gamez/ui-host";
+import { CODEC_QUERY } from "../../shared/codec.ts";
 import { ClockSync } from "../clock.ts";
 import { Connection, type NetStatus } from "../net.ts";
 import { WorldState } from "../state.ts";
@@ -13,7 +14,7 @@ import { WorldState } from "../state.ts";
 /** The presence socket URL for `world`; `host` is location.host, `secure` true for https pages. */
 export function presenceUrl(host: string, secure: boolean, token: string, world: string): string {
   const proto = secure ? "wss:" : "ws:";
-  return `${proto}//${host}/ws?token=${encodeURIComponent(token)}&world=${encodeURIComponent(world)}`;
+  return `${proto}//${host}/ws?token=${encodeURIComponent(token)}&world=${encodeURIComponent(world)}&${CODEC_QUERY}`;
 }
 
 export class PresenceClient implements PresenceConnection {

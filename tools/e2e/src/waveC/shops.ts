@@ -20,8 +20,8 @@ import {
   RENT_RETRY_MS,
 } from "../../../../modules/economy/src/lease.ts";
 import { shopTax } from "../../../../modules/economy/src/fees.ts";
-// The same codec constant the browser client uses.
-import { codec } from "../../../../apps/game/src/shared/codec.ts";
+// The same codec constants the browser client uses.
+import { CODEC_QUERY, decodeServerFrame } from "../../../../apps/game/src/shared/codec.ts";
 import { api, registerGuest, type Registered } from "../accounts.ts";
 import { loginGuest } from "../client.ts";
 import type { E2eContext, E2eFeature } from "../features.ts";
@@ -118,12 +118,12 @@ async function fixtureSeen(
   token: string,
   id: string,
 ): Promise<EntityState | null> {
-  const url = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}&world=${WORLD}`;
+  const url = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}&world=${WORLD}&${CODEC_QUERY}`;
   const ws = new WebSocket(url);
   ws.binaryType = "arraybuffer";
   const welcomes: Extract<ServerMessage, { t: "welcome" }>[] = [];
   ws.addEventListener("message", (ev: MessageEvent<string | ArrayBuffer>) => {
-    const m: ServerMessage = codec.decodeServer(ev.data);
+    const m: ServerMessage = decodeServerFrame(ev.data);
     if (m.t === "welcome") welcomes.push(m);
   });
   try {

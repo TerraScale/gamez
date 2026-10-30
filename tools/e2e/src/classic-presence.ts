@@ -5,8 +5,8 @@
  * Uses a small world-aware bot (BotClient has a fixed URL without `world`).
  */
 import type { ClientMessage, EntityState, ServerMessage } from "@gamez/protocol";
-// The same codec constant the browser client uses, so the e2e follows a wire-format switch.
-import { codec } from "../../../apps/game/src/shared/codec.ts";
+// The same codec constants the browser client uses, so the e2e follows a wire-format switch.
+import { codec, CODEC_QUERY, decodeServerFrame } from "../../../apps/game/src/shared/codec.ts";
 import type { Guest } from "./client.ts";
 import type { E2eContext, E2eFeature } from "./features.ts";
 import { check } from "./report.ts";
@@ -25,9 +25,15 @@ class WorldBot {
   private readonly ws: WebSocket;
   private readonly waiters = new Set<() => void>();
 
-  constructor(baseUrl: string, guest: Guest, world?: string) {
+  /** Frames received as JSON text and as binary, to check which codec the server answered in. */
+  textFrames = 0;
+  binaryFrames = 0;
+
+  /** `legacy` announces no codec, like a build from before the binary switch. */
+  constructor(baseUrl: string, guest: Guest, world?: string, legacy = false) {
     const query = world === undefined ? "" : `&world=${encodeURIComponent(world)}`;
-    const url = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(guest.token)}${query}`;
+    const announce = legacy ? "" : `&${CODEC_QUERY}`;
+    const url = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(guest.token)}${query}${announce}`;
     this.ws = new WebSocket(url);
     this.ws.binaryType = "arraybuffer";
     this.opened = new Promise((resolve) => {
@@ -35,7 +41,9 @@ class WorldBot {
       this.ws.addEventListener("close", () => resolve(false));
     });
     this.ws.addEventListener("message", (ev: MessageEvent<string | ArrayBuffer>) => {
-      this.log.push(codec.decodeServer(ev.data));
+      if (typeof ev.data === "string") this.textFrames++;
+      else this.binaryFrames++;
+      this.log.push(decodeServerFrame(ev.data));
       for (const wake of this.waiters) wake();
     });
     this.closed = new Promise((resolve) => this.ws.addEventListener("close", () => resolve()));
@@ -197,6 +205,27 @@ export const classicPresenceFeature: E2eFeature = {
       .catch(() => null);
     check(wrongPose !== null, "a pose in the plaza is refused with wrong-world");
     await plaza.close();
+
+    // Wire codec: a current client gets binary frames; a legacy client (no codec
+    // announced) still gets its welcome as JSON text (shared/codec.ts).
+    const current = new WorldBot(ctx.url, a);
+    check(await current.opened, "A opens a plaza socket with the codec announced");
+    check(
+      (await current.waitFor("current welcome", isWelcome).catch(() => null)) !== null &&
+        current.binaryFrames > 0 &&
+        current.textFrames === 0,
+      "a client that announces the codec is answered in binary",
+    );
+    await current.close();
+    const legacy = new WorldBot(ctx.url, a, undefined, true);
+    check(await legacy.opened, "a legacy client (no codec) opens a plaza socket");
+    check(
+      (await legacy.waitFor("legacy welcome", isWelcome).catch(() => null)) !== null &&
+        legacy.textFrames > 0 &&
+        legacy.binaryFrames === 0,
+      "a legacy client without a codec is answered in JSON",
+    );
+    await legacy.close();
 
     // A leaves: B sees the entity removed.
     await botA.close();
