@@ -804,10 +804,14 @@ export class MarketBook {
 
       // ---- cancel and expiry without a sale
       case "return": {
-        const r = await this.gateway.vaultPut(seller.accountId, `mk:${id}:return`, item());
+        // Only a cancel or an un-sold expiry may give up here: no money moved.
+        // Every other return is held and retried, so it is listed as waiting.
+        const givesUp = s.kind === "cancel" || (s.kind === "expire" && !s.fallback);
+        const r = await this.gateway.vaultPut(seller.accountId, `mk:${id}:return`, item(), {
+          waiting: !givesUp,
+        });
         if (!r.ok) {
-          // Only a cancel or an un-sold expiry may give up here: no money moved.
-          if (s.kind === "cancel" || (s.kind === "expire" && !s.fallback)) {
+          if (givesUp) {
             return this.#release(
               id,
               from,

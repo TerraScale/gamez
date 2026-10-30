@@ -2,7 +2,7 @@
  * Plain-words copy and small formatters for the economy components. Pure
  * functions, unit-tested without React (tests/economy.text.test.tsx).
  */
-import type { ItemCategory, PlotState, TradeView } from "@gamez/protocol";
+import type { ItemCategory, PlotState, TradeView, VaultWaiting } from "@gamez/protocol";
 
 /** Error code -> words. A server message wins when present (see useAction). */
 export function economyErrorText(code: string, fallback?: string): string {
@@ -166,4 +166,14 @@ export function tradeStatusText(
         ? `Trade failed: ${economyErrorText(view.reason, view.reason)}`
         : "Trade failed. Nothing changed hands.";
   }
+}
+
+/**
+ * The vault banner for deliveries held because the vault was full (trade,
+ * market, shop or bank). Null when nothing waits.
+ */
+export function vaultWaitingText(waiting: VaultWaiting | undefined): string | null {
+  if (!waiting || waiting.count <= 0) return null;
+  const what = waiting.count === 1 ? "1 delivery is" : `${waiting.count} deliveries are`;
+  return `Your vault is full: ${what} waiting for a free slot. Withdraw or sell an item and they arrive on their own (within the hour).`;
 }

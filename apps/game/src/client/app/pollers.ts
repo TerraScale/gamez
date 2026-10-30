@@ -12,13 +12,15 @@ export const NOTICE_POLL_MS = 20_000;
 
 /**
  * Notices that toast when they arrive (the rest only raise the bell count):
- * a trade invite waits on the player, and rent due or a repossession costs
- * them their shop if missed.
+ * a trade invite waits on the player, rent due or a repossession costs them
+ * their shop if missed, and a full vault holds their deliveries until they
+ * free a slot (one notice per full spell).
  */
 export const TOAST_NOTICE_KINDS: ReadonlySet<InboxNotice["kind"]> = new Set([
   "trade.invite",
   "shop.rent_due",
   "shop.repossessed",
+  "vault.full",
 ]);
 
 export interface InboxState {

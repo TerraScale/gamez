@@ -123,10 +123,22 @@ export type VaultItemInput = Omit<VaultItem, "uid">;
 export const VAULT_MAX_ITEMS = 200;
 export const VAULT_ITEM_DATA_MAX = 4096;
 
+/**
+ * Deliveries (trade, market, shop, bank) held in custody because the vault was
+ * full. They retry on their own and arrive once a slot is free.
+ */
+export interface VaultWaiting {
+  count: number;
+  /** When the oldest one was first refused (ms), null when count is 0. */
+  since: number | null;
+}
+
 /** GET /api/account/vault */
 export interface VaultResponse {
   items: VaultItem[];
   max: number;
+  /** Absent from servers older than the waiting list. */
+  waiting?: VaultWaiting;
 }
 
 /**
@@ -179,6 +191,8 @@ export type NoticeKind =
   | "arena.defended"
   | "pass.tier"
   | "store.granted"
+  | "store.failed"
+  | "vault.full"
   | "system";
 
 export interface Notice {

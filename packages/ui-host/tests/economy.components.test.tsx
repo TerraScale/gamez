@@ -235,6 +235,26 @@ describe("VaultView at 375 px", () => {
     expect(html).toContain("IW");
   });
 
+  it("tells the player when deliveries wait for a free slot", () => {
+    const full: VaultResponse = {
+      items: [vaultItem("u1")],
+      max: 1,
+      waiting: { count: 2, since: NOW - 60_000 },
+    };
+    const html = renderAt375(
+      <VaultBody {...base} vault={{ status: "ready", value: full }} wallet={wallet} />,
+    );
+    expect(html).toContain("2 deliveries are waiting for a free slot");
+    const none = renderAt375(
+      <VaultBody
+        {...base}
+        vault={{ status: "ready", value: { ...full, waiting: { count: 0, since: null } } }}
+        wallet={wallet}
+      />,
+    );
+    expect(none).not.toContain("waiting for a free slot");
+  });
+
   it("read-only vault has no bank controls", () => {
     const html = renderAt375(
       <VaultBody

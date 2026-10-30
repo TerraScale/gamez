@@ -28,7 +28,7 @@ import {
 import { Outbox } from "@gamez/sync";
 import { AccountEconomy } from "../../src/server/account/economy.ts";
 import { AccountNotices } from "../../src/server/account/notices.ts";
-import { AccountVault } from "../../src/server/account/vault.ts";
+import { AccountVault, vaultFullNotice } from "../../src/server/account/vault.ts";
 import type {
   AccountGateway,
   EconomyLedgerPayload,
@@ -36,6 +36,7 @@ import type {
   VaultTakeResult,
   WalletTxC,
   WalletTxResult,
+  VaultPutOptions,
 } from "../../src/server/contracts.ts";
 import { fakeSqlStore } from "./fake-sql.ts";
 
@@ -120,6 +121,8 @@ export class FakeGateway implements AccountGateway {
       const economy = new AccountEconomy(store, this.now);
       const vault = new AccountVault(store, economy, outbox, accountId, this.now);
       const notices = new AccountNotices(store, this.now);
+      // Like AccountDO: a delivery the full vault refused tells the player once per spell.
+      vault.onWaitStarted = (txId) => notices.notify(vaultFullNotice(txId));
       outbox.init();
       economy.init();
       vault.init();
@@ -255,12 +258,17 @@ export class FakeGateway implements AccountGateway {
     );
   }
 
-  async vaultPut(accountId: string, txId: string, item: VaultItemInput): Promise<VaultPutResult> {
+  async vaultPut(
+    accountId: string,
+    txId: string,
+    item: VaultItemInput,
+    opts?: VaultPutOptions,
+  ): Promise<VaultPutResult> {
     return this.#run(
       "vaultPut",
       accountId,
       txId,
-      () => this.account(accountId).vault.vaultPut(txId, item),
+      () => this.account(accountId).vault.vaultPut(txId, item, opts),
       (code) => ({ ok: false, code: code as "vault_full" }),
     );
   }

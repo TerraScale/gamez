@@ -7,6 +7,7 @@
  *   arena.ts    arena                                 T-arena-sim
  *   admin.ts    admin                                 T-admin
  *   pwa.ts      pwa                                   T-ship
+ *   vault.ts    vault-waiting                         T-escrow
  */
 import type { Run } from "../run.ts";
 import { ADMIN_RUNNERS } from "./admin.ts";
@@ -14,6 +15,7 @@ import { ARENA_RUNNERS } from "./arena.ts";
 import { CLASSIC_C_RUNNERS } from "./classic.ts";
 import { PWA_RUNNERS } from "./pwa.ts";
 import { SHELL_RUNNERS } from "./shell.ts";
+import { VAULT_RUNNERS } from "./vault.ts";
 
 export type Runner = (run: Run) => Promise<void>;
 
@@ -23,4 +25,5 @@ export const WAVE_C_RUNNERS: Record<string, Runner> = {
   ...ARENA_RUNNERS,
   ...ADMIN_RUNNERS,
   ...PWA_RUNNERS,
+  ...VAULT_RUNNERS,
 };

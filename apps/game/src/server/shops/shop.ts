@@ -811,6 +811,7 @@ export class ShopBook implements ShopApi {
       e.owner_id,
       `${this.#pfx}:return:${e.entry_id}`,
       withoutUid(item),
+      { waiting: true },
     );
     if (!v.ok) {
       this.#backoffUntil = this.#d.clock.now() + RETURN_RETRY_MS;

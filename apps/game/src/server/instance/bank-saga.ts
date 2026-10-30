@@ -186,7 +186,8 @@ export async function refundToAccount(
     return;
   }
   if (e.item && row.op.kind === "withdrawItem") {
-    const r = await account.vaultPut(row.accountId, txId, vaultInput(e.item));
+    // Retried until it lands: a full vault lists it as waiting.
+    const r = await account.vaultPut(row.accountId, txId, vaultInput(e.item), { waiting: true });
     if (!r.ok && r.code === "conflict") return conflict({ item: e.item });
     if (!r.ok) throw new Error(`refund refused: ${r.code}`);
   }
@@ -218,7 +219,8 @@ export async function creditAccount(
     return failure("conflict", CONFLICT_MESSAGE);
   };
   if (e.item) {
-    const r = await account.vaultPut(row.accountId, txId, vaultInput(e.item));
+    // Kept and retried while the vault is full: listed as waiting meanwhile.
+    const r = await account.vaultPut(row.accountId, txId, vaultInput(e.item), { waiting: true });
     if (!r.ok && r.code === "conflict") return conflict({ item: e.item });
     if (!r.ok) return null;
     const balance = await balanceOf(account, row.accountId);

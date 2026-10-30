@@ -202,6 +202,8 @@ export function noticeTarget(n: Pick<InboxNotice, "kind" | "data">): ShellItem |
       : { id: "trade" };
   }
   if (n.kind.startsWith("market.")) return { id: "market" };
+  if (n.kind === "vault.full") return { id: "vault" };
+  if (n.kind.startsWith("store.")) return { id: "store" };
   if (n.kind.startsWith("shop.") || n.kind.startsWith("plot.")) {
     return { id: "plots", world: TOWN_WORLD };
   }

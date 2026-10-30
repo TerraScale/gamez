@@ -32,6 +32,7 @@ import { passFeature } from "./waveC/pass.ts";
 import { paymentsFeature } from "./waveC/payments.ts";
 import { shopsFeature } from "./waveC/shops.ts";
 import { tradeFeature } from "./waveC/trade.ts";
+import { vaultWaitingFeature } from "./waveC/vault-waiting.ts";
 
 export interface E2eContext {
   /** Dev server base URL (changes port never, but re-read after restart). */
@@ -69,6 +70,8 @@ export const FEATURES: readonly E2eFeature[] = [
   // ADR 0007: needs the bank flag on (admin) and runs after leaderboards (it adds an imported row).
   securityFeature,
   tradeFeature,
+  // ADR 0006 §13: a trade delivery into a full vault waits and is surfaced.
+  vaultWaitingFeature,
   marketFeature,
   shopsFeature,
   arenaFeature,

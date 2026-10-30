@@ -182,6 +182,8 @@ describe("noticeTarget", () => {
   it("market and shop notices open their screens, others nothing", () => {
     expect(noticeTarget(notice("market.sold"))).toEqual({ id: "market" });
     expect(noticeTarget(notice("shop.rent_due"))).toEqual({ id: "plots", world: TOWN_WORLD });
+    expect(noticeTarget(notice("vault.full"))).toEqual({ id: "vault" });
+    expect(noticeTarget(notice("store.failed"))).toEqual({ id: "store" });
     expect(noticeTarget(notice("system"))).toBeNull();
   });
 });

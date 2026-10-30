@@ -215,10 +215,16 @@ optimize dep" answers in the client module-graph check.
   faucet). Arena balance and the remaining class gap: [docs/bench/2026-10-arena-balance.md](../bench/2026-10-arena-balance.md).
 - `BankResult.balance` is 0 when the wallet cannot be read after a provisional deposit credit. The
   re-drive credits it later.
-- A trade or market delivery blocked by a full vault retries indefinitely, at most hourly. A notice
-  asking the player to free vault space would help.
-- `VerifiedWebhook` does not carry the amount and currency, so a paid event is not checked against
-  the order's price yet.
+- A trade, market, shop or bank delivery blocked by a full vault retries indefinitely, at most
+  hourly. Since the payments-verify change the caller passes `{ waiting: true }` to `vaultPut`;
+  AccountDO lists the delivery in `vault_waiting` (shown as a banner in the vault view,
+  `VaultResponse.waiting`) and sends one `vault.full` notice per full spell (toasts, opens the
+  vault). A put that gives up at once (a market buy refunded, a shop purchase or unstock) is not
+  listed.
+- `VerifiedWebhook` carries `paid` (provider-reported currency and minor units). `fulfillOrder`
+  grants only when it equals the order's price and the event comes from the order's provider;
+  otherwise the order fails with an admin-visible `fail_reason` and grants nothing
+  (`docs/secrets.md` "Paid amount check").
 - `EscrowDO` calls `AccountDO.linkTrade` directly. That call is not part of the `AccountGateway`
   contract.
 - The battle-pass and arena-build pins are sensitive to classic balance and RNG use. They must be

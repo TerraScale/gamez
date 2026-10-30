@@ -33,8 +33,8 @@ import { AccountProfileStore } from "../account/profile.ts";
 import { AccountSocial } from "../account/social.ts";
 import { AccountNotices } from "../account/notices.ts";
 import { AccountPass } from "../account/pass.ts";
-import { AccountPurchases } from "../account/purchases.ts";
-import { AccountVault } from "../account/vault.ts";
+import { AccountPurchases, type FulfillInput } from "../account/purchases.ts";
+import { AccountVault, vaultFullNotice } from "../account/vault.ts";
 import {
   sqlStoreOf,
   type AccountApi,
@@ -44,6 +44,7 @@ import {
   type Env,
   type GuildMembership,
   type WalletTx,
+  type VaultPutOptions,
 } from "../contracts.ts";
 
 const FLUSH_BATCH = 200;
@@ -70,6 +71,10 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
     this.#social = new AccountSocial(store, Date.now, accountId);
     this.#vault = new AccountVault(store, this.#economy, this.#outbox, accountId);
     this.#notices = new AccountNotices(store);
+    // A delivery the vault refused waits in custody: tell the player once per full spell.
+    this.#vault.onWaitStarted = (txId) => {
+      this.#notices.notify(vaultFullNotice(txId));
+    };
     this.#pass = new AccountPass(
       store,
       this.#economy,
@@ -233,10 +238,13 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
   async vaultGet(uid: string) {
     return this.#vault.vaultGet(uid);
   }
-  async vaultPut(txId: string, item: VaultItemInput) {
-    const r = this.#vault.vaultPut(txId, item);
+  async vaultPut(txId: string, item: VaultItemInput, opts?: VaultPutOptions) {
+    const r = this.#vault.vaultPut(txId, item, opts);
     await this.#flushSoon();
     return r;
+  }
+  async vaultWaiting() {
+    return this.#vault.waiting();
   }
   async vaultTake(txId: string, uid: string) {
     const r = this.#vault.vaultTake(txId, uid);
@@ -296,7 +304,7 @@ export class AccountDO extends DurableObject<Env> implements AccountApi, Account
     await this.#flushSoon();
     return r;
   }
-  async fulfillOrder(input: { orderId: string; providerRef: string | null; eventId: string }) {
+  async fulfillOrder(input: FulfillInput) {
     const r = this.#purchases.fulfillOrder(input);
     this.#pass.syncProgress(); // a store grant may be the premium pass
     await this.#flushSoon();

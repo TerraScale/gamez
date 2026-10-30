@@ -19,7 +19,7 @@ import {
   sheetStyle,
   socialButtonStyle,
 } from "../social/styles.ts";
-import { formatCoin } from "./parts/text.ts";
+import { formatCoin, vaultWaitingText } from "./parts/text.ts";
 
 export interface VaultBodyProps {
   /** undefined while loading. */
@@ -70,6 +70,7 @@ export function VaultBody({
   const coinBalance = wallet?.status === "ready" ? wallet.value.balances.coin : null;
   const items: readonly VaultItem[] = vault?.status === "ready" ? vault.value.items : [];
   const max = vault?.status === "ready" ? vault.value.max : null;
+  const waiting = vault?.status === "ready" ? vaultWaitingText(vault.value.waiting) : null;
 
   return (
     <section aria-label="Vault" style={{ ...sheetStyle, padding: compact ? 8 : 12 }}>
@@ -80,6 +81,7 @@ export function VaultBody({
       <Balances wallet={wallet} />
 
       {error ? <Banner tone="error">{error}</Banner> : null}
+      {waiting ? <Banner tone="info">{waiting}</Banner> : null}
       {bank && blocked ? <Banner tone="info">{blocked}</Banner> : null}
 
       {bank ? (

@@ -1,4 +1,4 @@
-import { TRADE_MAX_ITEMS, TRADE_TTL_MS } from "@gamez/protocol";
+import { TRADE_MAX_ITEMS, TRADE_TTL_MS, VAULT_MAX_ITEMS } from "@gamez/protocol";
 import { describe, expect, it } from "vite-plus/test";
 import type { GatewayMethod } from "../support/fake-gateway.ts";
 import { testItem } from "../support/fake-gateway.ts";
@@ -463,6 +463,25 @@ describe("trade: injected failures conserve coin and items", () => {
     expect(conserved(h)).toEqual(before);
     expect(h.gw.balance("alice")).toBe(1000);
     expect(h.gw.vault("alice")).toHaveLength(2);
+  });
+
+  it("a delivery into a really full vault is listed as waiting, notifies once, and lands after a take", async () => {
+    const h = harness();
+    await openStandard(h);
+    const fill = Array.from({ length: VAULT_MAX_ITEMS - 1 }, (_, i) => testItem(`junk${i}`));
+    h.gw.seed("bob", { items: fill });
+    await acceptBoth(h);
+    // Custody took the shield (one slot), the sword landed, the ring waits.
+    expect(h.escrow.state()!.status).toBe("committing");
+    expect(h.gw.account("bob").vault.waiting()).toMatchObject({ count: 1 });
+    const full = h.gw.noticesOf("bob").notices.filter((n) => n.kind === "vault.full");
+    expect(full).toHaveLength(1);
+    await h.fire();
+    expect(h.gw.noticesOf("bob").notices.filter((n) => n.kind === "vault.full")).toHaveLength(1);
+    const junk = h.gw.vault("bob").find((i) => i.itemId.includes("junk0"))!;
+    h.gw.account("bob").vault.vaultTake("free-a-slot", junk.uid);
+    expect((await settle(h)).status).toBe("done");
+    expect(h.gw.account("bob").vault.waiting()).toEqual({ count: 0, since: null });
   });
 
   it("backs off between retries", async () => {

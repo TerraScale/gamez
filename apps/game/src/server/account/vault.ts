@@ -9,6 +9,14 @@
  * so a uid always names exactly what was put. Rejections (vault_full,
  * not_found, bad_item) write nothing, so the same txId can be retried later.
  *
+ * Waiting deliveries: a put with { waiting: true } (venues and the bank, through
+ * economy/gateway.ts) that meets a full vault is listed in vault_waiting
+ * (txId, first and last refusal). The caller holds the item and retries the
+ * same txId; a successful put of that txId removes it. Rows not retried for
+ * WAITING_STALE_MS are dropped (every caller retries at most hourly). When the
+ * list goes from empty to non-empty, onWaitStarted fires once (AccountDO sends
+ * the "vault.full" notice), so a full spell tells the player once.
+ *
  * ADR 0007 R2: a txId is bound to its parameters. A known "vault.take" txId
  * replays only for the same uid; a known "vault.put" txId only for the same
  * item (itemId, origin, count, universal, tradable, summary, data: compared
@@ -32,12 +40,15 @@ import {
   type ItemSummary,
   type VaultItem,
   type VaultItemInput,
+  type VaultWaiting,
+  type NoticeInput,
 } from "@gamez/protocol";
 import type { Outbox } from "@gamez/sync";
 import type {
   AccountWalletPayload,
   EconomyLedgerPayload,
   SqlStore,
+  VaultPutOptions,
   VaultPutResult,
   VaultTakeResult,
   WalletTxC,
@@ -48,6 +59,8 @@ import type { AccountEconomy, AppliedWalletTx } from "./economy.ts";
 const TX_VAULT_PUT = "vault.put";
 const TX_VAULT_TAKE = "vault.take";
 const MAX_TX_ID = 128;
+/** A waiting delivery not retried for this long is no longer listed (callers retry at most hourly). */
+export const WAITING_STALE_MS = 24 * 60 * 60_000;
 const MAX_ITEM_ID = 100;
 const MAX_ORIGIN = 64;
 const MAX_STACK_COUNT = 1_000_000_000;
@@ -217,6 +230,9 @@ function isTxId(v: unknown): v is string {
 }
 
 export class AccountVault {
+  /** Fires after a put, when the waiting list went from empty to `count` (1). */
+  onWaitStarted: ((txId: string, count: number) => void) | null = null;
+
   constructor(
     readonly store: SqlStore,
     readonly economy: AccountEconomy,
@@ -236,6 +252,47 @@ export class AccountVault {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       n INTEGER NOT NULL
     )`);
+    this.store.sql.exec(`CREATE TABLE IF NOT EXISTS vault_waiting (
+      tx_id TEXT PRIMARY KEY,
+      first_at INTEGER NOT NULL,
+      last_at INTEGER NOT NULL
+    )`);
+  }
+
+  /** Deliveries waiting for space (stale rows dropped first). */
+  waiting(): VaultWaiting {
+    return this.store.transactionSync(() => {
+      this.#pruneWaiting();
+      const row = this.store.sql
+        .exec<{ n: number; since: number | null }>(
+          "SELECT COUNT(*) AS n, MIN(first_at) AS since FROM vault_waiting",
+        )
+        .one();
+      return { count: row.n, since: row.n > 0 ? row.since : null };
+    });
+  }
+
+  #pruneWaiting(): void {
+    this.store.sql.exec(
+      "DELETE FROM vault_waiting WHERE last_at < ?",
+      this.now() - WAITING_STALE_MS,
+    );
+  }
+
+  /** Lists txId as waiting; true when the list was empty before. Inside a transaction. */
+  #wait(txId: string): boolean {
+    this.#pruneWaiting();
+    const sql = this.store.sql;
+    const t = this.now();
+    const before = sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM vault_waiting").one().n;
+    sql.exec(
+      `INSERT INTO vault_waiting (tx_id, first_at, last_at) VALUES (?, ?, ?)
+       ON CONFLICT (tx_id) DO UPDATE SET last_at = excluded.last_at`,
+      txId,
+      t,
+      t,
+    );
+    return before === 0;
   }
 
   vault(): VaultItem[] {
@@ -258,17 +315,23 @@ export class AccountVault {
     return this.store.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM stash").one().n;
   }
 
-  vaultPut(txId: string, item: VaultItemInput): VaultPutResult {
+  vaultPut(txId: string, item: VaultItemInput, opts: VaultPutOptions = {}): VaultPutResult {
     if (!isTxId(txId) || vaultItemProblem(item) !== null) return { ok: false, code: "bad_item" };
     const input = cleanInput(item);
-    return this.store.transactionSync((): VaultPutResult => {
+    let started = false;
+    const result = this.store.transactionSync((): VaultPutResult => {
       const prior = this.#findTx(TX_VAULT_PUT, txId);
       if (prior) {
         const first = storedItem(prior.result);
         if (!first || !samePut(first, input)) return { ok: false, code: "conflict" };
+        this.store.sql.exec("DELETE FROM vault_waiting WHERE tx_id = ?", txId);
         return { ok: true, item: first, replayed: true };
       }
-      if (this.size() >= VAULT_MAX_ITEMS) return { ok: false, code: "vault_full" };
+      if (this.size() >= VAULT_MAX_ITEMS) {
+        // Only the waiting list is written: the put itself stays retryable.
+        if (opts.waiting === true) started = this.#wait(txId);
+        return { ok: false, code: "vault_full" };
+      }
       const seq = this.#nextSeq();
       const uid = `v${seq}`;
       this.store.sql.exec(
@@ -286,8 +349,11 @@ export class AccountVault {
       );
       const stored: VaultItem = { uid, ...input };
       this.#recordTx(TX_VAULT_PUT, txId, stored);
+      this.store.sql.exec("DELETE FROM vault_waiting WHERE tx_id = ?", txId);
       return { ok: true, item: stored, replayed: false };
     });
+    if (started) this.onWaitStarted?.(txId, 1);
+    return result;
   }
 
   vaultTake(txId: string, uid: string): VaultTakeResult {
@@ -362,4 +428,14 @@ export class AccountVault {
       this.now(),
     );
   }
+}
+
+/** The inbox notice of a full spell (one per spell: its id comes from the first waiting txId). */
+export function vaultFullNotice(txId: string): NoticeInput {
+  return {
+    id: `vault.full:${txId}`.slice(0, 160),
+    kind: "vault.full",
+    text: "Your vault is full. A delivery is waiting: free a slot (withdraw or sell an item) and it arrives on its own.",
+    data: {},
+  };
 }

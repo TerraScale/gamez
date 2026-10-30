@@ -790,10 +790,12 @@ export class TradeEscrow {
       return r.ok ? { ok: true, item: r.item } : { ok: false, code: r.code };
     }
     if (!step.item) return { ok: false, code: "bad_item" };
+    // Puts are deliveries or compensations, retried while the vault is full.
     const r: VaultPutResult = await this.accounts.vaultPut(
       step.account,
       step.txId,
       toInput(step.item),
+      { waiting: true },
     );
     return r.ok ? { ok: true, item: r.item } : { ok: false, code: r.code };
   }

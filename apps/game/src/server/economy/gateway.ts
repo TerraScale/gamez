@@ -12,7 +12,7 @@ export function accountGateway(env: Pick<Env, "ACCOUNT">): AccountGateway {
     walletTx: (id, tx) => acct(id).walletTx(tx),
     vaultGet: (id, uid) => acct(id).vaultGet(uid),
     vaultTake: (id, txId, uid) => acct(id).vaultTake(txId, uid),
-    vaultPut: (id, txId, item) => acct(id).vaultPut(txId, item),
+    vaultPut: (id, txId, item, opts) => acct(id).vaultPut(txId, item, opts),
     notify: (id, notice) => acct(id).notify(notice),
     addSeasonXp: async (id, txId, xp, reason) => {
       await acct(id).addSeasonXp(txId, xp, reason);

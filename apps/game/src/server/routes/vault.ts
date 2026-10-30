@@ -94,7 +94,8 @@ export const vaultRoutes: RouteHandler = async ({ request, env, url }) => {
 
   if (path === "/api/account/vault") {
     if (method !== "GET") return methodNotAllowed();
-    const res: VaultResponse = { items: await account.vault(), max: VAULT_MAX_ITEMS };
+    const [items, waiting] = await Promise.all([account.vault(), account.vaultWaiting()]);
+    const res: VaultResponse = { items, max: VAULT_MAX_ITEMS, waiting };
     return json(res);
   }
   if (path === "/api/account/notices") {

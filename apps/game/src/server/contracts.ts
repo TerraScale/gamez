@@ -32,6 +32,7 @@ import type {
   TradeView,
   VaultItem,
   VaultItemInput,
+  VaultWaiting,
   AuthProvider,
   ChatMessage,
   CosmeticSlot,
@@ -40,6 +41,7 @@ import type {
   EntityId,
   EntityState,
   EntitlementView,
+  FiatCurrency,
   GuildInfo,
   GuildRole,
   PoseUpdate,
@@ -582,6 +584,21 @@ export type VaultTakeResult =
 export interface OrderRecord extends OrderView {
   accountId: string;
   providerRef: string | null;
+  /** What the provider reported as charged on the paid event (null before one arrived). */
+  paid: PaidAmount | null;
+  /** Why the order failed ("amount_mismatch: …"), admin-visible; null unless status is "failed". */
+  failReason: string | null;
+}
+
+/** AccountApiC.vaultPut / AccountGateway.vaultPut options. */
+export interface VaultPutOptions {
+  /**
+   * The caller keeps retrying this txId while the vault is full (a delivery
+   * held in custody). A vault_full answer then lists it as waiting in the vault
+   * view and tells the player once per full spell (notice "vault.full"); a
+   * later successful put of the same txId clears it.
+   */
+  waiting?: boolean;
 }
 
 /**
@@ -594,7 +611,9 @@ export interface AccountApiC {
   vault(): Promise<VaultItem[]>;
   vaultGet(uid: string): Promise<VaultItem | null>;
   /** Idempotent by txId: a replay returns the first result (same uid). */
-  vaultPut(txId: string, item: VaultItemInput): Promise<VaultPutResult>;
+  vaultPut(txId: string, item: VaultItemInput, opts?: VaultPutOptions): Promise<VaultPutResult>;
+  /** Deliveries waiting for vault space (VaultPutOptions.waiting). */
+  vaultWaiting(): Promise<VaultWaiting>;
   /** Removes the whole stack `uid`; idempotent by txId (replay returns the removed item). */
   vaultTake(txId: string, uid: string): Promise<VaultTakeResult>;
   /** applyWalletTx with a telemetry flow (writes the economy_ledger + account_wallet outbox rows). */
@@ -621,11 +640,18 @@ export interface AccountApiC {
     provider: PaymentProviderId;
     price: ProductPrice;
   }): Promise<OrderRecord>;
-  /** Payment confirmed (verified webhook): grants the product once per orderId. */
+  /**
+   * Payment confirmed (verified webhook): grants the product once per orderId,
+   * only when `provider` is the order's provider and `paid` equals the order's
+   * price (currency and minor units). Otherwise the order becomes "failed" with
+   * a failReason, nothing is granted, and later events replay that (terminal).
+   */
   fulfillOrder(input: {
     orderId: string;
     providerRef: string | null;
     eventId: string;
+    provider: PaymentProviderId;
+    paid: PaidAmount | null;
   }): Promise<EconResult<OrderRecord>>;
   /** Refund/chargeback: revokes what can be revoked (gems debited down to 0, entitlements marked revoked). */
   refundOrder(input: { orderId: string; eventId: string }): Promise<EconResult<OrderRecord>>;
@@ -643,7 +669,12 @@ export interface AccountGateway {
   walletTx(accountId: string, tx: WalletTxC): Promise<WalletTxResult>;
   vaultGet(accountId: string, uid: string): Promise<VaultItem | null>;
   vaultTake(accountId: string, txId: string, uid: string): Promise<VaultTakeResult>;
-  vaultPut(accountId: string, txId: string, item: VaultItemInput): Promise<VaultPutResult>;
+  vaultPut(
+    accountId: string,
+    txId: string,
+    item: VaultItemInput,
+    opts?: VaultPutOptions,
+  ): Promise<VaultPutResult>;
   notify(accountId: string, notice: NoticeInput): Promise<void>;
   addSeasonXp(accountId: string, txId: string, xp: number, reason: string): Promise<void>;
 }
@@ -819,6 +850,19 @@ export interface VerifiedWebhook {
   orderId: string | null;
   accountId: string | null;
   providerRef: string | null;
+  /**
+   * What the provider says was charged, in our minor units (payments/amount.ts),
+   * or null when it did not say or said something we cannot convert. A "paid"
+   * event is granted only when this equals the order's price exactly
+   * (AccountPurchases.fulfillOrder); anything else fails the order, never grants.
+   */
+  paid: PaidAmount | null;
+}
+
+/** A provider-reported charge in ISO minor units (USD/BRL/EUR: cents). */
+export interface PaidAmount {
+  currency: FiatCurrency;
+  amountMinor: number;
 }
 
 // ---- D1 outbox payloads (projections.ts) ------------------------------------

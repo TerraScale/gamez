@@ -35,6 +35,7 @@ function fakeEnv() {
       vault: async () => a.vault.vault(),
       vaultPut: async (txId: string, item: Parameters<typeof a.vault.vaultPut>[1]) =>
         a.vault.vaultPut(txId, item),
+      vaultWaiting: async () => a.vault.waiting(),
       notices: async (since: string | null) => a.notices.notices(since),
       markNoticesRead: async (upTo: string) => a.notices.markRead(upTo),
       openTrades: async () => a.notices.openTrades(),
@@ -108,6 +109,7 @@ describe("vault routes", () => {
     expect(vault.body).toMatchObject({
       max: VAULT_MAX_ITEMS,
       items: [{ uid: "v1", itemId: "test.weapon.sword" }],
+      waiting: { count: 0, since: null },
     });
 
     const notices = await call(vaultRoutes, env, "/api/account/notices?since=n1", { token });

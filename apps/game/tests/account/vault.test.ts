@@ -2,7 +2,13 @@ import { VAULT_ITEM_DATA_MAX, VAULT_MAX_ITEMS, type VaultItemInput } from "@game
 import { Outbox } from "@gamez/sync";
 import { describe, expect, it } from "vite-plus/test";
 import { AccountEconomy } from "../../src/server/account/economy.ts";
-import { AccountVault, legacySummary, vaultItemProblem } from "../../src/server/account/vault.ts";
+import {
+  AccountVault,
+  WAITING_STALE_MS,
+  legacySummary,
+  vaultFullNotice,
+  vaultItemProblem,
+} from "../../src/server/account/vault.ts";
 import type { AccountWalletPayload, EconomyLedgerPayload } from "../../src/server/contracts.ts";
 import { FakeGateway, testItem } from "../support/fake-gateway.ts";
 import { fakeSqlStore } from "../support/fake-sql.ts";
@@ -302,5 +308,80 @@ describe("FakeGateway", () => {
     await gw.notify("bob", { id: "n1", kind: "system", text: "hi again", data: {} });
     expect(gw.noticesOf("bob").notices.map((n) => n.text)).toEqual(["hi"]);
     expect(gw.sunk(["alice"])).toBe(0);
+  });
+});
+
+describe("vault: deliveries waiting for space", () => {
+  function full(clock = { t: NOW }) {
+    const store = fakeSqlStore();
+    const outbox = new Outbox(store.sql, "account:acc1");
+    const economy = new AccountEconomy(store, () => clock.t);
+    const vault = new AccountVault(store, economy, outbox, "acc1", () => clock.t);
+    outbox.init();
+    economy.init();
+    vault.init();
+    for (let i = 0; i < VAULT_MAX_ITEMS; i++) vault.vaultPut(`p${i}`, testItem(`i${i}`));
+    const started: string[] = [];
+    vault.onWaitStarted = (txId) => void started.push(txId);
+    return { vault, started, clock };
+  }
+
+  it("lists a refused delivery once, fires once per full spell, and clears on success", () => {
+    const { vault, started, clock } = full();
+    expect(vault.waiting()).toEqual({ count: 0, since: null });
+    expect(vault.vaultPut("trade:t1:b:give:v9", testItem("x"), { waiting: true })).toEqual({
+      ok: false,
+      code: "vault_full",
+    });
+    clock.t += 1000;
+    // A retry of the same delivery and a second delivery: still one spell.
+    vault.vaultPut("trade:t1:b:give:v9", testItem("x"), { waiting: true });
+    vault.vaultPut("mk:classic:weapon/3:return", testItem("y"), { waiting: true });
+    expect(vault.waiting()).toEqual({ count: 2, since: NOW });
+    expect(started).toEqual(["trade:t1:b:give:v9"]);
+
+    // A slot frees up: the next retry lands and leaves the list.
+    vault.vaultTake("take0", "v1");
+    expect(vault.vaultPut("trade:t1:b:give:v9", testItem("x"), { waiting: true })).toMatchObject({
+      ok: true,
+      replayed: false,
+    });
+    expect(vault.waiting()).toEqual({ count: 1, since: NOW + 1000 });
+    // Still full for the other one; no new spell while something waits.
+    vault.vaultPut("mk:classic:weapon/3:return", testItem("y"), { waiting: true });
+    expect(started).toHaveLength(1);
+  });
+
+  it("a put without { waiting } (a buy that refunds at once) is never listed", () => {
+    const { vault, started } = full();
+    vault.vaultPut("mk:classic:weapon/3:deliver:1", testItem("x"));
+    vault.vaultPut("dev.grant:x:item:0", testItem("x"), { waiting: false });
+    expect(vault.waiting()).toEqual({ count: 0, since: null });
+    expect(started).toEqual([]);
+  });
+
+  it("a replayed put of a waiting txId clears it too", () => {
+    const { vault } = full();
+    vault.vaultPut("p0", testItem("i0"), { waiting: true });
+    expect(vault.waiting().count).toBe(0);
+  });
+
+  it("drops rows nobody retried for WAITING_STALE_MS, and a new spell fires again", () => {
+    const { vault, started, clock } = full();
+    vault.vaultPut("shop:a:return:e1", testItem("x"), { waiting: true });
+    clock.t += WAITING_STALE_MS + 1;
+    expect(vault.waiting()).toEqual({ count: 0, since: null });
+    vault.vaultPut("shop:a:return:e2", testItem("x"), { waiting: true });
+    expect(started).toEqual(["shop:a:return:e1", "shop:a:return:e2"]);
+  });
+
+  it("the notice names the spell by its first txId and fits the inbox limits", () => {
+    const n = vaultFullNotice(`trade:${"t".repeat(150)}`);
+    expect(n.kind).toBe("vault.full");
+    expect(n.id.length).toBeLessThanOrEqual(160);
+    expect(n.text.length).toBeLessThanOrEqual(140);
+    expect(vaultFullNotice("bank:classic:acc1:op1:credit").id).toBe(
+      "vault.full:bank:classic:acc1:op1:credit",
+    );
   });
 });
