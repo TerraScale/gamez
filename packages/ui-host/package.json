@@ -9,7 +9,8 @@
     "./play": "./src/play/index.ts"
   },
   "scripts": {
-    "test": "vp test"
+    "test": "vp test run --exclude '**/*.slow.test.*'",
+    "test:slow": "vp test run --passWithNoTests .slow.test."
   },
   "dependencies": {
     "@gamez/assets": "workspace:*",

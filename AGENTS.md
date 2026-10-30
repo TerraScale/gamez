@@ -100,7 +100,9 @@ docs/design/               Designs (classic.md, wave-A/B/C.md): the binding spec
 - Browser QA (against a running dev server): `node tools/qa/src/run.ts classic-idle warrior 2 8` (see `tools/qa/README.md`)
 - Production build: `node_modules/.bin/vp -C apps/game build`
 
-Fast: `node_modules/.bin/vp run -r test`. Use the affected package test command for a narrow change.
+Fast: `node_modules/.bin/vp run -r test`. Every package excludes `*.slow.test.*`; this is the ts-ship gate and must finish in under 5 minutes (about 80 s wall on mariogk-dev). Use the affected package test command for a narrow change.
+
+Slow: `node_modules/.bin/vp run -r test:slow`. Runs only `*.slow.test.*` files: long autoplay, soak, balance, boss, offline and perf simulations (about 10 min wall). Run it through `ts-heavy-any node_modules/.bin/vp run -r test:slow --repo gamez --branch <branch>` (dev hosts only, never mariogk-desktop) before shipping changes to classic balance, autoplay, offline progress, bosses, quests or party AI, and after any kernel change. It is not part of the ts-ship gate. Put a long simulation in a `*.slow.test.ts` file. Determinism, pinned-hash and contract tests stay in the Fast file, even when the file has a slow sibling.
 
 ## Architecture in 60 seconds
 

@@ -15,7 +15,7 @@
  *   3 of 8 seeds in 30 minutes, the boss barely scratched).
  * - Determinism: the same seed and script give the same hash.
  */
-import { createSim, loadMode, type Entity, type GameEvent, type Sim } from "@gamez/kernel";
+import { createSim, loadMode, type Entity, type Sim } from "@gamez/kernel";
 import { describe, expect, it } from "vite-plus/test";
 import { BOSS_READY_LEVELS } from "../src/auto/dungeon.ts";
 import { pushCommand, pushTransition } from "../src/bus.ts";
@@ -27,20 +27,7 @@ import { monsterLevel, xpAtLevel } from "../src/rules.ts";
 import { gridOf } from "../src/spatial.ts";
 import { KIND, type ItemCategory } from "../src/types.ts";
 import { getAreaMap, walkableAt, type ClassicMap } from "../src/world/maps.ts";
-
 const loaded = loadMode(mode, modules);
-
-const CLASSES = ["classic.warrior", "classic.rogue", "classic.sorcerer"] as const;
-const WARDEN = "classic.monster.boss_warden";
-const VESSA = "classic.monster.boss_ninth_flame";
-
-/**
- * Tick budget of a boss fight: measured with this harness (seed 1) Morrow
- * warrior 2 782, rogue 1 375, sorcerer 1 633; Vessa warrior 2 673, rogue
- * 1 368, sorcerer 1 288 (the warrior retreats once to refill its belt). The
- * slowest class plus about 30 %, the 3-minute target of the rework.
- */
-const FIGHT_BUDGET = 3600;
 
 /** One rare of the hero's level per equipment slot (four weapons: Auto keeps the best). */
 const GEAR: readonly ItemCategory[] = [
@@ -165,61 +152,6 @@ function bossFight(classId: string, depth: number, seed: number): Sim {
   expect(sim.dispatch("classic.setControl", { mode: "auto" }, null).ok).toBe(true);
   return sim;
 }
-
-/** Steps until the boss of `monster` dies (or the budget); ticks taken (-1: never) and deaths. */
-function untilBossKilled(
-  sim: Sim,
-  monster: string,
-  budget: number,
-): { ticks: number; deaths: number } {
-  let deaths = 0;
-  for (let i = 1; i <= budget; i++) {
-    for (const e of sim.step(1) as GameEvent[]) {
-      if (e.type === "classic.hero.died") deaths++;
-      if (e.type === "classic.boss.killed" && (e as { monster?: string }).monster === monster)
-        return { ticks: i, deaths };
-    }
-  }
-  return { ticks: -1, deaths };
-}
-
-describe("a boss-ready Auto hero kills the boss", () => {
-  for (const [monster, depth, name] of [
-    [WARDEN, 4, "Morrow"],
-    [VESSA, 12, "Vessa"],
-  ] as const) {
-    for (const cls of CLASSES) {
-      it(`${cls} kills ${name} (depth ${depth}) within ${FIGHT_BUDGET} ticks, no death`, () => {
-        const sim = bossFight(cls, depth, 1);
-        const r = untilBossKilled(sim, monster, FIGHT_BUDGET);
-        expect(r.ticks, `${name} still alive after ${FIGHT_BUDGET} ticks`).toBeGreaterThan(0);
-        expect(r.deaths).toBe(0);
-        expect(dungeonOf(sim.world).bossesKilled).toContain(depth);
-      }, 120_000);
-    }
-  }
-});
-
-describe("a fresh warrior under Auto gets past the depth-4 boss (long: ~30 sim minutes each)", () => {
-  /**
-   * Ticks to the Morrow kill from a new warrior (measured: seed 2 28 733,
-   * seed 4 27 294, seed 6 27 351; seeds 2 and 5 used to stall at depth 4).
-   * The run stops at the kill.
-   */
-  const WARRIOR_BUDGET = 36_000;
-  for (const seed of [2, 4, 6]) {
-    it(`seed ${seed}: kills Morrow within ${WARRIOR_BUDGET} ticks`, () => {
-      const sim = createSim(loaded, { seed });
-      expect(
-        sim.dispatch("classic.newHero", { classId: "classic.warrior", name: "W" }, null).ok,
-      ).toBe(true);
-      expect(sim.dispatch("classic.setControl", { mode: "auto" }, null).ok).toBe(true);
-      const r = untilBossKilled(sim, WARDEN, WARRIOR_BUDGET);
-      expect(r.ticks, `Morrow still alive after ${WARRIOR_BUDGET} ticks`).toBeGreaterThan(0);
-      expect(dungeonOf(sim.world).bossesKilled).toContain(4);
-    }, 180_000);
-  }
-});
 
 describe("determinism", () => {
   /** A scripted boss fight: the Vessa setup for the rogue, then 600 ticks of Auto. */

@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build-art": "node scripts/build.ts",
-    "test": "vp test"
+    "test": "vp test run --exclude '**/*.slow.test.*'",
+    "test:slow": "vp test run --passWithNoTests .slow.test."
   },
   "dependencies": {
     "@gamez/assets": "workspace:*"

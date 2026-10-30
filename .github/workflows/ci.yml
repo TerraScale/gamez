@@ -32,6 +32,8 @@ jobs:
       - name: Check (format, lint, types)
         run: vp check
 
+      # Fast suite only: every package excludes *.slow.test.*. The Slow suite
+      # (vp run -r test:slow) runs on dev hosts via ts-heavy-any, per AGENTS.md.
       - name: Test
         run: vp run -r test
 

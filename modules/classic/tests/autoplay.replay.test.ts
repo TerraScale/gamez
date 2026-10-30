@@ -1,5 +1,6 @@
 /**
- * Determinism of a full 20-minute autoplay run (real content, every module):
+ * Determinism of a short autoplay run (2.5 sim minutes; the full 20-minute
+ * run is autoplay.replay.slow.test.ts) (real content, every module):
  * the server must be able to replay what the client simulated.
  * - Same seed and actions -> the same final hash, whatever the step batch
  *   size (the client steps 1..n ticks per frame).
@@ -11,7 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { mode, modules } from "../src/index.ts";
 
 const SEED = 2026;
-const TICKS = 24_000;
+const TICKS = 3_000;
 const HALF = TICKS / 2;
 const loaded = loadMode(mode, modules);
 
@@ -28,7 +29,7 @@ function stepBy(sim: Sim, ticks: number, batch: number): void {
   for (let done = 0; done < ticks; done += batch) sim.step(Math.min(batch, ticks - done));
 }
 
-describe("classic autoplay determinism (20 sim minutes)", () => {
+describe("classic autoplay determinism (2.5 sim minutes)", () => {
   it("replays to the same hash and continues identically from a mid-run snapshot", () => {
     // Run A: one tick per step, snapshot at the half.
     const a = start();
