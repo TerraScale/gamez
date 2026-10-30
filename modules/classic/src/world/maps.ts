@@ -135,10 +135,20 @@ export function lineOfSight(
   const dx = bx - ax;
   const dy = by - ay;
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 64));
+  // walkableSub() inlined (scans test hundreds of segments per tick). About four samples
+  // fall in each tile: a tile already found walkable is not looked up again.
+  const w = map.width;
+  const h = map.height;
+  const walkable = map.walkable;
+  let open = -1;
   for (let i = 1; i < steps; i++) {
-    const x = ax + Math.trunc((dx * i) / steps);
-    const y = ay + Math.trunc((dy * i) / steps);
-    if (!walkableSub(map, x, y)) return false;
+    const tx = (ax + Math.trunc((dx * i) / steps)) >> 8;
+    const ty = (ay + Math.trunc((dy * i) / steps)) >> 8;
+    if (tx < 0 || ty < 0 || tx >= w || ty >= h) return false;
+    const t = ty * w + tx;
+    if (t === open) continue;
+    if (walkable[t] !== 1) return false;
+    open = t;
   }
   return true;
 }
