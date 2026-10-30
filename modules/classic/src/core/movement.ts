@@ -207,7 +207,7 @@ export const movementSystem: SystemDef = {
       const wants = mv.path.length > 0 || mv.goalX >= 0;
       // Idle units only move when pushed: skip every other read unless they overlap someone.
       if (!wants && (slot < 0 || !overlapping(slot))) {
-        if (mv.moving) world.read(e, Mover).moving = false;
+        if (mv.moving) world.update(e, Mover, { moving: false });
         continue;
       }
       const slow = mv.speed > 0 ? stillAndSlow(world, registry, e, tick, slot >= 0) : -1;
@@ -218,18 +218,37 @@ export const movementSystem: SystemDef = {
         speed = effectiveSpeed(mv.speed, stats ? stats.moveSpeed : 100, slow);
       }
       if (speed <= 0) {
-        if (mv.moving) world.read(e, Mover).moving = false;
+        if (mv.moving) world.update(e, Mover, { moving: false });
         continue;
       }
-      const m = world.read(e, Mover);
-      const p = world.read(e, Pos);
-      const r = slot >= 0 ? index.rs[slot]! : (world.get(e, Body)?.radius ?? 0);
-      if (moveUnit(map, slot, m, p, r, speed, members.includes(e))) grid.move(e, p.x, p.y);
+      // Working copies (moveUnit replaces fields, never mutates the stored path), written
+      // back field by field: the undo log keeps the changed fields, not deep copies.
+      const m = { ...mv };
+      const p0 = world.peek(e, Pos)!;
+      const p = { x: p0.x, y: p0.y };
+      const r = slot >= 0 ? index.rs[slot]! : (world.peek(e, Body)?.radius ?? 0);
+      if (moveUnit(map, slot, m, p, r, speed, members.includes(e))) {
+        world.update(e, Pos, { x: p.x, y: p.y });
+        grid.move(e, p.x, p.y);
+      }
+      writeMover(world, e, mv, m);
     }
   },
 };
 
-/** Moves one unit in place. Returns true when its position changed. */
+/** Writes the fields of the working copy `m` that differ from the stored `was`. */
+function writeMover(world: World, e: Entity, was: Readonly<MoverValue>, m: MoverValue): void {
+  let patch: Partial<MoverValue> | null = null;
+  if (m.path !== was.path) (patch ??= {}).path = m.path;
+  if (m.goalX !== was.goalX) (patch ??= {}).goalX = m.goalX;
+  if (m.goalY !== was.goalY) (patch ??= {}).goalY = m.goalY;
+  if (m.moving !== was.moving) (patch ??= {}).moving = m.moving;
+  if (m.facing !== was.facing) (patch ??= {}).facing = m.facing;
+  if (m.blocked !== was.blocked) (patch ??= {}).blocked = m.blocked;
+  if (patch !== null) world.update(e, Mover, patch);
+}
+
+/** Moves one unit (working copies `m` and `p`). Returns true when its position changed. */
 function moveUnit(
   map: ClassicMap,
   self: number,
@@ -292,7 +311,7 @@ function moveUnit(
       fullStep = true;
       nx = tx;
       ny = ty;
-      if (popped > 0) path.splice(0, popped);
+      if (popped > 0) m.path = path.slice(popped);
       if (goalReached) {
         m.goalX = -1;
         m.goalY = -1;
