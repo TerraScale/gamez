@@ -134,4 +134,4 @@ describe("after the first party action", () => {
  * Pinned hash of partyScript (seed 2026). Re-pin when classic.party changes on purpose
  * (the sim loads classic.debug too: its version is in the hash; last re-pin: debug 0.5.0).
  */
-const PINNED_HASH = "7858803cc132751e";
+const PINNED_HASH = "fcdf56d127b837ec";

@@ -122,6 +122,42 @@ describe("Idle repair trip (real content, wearGear cheat)", () => {
   }, 120_000);
 });
 
+describe("repair trips skip the post-town trip cooldown", () => {
+  it("broken gear sends Idle to the smith while the cooldown still holds", () => {
+    const sim = createSim(LOADED, { seed: 4242 });
+    expect(sim.dispatch(ACTION.newHero, { classId: "classic.warrior", name: "Mender" }, null).ok).toBe(true);
+    expect(sim.dispatch(ACTION.setControl, { mode: "idle" }, null).ok).toBe(true);
+    expect(sim.dispatch(DEBUG_GRANT, { gold: 5_000 }, null).ok).toBe(true);
+    const hero = heroOf(sim.world);
+    for (let i = 0; i < DESCEND_TICKS && currentDepth(sim.world) < 1; i++) sim.step(1);
+    expect(currentDepth(sim.world)).toBeGreaterThanOrEqual(1);
+    // Still inside the cooldown counted from the start-of-game town visit.
+    const tripAt = sim.world.read(hero, AutoState).tripAt;
+    expect(sim.tick, "cooldown still active").toBeLessThan(tripAt);
+
+    const wear = sim.dispatch(DEBUG_GRANT, { wearGear: 0 }, null);
+    expect(wear.ok, wear.error?.message).toBe(true);
+    const events: GameEvent[] = [...wear.events];
+    const brokeAt = sim.tick;
+    // The tick the repair trip starts (the plan event), if it starts before the cooldown ends.
+    let planAt = -1;
+    for (let i = 0; i < REPAIR_TICKS && !events.some((e) => e.type === "classic.repaired"); i++) {
+      const evs = sim.step(1);
+      events.push(...evs);
+      if (planAt < 0 && evs.some((e) => e.type === "classic.auto.plan" && e.note === "repair")) {
+        planAt = sim.tick;
+      }
+    }
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "classic.auto.plan", plan: "toTown", note: "repair" }),
+    );
+    expect(events.some((e) => e.type === "classic.repaired"), "repaired").toBe(true);
+    // The repair trip starts inside the cooldown, not after it.
+    expect(planAt, "repair trip started").toBeGreaterThan(brokeAt);
+    expect(planAt, "repair trip started before the cooldown ends").toBeLessThan(tripAt);
+  }, 120_000);
+});
+
 describe("debug grant: wearGear", () => {
   it("accepts 0..99 and rejects anything else", () => {
     expect(parseGrant({ wearGear: 0 })).toEqual({ wearGear: 0 });

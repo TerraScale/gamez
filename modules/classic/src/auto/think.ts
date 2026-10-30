@@ -526,13 +526,17 @@ function leavingFor(c: AutoCtx, plan: "descend" | "toTown"): boolean {
 
 /** Why a voluntary town trip is due now ("" = none). */
 export function townTripReason(c: AutoCtx): "" | "bag full" | "quest" | "restock" | "repair" {
-  if (c.depth === 0 || c.tick < c.st.tripAt || stalled(c)) return "";
+  if (c.depth === 0 || stalled(c)) return "";
   // No town portal in a rift; the run ends at its exit.
   if (isRiftDepth(c.depth)) return "";
-  // A broken weapon or armor piece adds nothing: repair it (wave A), even near the stairs.
-  if (repairDue(c)) return "repair";
   const others = c.party ? otherMemberCtxs(c) : [];
+  // A broken weapon or armor piece adds nothing: repair it (wave A), even near the stairs.
+  // Repairs skip the trip cooldown (DECISION: repair trips bypass TRIP_COOLDOWN_TICKS. Reason:
+  // broken gear makes the hero useless until fixed, and the cooldown only exists to stop
+  // voluntary bag and restock ping-pong).
+  if (repairDue(c)) return "repair";
   if (others.some((m) => repairDue(m))) return "repair";
+  if (c.tick < c.st.tripAt) return "";
   if (nearStairsDown(c)) return "";
   if (!bagFits(c, 2, 3) && townFreesBag(c)) return "bag full";
   if (others.some((m) => !bagFits(m, 2, 3) && townFreesBag(m))) return "bag full";
