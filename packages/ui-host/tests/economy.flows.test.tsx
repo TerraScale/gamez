@@ -488,6 +488,11 @@ describe("notices", () => {
       matchId: "m9",
     });
     expect(linkOf(notice("n5", { kind: "system", data: { tradeId: "t1" } }))).toBeNull();
+    expect(linkOf(notice("n7", { kind: "vault.full", data: {} }))).toEqual({ kind: "vault" });
+    expect(linkOf(notice("n8", { kind: "store.failed", data: { orderId: "o1" } }))).toEqual({
+      kind: "store",
+      orderId: "o1",
+    });
     expect(linkOf(notice("n6", { kind: "trade.done", data: {} }))).toBeNull();
   });
 

@@ -174,6 +174,8 @@ export function tradeStatusText(
  */
 export function vaultWaitingText(waiting: VaultWaiting | undefined): string | null {
   if (!waiting || waiting.count <= 0) return null;
-  const what = waiting.count === 1 ? "1 delivery is" : `${waiting.count} deliveries are`;
-  return `Your vault is full: ${what} waiting for a free slot. Withdraw or sell an item and they arrive on their own (within the hour).`;
+  const one = waiting.count === 1;
+  const what = one ? "1 delivery is" : `${waiting.count} deliveries are`;
+  const arrive = one ? "it arrives on its own" : "they arrive on their own";
+  return `Your vault is full: ${what} waiting for a free slot. Withdraw or sell an item and ${arrive} (within the hour).`;
 }

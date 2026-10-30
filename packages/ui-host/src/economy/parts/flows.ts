@@ -90,7 +90,9 @@ export type LinkTarget =
   | { kind: "trade"; tradeId: string }
   | { kind: "market"; listingId: string }
   | { kind: "plot"; world: string | null; plotId: string }
-  | { kind: "arena"; matchId: string };
+  | { kind: "arena"; matchId: string }
+  | { kind: "vault" }
+  | { kind: "store"; orderId: string | null };
 
 function dataString(notice: Notice, key: string): string | null {
   const value = notice.data[key];
@@ -115,6 +117,10 @@ export function linkOf(notice: Notice): LinkTarget | null {
     const matchId = dataString(notice, "matchId");
     return matchId ? { kind: "arena", matchId } : null;
   }
+  // A full vault holds deliveries: Open shows the vault (and its waiting banner).
+  if (notice.kind === "vault.full") return { kind: "vault" };
+  if (notice.kind.startsWith("store."))
+    return { kind: "store", orderId: dataString(notice, "orderId") };
   return null;
 }
 
