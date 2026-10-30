@@ -27,6 +27,7 @@ function setup() {
   };
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ACCOUNT: {
       getByName: (name: string) => ({
         ...fakeStub(acct(name)),

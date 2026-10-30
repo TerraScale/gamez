@@ -10,6 +10,6 @@ export interface AdminMe {
   /** Where the admin right comes from (admins only). */
   via?: "env" | "dev";
   accountId?: string;
-  /** True where POST /api/dev/admin/self exists (isDevHost on the server). */
+  /** True where POST /api/dev/admin/self exists (isDevHost: DEV_ROUTES_ENABLED and a dev host). */
   devHost: boolean;
 }

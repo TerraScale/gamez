@@ -29,6 +29,7 @@ function fakeEnv(): {
     );
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     // Registered sessions are open for every account in these tests.
     ACCOUNT: { getByName: () => ({ checkSession: async () => true }) },
     PLOTS: { getByName: (n: string) => stub("PLOTS", n) },

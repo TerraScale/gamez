@@ -2,8 +2,8 @@
  * Admin access (wave-C.md §9.3). OWNER: T-admin.
  *
  * Admins are the accounts in ADMIN_ACCOUNT_IDS plus the dev admins granted in
- * ConfigDO. Dev admins only count on dev hosts (isDevHost), so a grant made
- * locally never works on production hosts even if the row exists.
+ * ConfigDO. Dev admins only count where isDevHost holds (DEV_ROUTES_ENABLED
+ * plus a dev host), so a grant never works in production even if the row exists.
  */
 import { authenticateRequest } from "../auth/session.ts";
 import type { Env } from "../contracts.ts";
@@ -24,7 +24,7 @@ export type AdminEnv = Pick<Env, "AUTH_SECRET" | "ACCOUNT" | "ADMIN_ACCOUNT_IDS"
  */
 export async function requireAdmin(
   request: Request,
-  env: AdminEnv & Pick<Env, "OAUTH_STUB">,
+  env: AdminEnv & Pick<Env, "OAUTH_STUB" | "DEV_ROUTES_ENABLED">,
   url: URL,
 ): Promise<AdminIdentity | Response> {
   const identity = await authenticateRequest(request, env, url);

@@ -121,15 +121,28 @@ describe("stub provider", () => {
 describe("provider registry", () => {
   const base = { AUTH_SECRET: SECRET };
 
+  const dev = { DEV_ROUTES_ENABLED: "1" };
+
   it("enables the stub on dev hosts and not on public hosts", () => {
-    expect(stubEnabled({}, new URL("http://localhost:5173/"))).toBe(true);
-    expect(stubEnabled({}, new URL("https://box.tailnet.ts.net/"))).toBe(true);
-    expect(stubEnabled({}, new URL("https://gamez.example.com/"))).toBe(false);
+    expect(stubEnabled(dev, new URL("http://localhost:5173/"))).toBe(true);
+    expect(stubEnabled(dev, new URL("https://box.tailnet.ts.net/"))).toBe(true);
+    expect(stubEnabled(dev, new URL("https://gamez.example.com/"))).toBe(false);
+  });
+
+  it("never enables the stub without DEV_ROUTES_ENABLED, whatever the host or PAYMENTS_STUB", () => {
+    expect(stubEnabled({}, new URL("http://localhost:5173/"))).toBe(false);
+    expect(stubEnabled({}, new URL("https://box.tailnet.ts.net/"))).toBe(false);
+    expect(stubEnabled({ PAYMENTS_STUB: "1" }, new URL("https://gamez.example.com/"))).toBe(false);
+    expect(stubEnabled({ DEV_ROUTES_ENABLED: "0" }, new URL("http://localhost/"))).toBe(false);
   });
 
   it("PAYMENTS_STUB overrides the host rule in both directions", () => {
-    expect(stubEnabled({ PAYMENTS_STUB: "1" }, new URL("https://gamez.example.com/"))).toBe(true);
-    expect(stubEnabled({ PAYMENTS_STUB: "0" }, new URL("http://localhost:5173/"))).toBe(false);
+    expect(stubEnabled({ ...dev, PAYMENTS_STUB: "1" }, new URL("https://gamez.example.com/"))).toBe(
+      true,
+    );
+    expect(stubEnabled({ ...dev, PAYMENTS_STUB: "0" }, new URL("http://localhost:5173/"))).toBe(
+      false,
+    );
   });
 
   it("enables each real provider only when its keys are present", () => {

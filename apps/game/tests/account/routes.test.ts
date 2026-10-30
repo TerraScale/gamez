@@ -29,6 +29,7 @@ function fakeEnv(overrides: Partial<Env> = {}): {
   };
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ACCOUNT: { getByName: (name: string) => economy(name) },
     ...overrides,
   } as unknown as Env;

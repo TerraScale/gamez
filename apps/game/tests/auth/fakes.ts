@@ -107,6 +107,7 @@ export function fakeWorld(vars: Partial<Env> = {}): FakeWorld {
   const identities = new Map<string, FakeIdentity>();
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ACCOUNT: {
       getByName(name: string) {
         let a = accounts.get(name);

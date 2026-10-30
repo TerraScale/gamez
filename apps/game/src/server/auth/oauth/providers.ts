@@ -22,6 +22,7 @@ export type OAuthEnv = Pick<
   | "DISCORD_CLIENT_SECRET"
   | "APPLE_CLIENT_ID"
   | "OAUTH_STUB"
+  | "DEV_ROUTES_ENABLED"
 >;
 
 /** What the callback learned about the user. `email` only when the provider verified it. */

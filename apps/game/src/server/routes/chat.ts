@@ -4,7 +4,8 @@
  * /ws/chat?token=…&channel=… authenticates, checks the channel (catalog mode,
  * or a guild the caller is in) and forwards the upgrade to ChatChannelDO with
  * CHAT_HEADERS. Refusals are close codes: 4401 unauthorized, 4403 not a
- * member of that guild, 4404 unknown channel.
+ * member of that guild, 4404 unknown channel, 4429 too many connects from
+ * this IP (ip-limit.ts, checked first so a flood never reaches the DOs).
  *
  * /api/admin/* only for accounts listed in ADMIN_ACCOUNT_IDS: 401 without a
  * valid token, 403 for any other account.
@@ -16,12 +17,14 @@ import type { Analytics } from "../analytics/types.ts";
 import { authenticateRequest } from "../auth/session.ts";
 import { CHAT_HEADERS, type Env } from "../contracts.ts";
 import { apiError, json, readJson, rejectSocket } from "../http.ts";
+import { checkIpLimit, type IpLimitEnv } from "../ip-limit.ts";
 import type { RouteHandler } from "./types.ts";
 
 export const CHAT_PATH = "/ws/chat";
 export const CLOSE_CHAT_UNAUTHORIZED = 4401;
 export const CLOSE_CHAT_FORBIDDEN = 4403;
 export const CLOSE_CHAT_UNKNOWN_CHANNEL = 4404;
+export const CLOSE_CHAT_RATE_LIMITED = 4429;
 
 /** Minimum bindings the access check needs (tests pass fakes). */
 export type ChatAccessEnv = Pick<Env, "AUTH_SECRET" | "ACCOUNT">;
@@ -77,13 +80,15 @@ export async function chatAccess(
 /** Upgrades /ws/chat, or refuses it with a close code. */
 export async function connectChat(
   request: Request,
-  env: Pick<Env, "AUTH_SECRET" | "ACCOUNT" | "CHAT">,
+  env: Pick<Env, "AUTH_SECRET" | "ACCOUNT" | "CHAT"> & IpLimitEnv,
   url: URL,
   modes: readonly { id: string }[] = MODES,
 ): Promise<Response> {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("expected websocket", { status: 426 });
   }
+  const limited = await checkIpLimit(request, env, "chatConnect");
+  if (!limited.ok) return rejectSocket(CLOSE_CHAT_RATE_LIMITED, "rate limited");
   const access = await chatAccess(request, env, url, modes);
   if (!access.ok) return rejectSocket(access.close, access.reason);
   const headers = new Headers(request.headers);

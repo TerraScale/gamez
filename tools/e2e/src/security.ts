@@ -12,6 +12,8 @@
  * - R8: a gzip bomb import is refused unread, an amplifying JSON save is
  *   refused before restore, and the instance keeps answering.
  * - R10: a kick closes the kicked member's open guild chat socket with 4403.
+ * - ADR 0012: per-IP limits on guest minting (429) and chat connects (4429),
+ *   and the dev-admin grant on a DEV_ROUTES_ENABLED dev server (ip-limits.ts).
  * R3 (link CSRF, link code only via POST with a bearer) is covered in auth.ts §7b,
  * R11 (a pose tag is not free text) in classic-presence.ts.
  */
@@ -31,6 +33,7 @@ import { ChatBot } from "./chat-client.ts";
 import { ClassicBot, classicLoaded } from "./classic-bot.ts";
 import { loginGuest } from "./client.ts";
 import type { E2eContext, E2eFeature } from "./features.ts";
+import { chatConnectLimit, devAdminGrant, guestMintLimit } from "./ip-limits.ts";
 import { check } from "./report.ts";
 
 type BankAnswer = Extract<VerifiedServerMessage, { t: "bank" }>;
@@ -355,6 +358,9 @@ export const securityFeature: E2eFeature = {
       ["OAuth nonce (R4)", oauthNonceRequired],
       ["gzip bomb (R8)", gzipBomb],
       ["guild kick closes chat (R10)", guildKickClosesChat],
+      ["guest mint per-IP limit (ADR 0012)", guestMintLimit],
+      ["chat connect per-IP limit (ADR 0012)", chatConnectLimit],
+      ["dev-admin grant behind DEV_ROUTES_ENABLED (ADR 0012)", devAdminGrant],
     ] as const) {
       try {
         await part(ctx);

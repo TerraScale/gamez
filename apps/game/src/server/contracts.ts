@@ -85,6 +85,9 @@ export interface Env {
   DB: D1Database;
   SYNC_QUEUE: Queue<ReplicationBatch>;
   AUTH_SECRET: string;
+  /** Rate Limiting bindings (cloudflare.config.ts IP_LIMITS, ip-limit.ts). Absent = no limit. */
+  GUEST_LIMITER?: RateLimiterLike;
+  CHAT_CONNECT_LIMITER?: RateLimiterLike;
   // Optional secrets and vars (docs/secrets.md). Absent = feature disabled or stubbed.
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -94,7 +97,13 @@ export interface Env {
   APPLE_TEAM_ID?: string;
   APPLE_KEY_ID?: string;
   APPLE_PRIVATE_KEY?: string;
-  /** "1": local stub OAuth provider even off localhost (never set in production). "0": never. */
+  /**
+   * "1": dev-only stubs (/api/dev/*, stub OAuth, payments stub, dev admins) on dev hosts.
+   * Set only in local `.dev.vars`; cloudflare.config.ts declares it in dev mode only, so
+   * production builds never read it (http.ts isDevHost).
+   */
+  DEV_ROUTES_ENABLED?: string;
+  /** "1": dev stubs on any host (still needs DEV_ROUTES_ENABLED; never in production). "0": never. */
   OAUTH_STUB?: string;
   /** Comma-separated account ids allowed on /api/admin/*. */
   ADMIN_ACCOUNT_IDS?: string;
@@ -116,6 +125,11 @@ export interface Env {
   PAYMENTS_STUB?: string;
   /** Public origin for provider redirects/webhooks (default: the request origin). */
   PUBLIC_ORIGIN?: string;
+}
+
+/** The part of a Cloudflare Rate Limiting binding the per-IP limits use (ip-limit.ts). */
+export interface RateLimiterLike {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
 /** The part of the Workers AI binding the moderator uses. */

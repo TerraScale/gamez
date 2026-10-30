@@ -48,14 +48,31 @@ export function rejectSocket(code: number, reason: string): Response {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+/** The env keys that decide whether dev-only stubs run. */
+export interface DevGateEnv {
+  /** "1" turns dev-only stubs on. Only local `.dev.vars` sets it; production never does. */
+  DEV_ROUTES_ENABLED?: string;
+  /** "1": stubs on any host (still needs DEV_ROUTES_ENABLED). "0": never. */
+  OAUTH_STUB?: string;
+}
+
+/** True when the explicit dev switch is on (DEV_ROUTES_ENABLED === "1"). */
+export function devRoutesEnabled(env: DevGateEnv): boolean {
+  return env.DEV_ROUTES_ENABLED === "1";
+}
+
 /**
- * True on hosts where dev-only stubs may run (OAuth stub provider, /api/dev/*):
- * env.OAUTH_STUB === "1", or (OAUTH_STUB !== "0" and the host is localhost,
- * 127.0.0.1 or a tailnet *.ts.net name). Production hosts never match.
+ * True where dev-only stubs may run (OAuth stub provider, payments stub,
+ * /api/dev/*, dev admins). Always requires env.DEV_ROUTES_ENABLED === "1",
+ * which only local `.dev.vars` sets (cloudflare.config.ts declares it in dev
+ * mode only). Then OAUTH_STUB === "0" turns stubs off, OAUTH_STUB === "1"
+ * allows any host, and otherwise the host must be localhost, 127.0.0.1,
+ * [::1] or a tailnet *.ts.net name. A host name alone never enables them.
  */
-export function isDevHost(url: URL, env: { OAUTH_STUB?: string }): boolean {
-  if (env.OAUTH_STUB === "1") return true;
+export function isDevHost(url: URL, env: DevGateEnv): boolean {
+  if (!devRoutesEnabled(env)) return false;
   if (env.OAUTH_STUB === "0") return false;
+  if (env.OAUTH_STUB === "1") return true;
   const h = url.hostname;
   return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h.endsWith(".ts.net");
 }

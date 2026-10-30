@@ -319,6 +319,23 @@ describe("chat reconnects and close codes", () => {
     expect(client.getView().status).toBe("online");
   });
 
+  it("waits the longest backoff after 4429 (per-IP connect limit), then reconnects", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.9);
+    try {
+      const api = makeApi();
+      const { client, socket } = online(api);
+      socket.drop(4429);
+      expect(client.getView().status).toBe("offline");
+      // A plain drop would retry after 0.9 x 500 ms; 4429 jumps to 0.9 x 10 s.
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(FakeChatSocket.instances).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(FakeChatSocket.instances).toHaveLength(2);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
   it("does not reconnect after 4401 and marks the channel offline", async () => {
     const api = makeApi();
     const { client, socket } = online(api);

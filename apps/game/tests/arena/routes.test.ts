@@ -65,6 +65,7 @@ function makeWorld(opts: { oauthStub?: "0" | "1"; d1Migrated?: boolean } = {}): 
 
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     OAUTH_STUB: opts.oauthStub,
     DB: d1.asD1(),
     ACCOUNT: {

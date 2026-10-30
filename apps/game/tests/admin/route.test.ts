@@ -4,7 +4,11 @@
  */
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { signToken } from "../../src/server/auth.ts";
-import { adminRoutes } from "../../src/server/routes/admin.ts";
+import {
+  adminRoutes,
+  setDevAdminGrantLogger,
+  type DevAdminGrantLog,
+} from "../../src/server/routes/admin.ts";
 import { requireAdmin } from "../../src/server/admin/auth.ts";
 import { currentConfig, DEFAULT_FLAGS, resetFlagsCache } from "../../src/server/config/flags.ts";
 import type { Env } from "../../src/server/contracts.ts";
@@ -64,6 +68,7 @@ function makeEnv(over: Partial<Env> = {}, calls: ConfigCalls = { setFlags: [], g
   const d1 = new FakeD1();
   return {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ACCOUNT: accountNs(),
     ADMIN_ACCOUNT_IDS: ADMIN_ENV,
     CONFIG: configNs(calls),
@@ -227,6 +232,58 @@ describe("admin routes", () => {
       token: await tokenFor(DEV_ADMIN),
     });
     expect(await devOffHost.json()).toEqual({ admin: false, devHost: false });
+  });
+
+  it("POST /api/dev/admin/self is 404 everywhere without DEV_ROUTES_ENABLED=1 (tailnet included)", async () => {
+    const token = await tokenFor(PLAYER);
+    const hosts = [LOCAL, "https://box.tail1234.ts.net", "http://127.0.0.1:5403", PROD];
+    for (const flag of [undefined, "0", "true"]) {
+      const calls: ConfigCalls = { setFlags: [], grants: [] };
+      const env = makeEnv({ DEV_ROUTES_ENABLED: flag, OAUTH_STUB: "1" }, calls);
+      for (const host of hosts) {
+        const res = await call(`${host}/api/dev/admin/self`, env, { method: "POST", token });
+        expect(res.status).toBe(404);
+        const me = await call(`${host}/api/admin/me`, env, { token });
+        expect(await me.json()).toEqual({ admin: false, devHost: false });
+      }
+      expect(calls.grants).toEqual([]);
+    }
+  });
+
+  it("ignores an existing dev-admin grant once DEV_ROUTES_ENABLED is off", async () => {
+    const env = makeEnv({ DEV_ROUTES_ENABLED: undefined });
+    const token = await tokenFor(DEV_ADMIN);
+    expect((await call(`${LOCAL}/api/admin/economy`, env, { token })).status).toBe(403);
+    expect(
+      (await call(`https://box.tail1234.ts.net/api/admin/economy`, env, { token })).status,
+    ).toBe(403);
+  });
+
+  it("logs every dev-admin grant, and nothing for a refused one", async () => {
+    const logged: DevAdminGrantLog[] = [];
+    const prev = setDevAdminGrantLogger((e) => logged.push(e));
+    try {
+      const env = makeEnv();
+      const token = await tokenFor(PLAYER);
+      await call(`${LOCAL}/api/dev/admin/self`, env, { method: "POST", token });
+      await call(`${LOCAL}/api/dev/admin/self`, env, { method: "POST", token });
+      await call(`${PROD}/api/dev/admin/self`, env, { method: "POST", token });
+      await call(`${LOCAL}/api/dev/admin/self`, env, { method: "POST" });
+      const off = makeEnv({ DEV_ROUTES_ENABLED: undefined });
+      await call(`${LOCAL}/api/dev/admin/self`, off, { method: "POST", token });
+      expect(logged).toHaveLength(2);
+      for (const e of logged) {
+        expect(e).toMatchObject({
+          event: "dev_admin_grant",
+          accountId: PLAYER,
+          kind: "guest",
+          host: "localhost:5173",
+        });
+        expect(typeof e.at).toBe("number");
+      }
+    } finally {
+      setDevAdminGrantLogger(prev);
+    }
   });
 
   it("POST /api/dev/admin/self needs a token", async () => {

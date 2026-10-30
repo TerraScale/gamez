@@ -178,8 +178,9 @@ export async function makeDevAdmin(
 }
 
 /**
- * True on the hosts the server treats as dev hosts (mirror of isDevHost with
- * OAUTH_STUB unset): localhost, 127.0.0.1, [::1] and *.ts.net.
+ * True on host names the server may treat as dev hosts: localhost, 127.0.0.1,
+ * [::1] and *.ts.net. Only a fallback hint: the server also needs
+ * DEV_ROUTES_ENABLED, and GET /api/admin/me's `devHost` wins when it answers.
  */
 export function isDevHostname(hostname: string): boolean {
   return (

@@ -52,6 +52,7 @@ function fakeEnv() {
   };
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ACCOUNT: { getByName: accountStub },
     ESCROW: { getByName: escrowStub },
   } as unknown as Env;

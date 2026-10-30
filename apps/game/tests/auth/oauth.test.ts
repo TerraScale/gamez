@@ -168,20 +168,34 @@ describe("provider modes (stub host rule)", () => {
     const local = new URL("http://localhost:5173/");
     const tailnet = new URL("https://box.tail1234.ts.net/");
     const prod = new URL("https://gamez.example.com/");
-    expect(providerMode("google", {}, local)).toBe("stub");
-    expect(providerMode("google", {}, tailnet)).toBe("stub");
-    expect(providerMode("google", {}, new URL("http://127.0.0.1:5302/"))).toBe("stub");
-    expect(providerMode("google", {}, prod)).toBe("disabled");
-    expect(providerMode("google", { OAUTH_STUB: "1" }, prod)).toBe("stub");
-    expect(providerMode("google", { OAUTH_STUB: "0" }, local)).toBe("disabled");
-    expect(providerMode("google", { GOOGLE_CLIENT_ID: "x" }, prod)).toBe("disabled");
+    const dev = { DEV_ROUTES_ENABLED: "1" };
+    expect(providerMode("google", dev, local)).toBe("stub");
+    expect(providerMode("google", dev, tailnet)).toBe("stub");
+    expect(providerMode("google", dev, new URL("http://127.0.0.1:5302/"))).toBe("stub");
+    expect(providerMode("google", dev, prod)).toBe("disabled");
+    expect(providerMode("google", { ...dev, OAUTH_STUB: "1" }, prod)).toBe("stub");
+    expect(providerMode("google", { ...dev, OAUTH_STUB: "0" }, local)).toBe("disabled");
+    expect(providerMode("google", { ...dev, GOOGLE_CLIENT_ID: "x" }, prod)).toBe("disabled");
     expect(
       providerMode("google", { GOOGLE_CLIENT_ID: "x", GOOGLE_CLIENT_SECRET: "y" }, local),
     ).toBe("real");
-    expect(providerMode("apple", { APPLE_CLIENT_ID: "x" }, prod)).toBe("disabled");
-    expect(providerMode("apple", {}, local)).toBe("stub");
-    expect(isDevHost(new URL("https://evil-localhost.com/"), {})).toBe(false);
-    expect(isDevHost(new URL("https://ts.net.evil.com/"), {})).toBe(false);
+    expect(providerMode("apple", { ...dev, APPLE_CLIENT_ID: "x" }, prod)).toBe("disabled");
+    expect(providerMode("apple", dev, local)).toBe("stub");
+    expect(isDevHost(new URL("https://evil-localhost.com/"), dev)).toBe(false);
+    expect(isDevHost(new URL("https://ts.net.evil.com/"), dev)).toBe(false);
+  });
+
+  it("never uses the stub without DEV_ROUTES_ENABLED=1, on any host (tailnet included)", () => {
+    for (const host of ["http://localhost:5173/", "https://box.tail1234.ts.net/"]) {
+      const url = new URL(host);
+      expect(providerMode("google", {}, url)).toBe("disabled");
+      expect(providerMode("google", { OAUTH_STUB: "1" }, url)).toBe("disabled");
+      expect(providerMode("apple", { DEV_ROUTES_ENABLED: "0" }, url)).toBe("disabled");
+      expect(isDevHost(url, {})).toBe(false);
+      expect(isDevHost(url, { OAUTH_STUB: "1" })).toBe(false);
+      expect(isDevHost(url, { DEV_ROUTES_ENABLED: "true" })).toBe(false);
+    }
+    expect(isDevHost(new URL("https://gamez.example.com/"), { OAUTH_STUB: "1" })).toBe(false);
   });
 
   it("refuses the stub page and flows on production hosts", async () => {

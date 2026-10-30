@@ -51,6 +51,7 @@ import {
 import { decodeStubCode, stubCallbackLocation, stubPage, stubProfile } from "../auth/oauth/stub.ts";
 import { authenticateRequest, authenticateToken } from "../auth/session.ts";
 import { apiError, bearerToken, json, readJson } from "../http.ts";
+import { checkIpLimit } from "../ip-limit.ts";
 import type { RouteContext, RouteHandler } from "./types.ts";
 
 let limiter = new IpLimiter();
@@ -294,6 +295,20 @@ export const authRoutes: RouteHandler = async (c) => {
 
   if (path === "/api/guest") {
     if (request.method !== "POST") return methodNotAllowed();
+    const limited = await checkIpLimit(request, env, "guest");
+    if (!limited.ok) {
+      return json(
+        {
+          error: {
+            code: "rate_limited",
+            message: "Too many new guests from this network. Try again in a minute.",
+            retryAfterMs: limited.retryAfterSec * 1000,
+          },
+        },
+        429,
+        { "retry-after": String(limited.retryAfterSec) },
+      );
+    }
     const identity = { ...newGuest(), kind: "guest" as const, sid: null };
     const token = await signToken(env.AUTH_SECRET, identity);
     return json({ token, accountId: identity.accountId, name: identity.name, kind: "guest" });

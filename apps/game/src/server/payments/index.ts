@@ -2,7 +2,8 @@
  * The payment providers (wave-C.md §8, provider.ts contract). OWNER: T-pay.
  *
  *   providersFor(env, url)  every provider, each with `enabled` set from its keys.
- *                           The stub is enabled when PAYMENTS_STUB === "1", or when
+ *                           The stub needs DEV_ROUTES_ENABLED === "1" (never set in
+ *                           production); then PAYMENTS_STUB === "1" (any host), or
  *                           PAYMENTS_STUB !== "0" and the host is a dev host.
  */
 import type { PaymentProviderInfo } from "@gamez/protocol";
@@ -25,6 +26,7 @@ export type PaymentsEnv = Pick<
   | "MERCADOPAGO_ACCESS_TOKEN"
   | "MERCADOPAGO_WEBHOOK_SECRET"
   | "PAYMENTS_STUB"
+  | "DEV_ROUTES_ENABLED"
 >;
 
 /** Injectable clocks and fetch for tests; production passes nothing. */
@@ -33,10 +35,15 @@ export interface ProviderDeps {
   now?: () => number;
 }
 
-export function stubEnabled(env: Pick<PaymentsEnv, "PAYMENTS_STUB">, url: URL): boolean {
+export function stubEnabled(
+  env: Pick<PaymentsEnv, "PAYMENTS_STUB" | "DEV_ROUTES_ENABLED">,
+  url: URL,
+): boolean {
+  // Free gems: never without the explicit dev switch, whatever PAYMENTS_STUB says.
+  if (env.DEV_ROUTES_ENABLED !== "1" || env.PAYMENTS_STUB === "0") return false;
   if (env.PAYMENTS_STUB === "1") return true;
   // Dev-host rules only: the OAuth override does not change payments.
-  return env.PAYMENTS_STUB !== "0" && isDevHost(url, {});
+  return isDevHost(url, { DEV_ROUTES_ENABLED: env.DEV_ROUTES_ENABLED });
 }
 
 export function providersFor(

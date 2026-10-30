@@ -74,6 +74,7 @@ function makeEnv(extra: Partial<Env> = {}) {
   const accounts = new Map<string, Fake>();
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ACCOUNT: {
       getByName: (id: string) => {
         let a = accounts.get(id);

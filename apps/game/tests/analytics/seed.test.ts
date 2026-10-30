@@ -51,6 +51,7 @@ function makeEnv(over: Partial<Env> = {}) {
   const m = metricsNs();
   const env = {
     AUTH_SECRET: SECRET,
+    DEV_ROUTES_ENABLED: "1",
     ADMIN_ACCOUNT_IDS: ADMIN,
     ACCOUNT: {
       getByName: () => ({ profile: async () => null, checkSession: async () => true }),

@@ -61,7 +61,31 @@ async function flagsRoute(c: RouteContext, by: string): Promise<Response> {
   }
 }
 
-/** POST /api/dev/admin/self: dev hosts only. Makes the caller a dev admin. */
+/** One structured log line per dev-admin grant (Workers Logs keeps console output). */
+export interface DevAdminGrantLog {
+  event: "dev_admin_grant";
+  accountId: string;
+  kind: "guest" | "registered";
+  host: string;
+  at: number;
+}
+
+/** Where dev-admin grants are logged; tests swap it to capture the lines. */
+let logGrant = (entry: DevAdminGrantLog): void => console.warn(JSON.stringify(entry));
+
+/** Tests replace the grant logger; returns the previous one. */
+export function setDevAdminGrantLogger(
+  next: (entry: DevAdminGrantLog) => void,
+): (entry: DevAdminGrantLog) => void {
+  const prev = logGrant;
+  logGrant = next;
+  return prev;
+}
+
+/**
+ * POST /api/dev/admin/self: only where isDevHost holds (DEV_ROUTES_ENABLED and
+ * a dev host), else 404. Makes the caller a dev admin and logs the grant.
+ */
 async function devSelfRoute(c: RouteContext): Promise<Response> {
   if (!isDevHost(c.url, c.env)) return apiError(404, "not_found", "no such endpoint");
   if (c.request.method !== "POST") return apiError(405, "method_not_allowed", "use POST");
@@ -73,6 +97,13 @@ async function devSelfRoute(c: RouteContext): Promise<Response> {
     console.error("admin: dev grant failed", err);
     return apiError(503, "unavailable", "config unavailable");
   }
+  logGrant({
+    event: "dev_admin_grant",
+    accountId: identity.accountId,
+    kind: identity.kind,
+    host: c.url.host,
+    at: Date.now(),
+  });
   return json({ ok: true, accountId: identity.accountId, admin: "dev" });
 }
 

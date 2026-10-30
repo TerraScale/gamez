@@ -47,6 +47,8 @@ const SOCKET_OPEN = 1;
 /** Close codes set by the chat route (wave-B.md §5). */
 export const CHAT_CLOSE_UNAUTHORIZED = 4401;
 export const CHAT_CLOSE_FORBIDDEN = 4403;
+/** Too many chat connects from this IP: reconnect at the slowest backoff. */
+export const CHAT_CLOSE_RATE_LIMITED = 4429;
 
 type SendResult = ApiResult<{ id: string }>;
 
@@ -252,6 +254,8 @@ class ChannelCore {
       });
       return;
     }
+    // Rate limited: jump to the longest backoff instead of spending more of the IP's budget.
+    if (code === CHAT_CLOSE_RATE_LIMITED) this.#attempt = 16;
     this.#set({ status: "offline" });
     this.#scheduleReconnect();
   }
