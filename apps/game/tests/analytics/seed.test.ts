@@ -3,7 +3,7 @@
  * non-admins, 405 for other methods; deterministic synthetic points for every
  * metric in schema.ts, real classic ids, only into MetricsDO "local".
  */
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { signToken } from "../../src/server/auth.ts";
 import { MetricsStore } from "../../src/server/analytics/local-store.ts";
 import { METRICS, type MetricName, type StoredPoint } from "../../src/server/analytics/schema.ts";
@@ -132,6 +132,15 @@ describe("seed route access", () => {
 });
 
 describe("seed route writes", () => {
+  // The seeded generator follows the wall clock (hour of day): about 3 % of ~100 verify
+  // segments resync, so at some hours none does and "every metric" failed. Pin the clock.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-30T12:30:00Z") });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("writes every metric into the local stub only, in chunks; reset=1 clears seeds first", async () => {
     const { env, m } = makeEnv();
     const token = await tokenFor(ADMIN);
