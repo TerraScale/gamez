@@ -147,6 +147,7 @@ function makeEnv(counters = { config: 0, setTunables: 0 }, failWrites = false) {
       DB: d1.asD1(),
     } as unknown as Env,
     counters,
+    d1,
   };
 }
 
@@ -283,6 +284,51 @@ describe("/api/admin/tunables", () => {
       body: { values: { [OFFLINE]: 10 } },
     });
     expect(res.status).toBe(503);
+  });
+});
+
+describe("player lookup cache", () => {
+  const NEW = "acc-newcomer";
+  // The account_summary projection lands through the outbox after the account exists.
+  const project = (d1: FakeD1) =>
+    d1.exec(
+      `INSERT INTO account_summary (account_id, display_name, kind, created_at, _version, _updated_at)
+       VALUES ('${NEW}', 'Newcomer', 'guest', 500, 1, 500)`,
+    );
+
+  it("an empty search is not cached, so the account shows once its row lands", async () => {
+    const { env, d1 } = makeEnv();
+    const token = await tokenFor(ADMIN);
+    const path = `/api/admin/players/search?q=${NEW.slice(0, 8)}`;
+    const ids = async (res: Response) =>
+      ((await res.json()) as { rows: { accountId: string }[] }).rows.map((r) => r.accountId);
+
+    const empty = await call(env, "GET", path, { token });
+    expect(await ids(empty)).toEqual([]);
+    expect(empty.headers.get("x-admin-cache")).toBe("miss");
+    expect((await call(env, "GET", path, { token })).headers.get("x-admin-cache")).toBe("miss");
+
+    project(d1);
+    const found = await call(env, "GET", path, { token });
+    expect(await ids(found)).toEqual([NEW]);
+    expect(found.headers.get("x-admin-cache")).toBe("miss");
+    const again = await call(env, "GET", path, { token });
+    expect(again.headers.get("x-admin-cache")).toBe("hit");
+    expect(await ids(again)).toEqual([NEW]);
+  });
+
+  it("a missing player is not cached, so the detail opens once its row lands", async () => {
+    const { env, d1 } = makeEnv();
+    const token = await tokenFor(ADMIN);
+    const path = `/api/admin/players/${NEW}`;
+    expect((await call(env, "GET", path, { token })).status).toBe(404);
+    project(d1);
+    const found = await call(env, "GET", path, { token });
+    expect(found.status).toBe(200);
+    expect(((await found.json()) as { account: { accountId: string } }).account.accountId).toBe(
+      NEW,
+    );
+    expect((await call(env, "GET", path, { token })).headers.get("x-admin-cache")).toBe("hit");
   });
 });
 
