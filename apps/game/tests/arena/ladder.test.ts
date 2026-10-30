@@ -127,6 +127,23 @@ describe("live pairing", () => {
     expect(m.rewards).toEqual({ coin: 25, seasonXp: 60 });
   });
 
+  it("refunds the daily fight of a live defender; the attacker keeps its fight", async () => {
+    const h = harness();
+    const ta = await queue(h, "a", "refund-op-a-01", build("a", { maxHp: 100 }));
+    h.clock.advance(1);
+    const tb = await queue(h, "b", "refund-op-b-01", build("b", { maxHp: 50 }));
+    expect(h.current.status("b").fightsLeftToday).toBe(19);
+    await h.current.poll({ accountId: "a", ticket: ta });
+    await h.current.poll({ accountId: "b", ticket: tb });
+    expect(h.current.status("a").fightsLeftToday).toBe(19);
+    expect(h.current.status("b").fightsLeftToday).toBe(20);
+    // The defender earns no coin: only the attacker's reward row exists.
+    const rewards = h.store.fake.db.prepare("SELECT account_id FROM arena_reward").all() as {
+      account_id: string;
+    }[];
+    expect(rewards.map((r) => r.account_id)).toEqual(["a"]);
+  });
+
   it("moves both ratings with Elo and keeps W/L counters", async () => {
     const h = harness();
     const ta = await queue(h, "a", "elo-op-a-001", build("a", { maxHp: 100 }));

@@ -517,6 +517,7 @@ export class ArenaLadder {
         a.ticket_id,
       );
       if (d.ticketId) {
+        this.#refundDefenderFight(d.ticketId);
         this.#run(
           "UPDATE arena_ticket SET state = 'matched', match_id = ? WHERE ticket_id = ?",
           matchId,
@@ -537,6 +538,22 @@ export class ArenaLadder {
       this.#prune(inserted.seq);
     });
     return match;
+  }
+
+  /**
+   * A live defender's own ticket was spent on being attacked, not on a fight of
+   * its own, so its daily fight is given back (DECISION in the commit: refund
+   * instead of a defender reward, so the arena adds no new coin faucet).
+   * A ticket that failed on the daily limit never counted a fight.
+   */
+  #refundDefenderFight(ticketId: string): void {
+    const t = this.#one<TicketRow>(TICKET_BY_ID, ticketId);
+    if (!t || t.reason !== null) return;
+    this.#run(
+      "UPDATE arena_day SET fights = fights - 1 WHERE account_id = ? AND day = ? AND fights > 0",
+      t.account_id,
+      this.#dayOf(t.created_at),
+    );
   }
 
   /** Writes a fighter's new rating and counters (rated fights only). */
