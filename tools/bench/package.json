@@ -13,6 +13,7 @@
     "bench:sync": "node --experimental-transform-types src/sync.ts",
     "bench:verify": "node --experimental-transform-types src/verify.ts",
     "bench:machine": "node --experimental-transform-types src/machine.ts",
+    "bench:melee": "node --experimental-transform-types src/melee.ts",
     "bench": "node --expose-gc --experimental-transform-types src/run-all.ts"
   },
   "dependencies": {

@@ -13,6 +13,7 @@ const steps: { file: string; flags: string[] }[] = [
   { file: "kernel.ts", flags: [] },
   { file: "sync.ts", flags: [] },
   { file: "party.ts", flags: [] },
+  { file: "melee.ts", flags: [] },
 ];
 
 for (const step of steps) {
