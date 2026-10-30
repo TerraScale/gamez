@@ -52,6 +52,8 @@ cp apps/game/.dev.vars.example apps/game/.dev.vars   # AUTH_SECRET for local dev
 
 Use the repo's own `vp` (`node_modules/.bin/vp`) if your global `vp` is not the official Vite+ CLI. A `vp` installed through mise's npm backend runs its own Vitest instead of the repo's, and every test suite then fails with `Cannot read properties of undefined (reading 'config')`. See ADR 0001.
 
+For Nextcloud access from Codex and Claude Code, follow [the repo MCP setup](docs/nextcloud-mcp.md).
+
 ## Develop
 
 ```sh

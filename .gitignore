@@ -154,3 +154,8 @@ vite.config.ts.timestamp-*
 .dev.vars*
 !.dev.vars.example
 .claude/worktrees/
+.claude/settings.local.json
+
+# Nextcloud MCP app credentials and temporary credential files
+.nextcloud-mcp.local.json
+.nextcloud-mcp-*

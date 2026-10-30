@@ -1,0 +1,5 @@
+[mcp_servers.nextcloud]
+command = "bash"
+args = ["-c", 'exec python3 "$(git rev-parse --show-toplevel)/tools/mcp/nextcloud.py" run']
+startup_timeout_sec = 120
+tool_timeout_sec = 120

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nextcloud": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["-c", "exec python3 \"$(git rev-parse --show-toplevel)/tools/mcp/nextcloud.py\" run"]
+    }
+  }
+}
