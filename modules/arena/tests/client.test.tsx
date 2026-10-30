@@ -359,8 +359,9 @@ describe("ArenaReplay", () => {
       <ArenaReplay match={matchFixture({ contentHash: "0000000000000000" })} viewerId="acc-b" />,
     );
     expect(html).toContain("rules changed");
-    // No frames: the banner shows the recorded result from the viewer's side (bravo is the defender and won).
-    expect(html).toContain("You win");
+    // No frames: the banner shows the recorded result from the viewer's side (bravo is the defender).
+    // The fixture's winner comes from fight(), so the expected banner follows it.
+    expect(html).toContain(matchFixture().winner === "defender" ? "You win" : "You lose");
   });
 });
 

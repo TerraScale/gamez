@@ -32,7 +32,7 @@ const ROGUE = build({
 });
 
 /** Pinned fight: change only with a deliberate rules change (bump arena.core version). */
-const PINNED = { winner: "defender", ticks: 233, hash: "41b3d3cf7704bf65" };
+const PINNED = { winner: "defender", ticks: 292, hash: "366cc62029d443e3" };
 
 describe("fight determinism", () => {
   it("same seed and builds give the same hash and result", () => {

@@ -9,9 +9,13 @@
  *                                              at ARENA_MAX_TICKS the higher hp % wins
  *
  * Each fighter acts at most once per tick: move toward the other when out of
- * reach of its best ready skill (or of the basic attack's 1 tile), else cast
- * the first ready skill, else a basic attack when its interval allows.
- * Integers only; ctx.rng for every roll (AGENTS.md §6).
+ * reach of its best ready skill (or of its basic attack's reach), else use the
+ * first ready skill, else a basic attack. Skills and basics share one attack
+ * slot (one basic every `interval` ticks), so a skill replaces an attack and
+ * never adds damage on top of the basics. A caster's basic reach is its
+ * longest damaging skill range (see basicReachOf). DECISION (arena.core 1.1.0):
+ * see docs/bench/2026-10-arena-balance.md. Integers only; ctx.rng for every
+ * roll (AGENTS.md §6).
  */
 import {
   ActionError,
@@ -151,14 +155,16 @@ function castSelf(world: World, ctx: SimContext, me: number, side: Side, idx: nu
   const s = f.skills[idx];
   if (!s) return;
   const skills = withReady(f.skills, idx, ctx.tick + s.cooldown);
+  // A cast takes the attack slot (see act): the next basic waits one interval.
+  const nextBasic = ctx.tick + f.interval;
   ctx.emit({ type: "arena.act", side, name: s.name, skill: true });
   if (s.kind === "heal") {
     const hp = Math.min(f.maxHp, f.hp + percentOf(f.maxHp, s.power));
-    world.update(me, Fighter, { hp, skills });
+    world.update(me, Fighter, { hp, skills, nextBasic });
     ctx.emit({ type: "arena.heal", side, amount: hp - f.hp });
   } else {
     const amount = percentOf(f.maxHp, s.power);
-    world.update(me, Fighter, { shield: amount, skills });
+    world.update(me, Fighter, { shield: amount, skills, nextBasic });
     ctx.emit({ type: "arena.shield", side, amount });
   }
 }
@@ -174,17 +180,38 @@ function castStrike(
   const f = world.read(me, Fighter);
   const s = f.skills[idx];
   if (!s) return;
-  world.update(me, Fighter, { skills: withReady(f.skills, idx, ctx.tick + s.cooldown) });
+  world.update(me, Fighter, {
+    skills: withReady(f.skills, idx, ctx.tick + s.cooldown),
+    nextBasic: ctx.tick + f.interval,
+  });
   ctx.emit({ type: "arena.act", side, name: s.name, skill: true });
   hit(world, ctx, me, other, otherSide(side), s.power);
+}
+
+/**
+ * Reach of a fighter's basic attack, in tenths of a tile. Ranged builds have
+ * no bow or staff in the arena build, so a build's longest damaging skill
+ * reach stands in for its weapon: a caster shoots from its bolt's range.
+ */
+function basicReachOf(f: FighterState): number {
+  let reach = BASIC_REACH;
+  for (const s of f.skills) {
+    if (s.kind !== "projectile" && s.kind !== "nova") continue;
+    reach = Math.max(reach, s.range * 10);
+  }
+  return reach;
 }
 
 function act(world: World, ctx: SimContext, me: number, other: number, side: Side): void {
   const f = world.read(me, Fighter);
   const o = world.read(other, Fighter);
   const dist = Math.abs(o.x - f.x);
-  const idx = f.skills.findIndex((s) => s.readyAt <= ctx.tick && castable(f, s));
-  const pick = f.skills[idx];
+  // Skills and basic attacks share one attack slot: a basic attack is due every
+  // `interval` ticks, and a skill cast takes that slot instead of the basic.
+  // Skills therefore replace attacks rather than adding damage on top of them.
+  const slotFree = f.nextBasic <= ctx.tick;
+  const idx = slotFree ? f.skills.findIndex((s) => s.readyAt <= ctx.tick && castable(f, s)) : -1;
+  const pick = idx >= 0 ? f.skills[idx] : undefined;
   if (pick) {
     if (pick.kind === "heal" || pick.kind === "shield") {
       castSelf(world, ctx, me, side, idx);
@@ -195,11 +222,12 @@ function act(world: World, ctx: SimContext, me: number, other: number, side: Sid
     }
     return;
   }
-  if (dist > BASIC_REACH) {
-    advance(world, ctx, me, other, side, BASIC_REACH);
+  const reach = basicReachOf(f);
+  if (dist > reach) {
+    advance(world, ctx, me, other, side, reach);
     return;
   }
-  if (f.nextBasic <= ctx.tick) {
+  if (slotFree) {
     world.update(me, Fighter, { nextBasic: ctx.tick + f.interval });
     ctx.emit({ type: "arena.act", side, name: "Attack", skill: false });
     hit(world, ctx, me, other, otherSide(side), BASIC_POWER);
@@ -272,7 +300,7 @@ const endSystem: SystemDef = {
 
 export const arenaCore = defineModule({
   id: "arena.core",
-  version: "1.0.0",
+  version: "1.1.0",
   actions: [startAction],
   systems: [shieldSystem, fightSystem, endSystem],
 });
