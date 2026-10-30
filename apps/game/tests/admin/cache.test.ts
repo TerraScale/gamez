@@ -61,4 +61,30 @@ describe("admin metrics cache", () => {
     expect(again).toEqual({ body: null, hit: true });
     expect(loads).toBe(1);
   });
+
+  it("a body that keep() rejects is not cached, and drops the older entry", async () => {
+    let loads = 0;
+    const load = async () => ++loads;
+    const keepEven = (n: number) => n % 2 === 0;
+    expect(await cached("search", 1, false, load, METRICS_CACHE_MS, keepEven)).toEqual({
+      body: 1,
+      hit: false,
+    });
+    expect(await cached("search", 2, false, load, METRICS_CACHE_MS, keepEven)).toEqual({
+      body: 2,
+      hit: false,
+    });
+    expect(await cached("search", 3, false, load, METRICS_CACHE_MS, keepEven)).toEqual({
+      body: 2,
+      hit: true,
+    });
+    expect(await cached("search", 4, true, load, METRICS_CACHE_MS, keepEven)).toEqual({
+      body: 3,
+      hit: false,
+    });
+    expect(await cached("search", 5, false, load, METRICS_CACHE_MS, keepEven)).toEqual({
+      body: 4,
+      hit: false,
+    });
+  });
 });

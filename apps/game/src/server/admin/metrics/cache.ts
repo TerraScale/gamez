@@ -22,18 +22,24 @@ export function cacheKey(url: URL): string {
   return `${url.pathname}?${new URLSearchParams(params).toString()}`;
 }
 
-/** The cached body, or the result of `load` (cached unless it throws). */
+/**
+ * The cached body, or the result of `load`. The result is cached unless `load`
+ * throws or `keep(body)` is false; a body that is not kept also drops any older
+ * entry, so the next read loads again.
+ */
 export async function cached<T>(
   key: string,
   now: number,
   fresh: boolean,
   load: () => Promise<T>,
   ttlMs: number = METRICS_CACHE_MS,
+  keep: (body: T) => boolean = () => true,
 ): Promise<{ body: T; hit: boolean }> {
   const hit = cache.get(key);
   if (!fresh && hit && now - hit.at < ttlMs) return { body: hit.body as T, hit: true };
   const body = await load();
   cache.delete(key);
+  if (!keep(body)) return { body, hit: false };
   cache.set(key, { at: now, body });
   while (cache.size > METRICS_CACHE_MAX) {
     const oldest = cache.keys().next().value;

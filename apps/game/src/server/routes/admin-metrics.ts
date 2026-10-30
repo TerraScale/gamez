@@ -69,14 +69,15 @@ function depsOf(c: RouteContext, now: number): MetricsDeps {
 /** Sections whose reads are slow enough to cache longer than METRICS_CACHE_MS. */
 const SECTION_TTL: Partial<Record<string, number>> = { tech: TECH_CACHE_MS };
 
-async function cachedJson(
+async function cachedJson<T>(
   url: URL,
   now: number,
-  load: () => Promise<unknown>,
+  load: () => Promise<T>,
   ttlMs: number = METRICS_CACHE_MS,
+  keep?: (body: T) => boolean,
 ): Promise<Response> {
   const fresh = url.searchParams.get("fresh") === "1";
-  const { body, hit } = await cached(cacheKey(url), now, fresh, load, ttlMs);
+  const { body, hit } = await cached(cacheKey(url), now, fresh, load, ttlMs, keep);
   return json(body, 200, { "x-admin-cache": hit ? "hit" : "miss" });
 }
 
@@ -126,16 +127,29 @@ export const adminMetricsRoutes: RouteHandler = async (c) => {
   if (rest === "players/search") {
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 64);
     const cursor = url.searchParams.get("cursor");
-    return cachedJson(url, now, () => searchPlayers(deps, q, cursor));
+    // An empty page is not cached: a new account reaches D1 through the outbox a few
+    // seconds after it exists, and a cached miss would hide it for METRICS_CACHE_MS.
+    return cachedJson(
+      url,
+      now,
+      () => searchPlayers(deps, q, cursor),
+      METRICS_CACHE_MS,
+      (page) => page.rows.length > 0,
+    );
   }
 
   const accountId = decodeURIComponent(rest.slice("players/".length));
   if (!ACCOUNT_ID.test(accountId)) return apiError(400, "bad_request", "bad account id");
   const fresh = url.searchParams.get("fresh") === "1";
   const range = parseRange(url.searchParams, now);
-  // A missing account is cached too (as null) so repeated lookups do not re-read D1.
-  const { body: detail, hit } = await cached(cacheKey(url), now, fresh, () =>
-    readPlayer(deps, accountId, range),
+  // A missing account (null) is not cached, for the same reason as an empty search.
+  const { body: detail, hit } = await cached(
+    cacheKey(url),
+    now,
+    fresh,
+    () => readPlayer(deps, accountId, range),
+    METRICS_CACHE_MS,
+    (found) => found !== null,
   );
   if (!detail) return apiError(404, "not_found", "no such account");
   return json(detail, 200, { "x-admin-cache": hit ? "hit" : "miss" });
