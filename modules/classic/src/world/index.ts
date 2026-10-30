@@ -39,7 +39,7 @@ import {
 
 export const classicWorld = defineModule({
   id: MODULE.world,
-  version: "0.4.0",
+  version: "0.4.1",
   deps: [MODULE.core],
   optionalDeps: [MODULE.content],
   setup: setupWorld,

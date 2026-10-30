@@ -371,8 +371,8 @@ member**:
   - Life is scaled by `lifePct`.
   - Damage is scaled by `damagePct`: `dmgMin`, `dmgMax` and the flat element adds.
   - `Monster.xp` is scaled by `xpPct`.
-  - Pack sizes are scaled by `densityPct` (world populate; rounded down, at least the solo
-    count).
+  - Pack sizes are scaled by `densityPct` (world populate; rounded to the nearest whole
+    monster, halves up, at least the solo count; see §8).
   - Size 1 skips all of it, so there are no RNG or state differences.
 
 ### 7.2 progression
@@ -460,10 +460,12 @@ Rationale and measured effect:
   above the 1.8× cap). Parties level a little faster per hero, but not 4×.
 - Loot rises with mouths to feed. Density adds danger and kills without growing the tick
   budget much.
-- Density is applied when a level is generated, as `floor(n × densityPct / 100)` per pack and
-  per unique escort (never fewer than solo). Small packs of 2–3 do not grow, so 130 % adds
-  about **11 %** monsters per level in practice (`tests/world.populate.test.ts`, 24 seeds at
-  depth 3: 1 052 vs 944). A party that grows mid-level gets the denser packs from the next
+- Density is applied when a level is generated, as `round(n × densityPct / 100)` per pack and
+  per unique escort, rounding half up (integer math: `floor((n × pct + 50) / 100)`), never
+  fewer than solo. The old `floor` rule added only about **11 %** monsters at 130 % because
+  packs of 2–4 never grew. With rounding, 130 % adds roughly a quarter to a third more
+  monsters per level (the regression test in `tests/world.populate.test.ts` pins a band of
+  1.08–1.35 over 24 seeds at depth 3). A party that grows mid-level gets the denser packs from the next
   level on; monster life, damage, XP and loot scale at spawn time.
 - `tests/party.balance.test.ts` (T-auto) checks the target band with real content:
   - Four level-matched heroes on Auto clear depth 1–4 with kills per minute of 1.2–2.5× solo.

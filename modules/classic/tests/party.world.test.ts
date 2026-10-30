@@ -332,6 +332,6 @@ describe("party determinism", () => {
   });
 
   it("pins the party hash after the fixed script", () => {
-    expect(script(5).hash).toBe("157af6911334d346");
+    expect(script(5).hash).toBe("c4ef3ffa1100f43d");
   });
 });

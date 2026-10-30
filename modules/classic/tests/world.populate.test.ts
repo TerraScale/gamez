@@ -297,13 +297,13 @@ describe("population planning", () => {
     for (let seed = 1; seed <= 24; seed++) {
       expect(size(100, seed), "100 % is the default plan").toBe(size(undefined, seed));
       solo += size(100, seed);
-      // Party of 4 (PartyProto densityPct 130): every pack grows to floor(n x 1.3).
+      // Party of 4 (PartyProto densityPct 130): every pack grows to round(n x 1.3).
       four += size(130, seed);
     }
     console.log(`DENSITY solo=${solo} four=${four} ratio=${(four / solo).toFixed(3)}`);
     // Each pack is drawn independently (placement shifts the rng), so the
     // growth shows over many levels, not on every single one.
-    expect(four / solo).toBeGreaterThan(1.08);
+    expect(four / solo).toBeGreaterThan(1.2);
     expect(four / solo).toBeLessThan(1.35);
   });
 

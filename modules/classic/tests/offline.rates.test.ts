@@ -64,6 +64,6 @@ describe("determinism", () => {
     const b = script("classic.rogue");
     expect(b.hash()).toBe(a.hash());
     // Pin: re-pinned by the integrator when the behaviour changes.
-    expect(a.hash()).toBe("0e72812718637101");
+    expect(a.hash()).toBe("38c5962f1e037b8e");
   }, 120_000);
 });

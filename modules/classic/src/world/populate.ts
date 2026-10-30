@@ -9,8 +9,9 @@
  *
  * Party (docs/design/party.md §7.1, §8): `densityPct` (the party's
  * PartyScale.densityPct; 100 = solo) grows every normal/champion pack and
- * every unique pack's escort count to floor(n x densityPct / 100), never
- * below the solo count. At 100 nothing changes (same RNG calls, same plan).
+ * every unique pack's escort count to round(n x densityPct / 100), rounding
+ * half up, never below the solo count. Integer math: floor((n x pct + 50) / 100).
+ * At 100 nothing changes (same RNG calls, same plan).
  */
 import type { FrozenRegistry, SimContext } from "@gamez/kernel";
 import type { SpawnRequest } from "../bus.ts";
@@ -62,7 +63,7 @@ export function planPopulation(
 ): SpawnRequest[] {
   if (depth <= 0) return [];
   const dense = (n: number): number =>
-    densityPct === 100 ? n : Math.max(n, Math.floor((n * densityPct) / 100));
+    densityPct === 100 ? n : Math.max(n, Math.floor((n * densityPct + 50) / 100));
   const bal = balanceOf(registry);
   const packs = bal?.packs ?? FALLBACK.packs;
   const cap = bal?.maxMonstersPerLevel ?? FALLBACK.maxMonstersPerLevel;
