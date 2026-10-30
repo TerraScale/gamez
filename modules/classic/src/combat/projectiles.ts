@@ -124,9 +124,16 @@ export function spawnProjectiles(
   return out;
 }
 
-type ProjectileValue = ReturnType<typeof readProjectile>;
+type ProjectileValue = ReturnType<typeof readProjectile>["pr"];
+/**
+ * A working copy of a projectile (shallow: steer() and collide() replace
+ * fields and never mutate the nested damage or hit list). The system writes
+ * back only the fields that changed, so a flying projectile costs a field
+ * entry in the tick's undo log instead of a deep copy.
+ */
 function readProjectile(world: World, e: Entity) {
-  return world.read(e, Projectile);
+  const stored = world.peek(e, Projectile)!;
+  return { stored, pr: { ...stored } };
 }
 
 function critFor(world: World, ctx: SimContext, owner: Entity): boolean {
@@ -178,8 +185,8 @@ export const projectilesSystem: SystemDef = {
     const grid = gridOf(world);
     for (const e of list) {
       if (world.peek(e, AreaTag)!.depth !== depth) continue;
-      const pr = world.read(e, Projectile);
-      const p = world.read(e, Pos);
+      const { stored: was, pr } = readProjectile(world, e);
+      const p = world.peek(e, Pos)!;
       if (pr.home !== 0) steer(world, ctx, pr, p, depth);
       const speed = Math.max(1, isqrt(pr.vx * pr.vx + pr.vy * pr.vy));
       const n = Math.max(1, Math.ceil(Math.max(Math.abs(pr.vx), Math.abs(pr.vy)) / 64));
@@ -203,16 +210,35 @@ export const projectilesSystem: SystemDef = {
         world.destroy(e);
         continue;
       }
-      p.x = x;
-      p.y = y;
       pr.rangeLeft -= speed;
       if (pr.rangeLeft <= 0) {
         if (pr.explodeRadius > 0) explode(world, ctx, grid, pr, x, y, depth);
         world.destroy(e);
+        continue;
       }
+      if (x !== p.x || y !== p.y) world.update(e, Pos, { x, y });
+      writeBack(world, e, was, pr);
     }
   },
 };
+
+/** Writes the fields of the working copy `pr` that differ from the stored `was`. */
+function writeBack(
+  world: World,
+  e: Entity,
+  was: Readonly<ProjectileValue>,
+  pr: ProjectileValue,
+): void {
+  const patch: Partial<ProjectileValue> = { rangeLeft: pr.rangeLeft };
+  if (pr.vx !== was.vx || pr.vy !== was.vy) {
+    patch.vx = pr.vx;
+    patch.vy = pr.vy;
+  }
+  if (pr.home !== was.home) patch.home = pr.home;
+  if (pr.pierceLeft !== was.pierceLeft) patch.pierceLeft = pr.pierceLeft;
+  if (pr.hit !== was.hit) patch.hit = pr.hit;
+  world.update(e, Projectile, patch);
+}
 
 /** Angle steps (of 64) a homing projectile turns per tick. */
 export const HOMING_STEPS = 1;
