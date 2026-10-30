@@ -124,7 +124,7 @@ export function d2Of(c: AutoCtx, e: Entity): number {
 
 /** Life % of any unit (100 without Life). */
 export function lifePctOf(world: World, e: Entity): number {
-  const l = world.get(e, Life);
+  const l = world.peek(e, Life);
   if (!l || l.max <= 0) return 100;
   return Math.floor((l.hp * 100) / l.max);
 }

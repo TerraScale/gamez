@@ -50,7 +50,7 @@ export const progressionRegen: SystemDef = {
   run(world) {
     for (const hero of partyMembers(world)) {
       if (world.has(hero, Dead) || !world.has(hero, HeroStats)) continue;
-      const sheet = world.read(hero, HeroStats);
+      const sheet = world.peek(hero, HeroStats)!;
       regenLife(world, hero, sheet.lifeRegen);
       regenMana(world, hero, sheet.manaRegen);
     }

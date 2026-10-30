@@ -588,7 +588,7 @@ export function chooseAction(
   );
   const basic = opts.find((o) => o.basic) ?? fallbackBasic(c);
   const attack = single ?? basic;
-  const stats = c.world.get(c.hero, CombatStats);
+  const stats = c.world.peek(c.hero, CombatStats);
   const ranged =
     (stats !== undefined && stats.attackProjectile !== "") ||
     (attack !== null && attack.range >= 4 * TILE);

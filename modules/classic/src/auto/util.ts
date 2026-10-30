@@ -404,12 +404,12 @@ export function moveTo(c: AutoCtx, tileX: number, tileY: number): void {
 }
 
 export function stopIntent(c: AutoCtx): void {
-  const cur = c.world.get(c.hero, Intent);
+  const cur = c.world.peek(c.hero, Intent);
   if (cur && cur.kind !== "idle" && cur.source === "auto") setIntent(c, { kind: "idle" });
 }
 
-export function currentIntent(c: AutoCtx): HeroIntentValue | undefined {
-  return c.world.get(c.hero, Intent);
+export function currentIntent(c: AutoCtx): Readonly<HeroIntentValue> | undefined {
+  return c.world.peek(c.hero, Intent);
 }
 
 export function d2To(c: AutoCtx, x: number, y: number): number {
@@ -483,13 +483,13 @@ function nearestOf(c: AutoCtx, list: Entity[]): Entity {
 // ---------------------------------------------------------------------------
 
 export function lifePct(c: AutoCtx): number {
-  const l = c.world.get(c.hero, Life);
+  const l = c.world.peek(c.hero, Life);
   if (!l || l.max <= 0) return 100;
   return Math.floor((l.hp * 100) / l.max);
 }
 
 export function manaPct(c: AutoCtx): number {
-  const m = c.world.get(c.hero, Mana);
+  const m = c.world.peek(c.hero, Mana);
   if (!m || m.max <= 0) return 100;
   return Math.floor((m.mp * 100) / m.max);
 }
@@ -504,7 +504,7 @@ export function potionOf(
 
 /** Number of potions in the belt that restore `kind` (rejuvenation counts for both). */
 export function beltCount(c: AutoCtx, kind: "life" | "mana", withRejuv = true): number {
-  const belt = c.world.get(c.hero, Belt);
+  const belt = c.world.peek(c.hero, Belt);
   if (!belt) return 0;
   let n = 0;
   for (const s of belt.slots) {
@@ -517,7 +517,7 @@ export function beltCount(c: AutoCtx, kind: "life" | "mana", withRejuv = true): 
 
 /** True when a potion of `base` can go into the belt (matching stack with room or an empty slot). */
 export function beltHasRoom(c: AutoCtx, base: string): boolean {
-  const belt = c.world.get(c.hero, Belt);
+  const belt = c.world.peek(c.hero, Belt);
   if (!belt) return false;
   const stack = balanceOf(c.reg).beltStack;
   for (const s of belt.slots) {

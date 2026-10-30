@@ -87,7 +87,8 @@ export function getMap(world: World, registry: FrozenRegistry, depth: number): C
   const o = overrides.get(world)?.get(depth);
   if (o) return o;
   const game = world.peekResource<GameState>(RES.game);
-  if (game === undefined) throw new Error(`classic: resource "${RES.game}" missing (module not loaded?)`);
+  if (game === undefined)
+    throw new Error(`classic: resource "${RES.game}" missing (module not loaded?)`);
   return mapFor(registry, game.worldSeed, depth);
 }
 

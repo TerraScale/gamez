@@ -55,7 +55,7 @@ function jsonEqual(a: unknown, b: unknown): boolean {
   for (let i = 0; i < ka.length; i++) {
     const k = ka[i]!;
     if (i > 0 && !(ka[i - 1]! < k)) return false;
-    if (!hasOwn.call(b, k)) return false;
+    if (!hasOwn(b, k)) return false;
     const vb = (b as Record<string, unknown>)[k];
     // A nested undefined is dropped by the clone, so it never equals a stored value.
     if (vb === undefined || !jsonEqual((a as Record<string, unknown>)[k], vb)) return false;
@@ -63,7 +63,7 @@ function jsonEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
-const hasOwn = Object.prototype.hasOwnProperty;
+const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 /** Replaces the whole component value (for unions and lists where stale fields must go). */
 export function replace<T>(world: World, e: Entity, c: ComponentType<T>, value: T): void {

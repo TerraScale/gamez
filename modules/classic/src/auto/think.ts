@@ -251,17 +251,17 @@ function deadStep(c: AutoCtx): void {
 
 /** Belt slot of the potion to drink for `kind`, or -1. Prefers the biggest one that is not wasted. */
 export function choosePotion(c: AutoCtx, kind: "life" | "mana"): number {
-  const belt = c.world.get(c.hero, Belt);
+  const belt = c.world.peek(c.hero, Belt);
   if (!belt) return -1;
-  const vit = kind === "life" ? c.world.get(c.hero, Life) : undefined;
-  const mag = kind === "mana" ? c.world.get(c.hero, Mana) : undefined;
+  const vit = kind === "life" ? c.world.peek(c.hero, Life) : undefined;
+  const mag = kind === "mana" ? c.world.peek(c.hero, Mana) : undefined;
   const max = vit?.max ?? mag?.max ?? 0;
   const cur = vit?.hp ?? mag?.mp ?? 0;
   if (max <= 0) return -1;
   const missing = max - cur;
   // Nothing to restore: a potion would be wasted (the drink op refuses it too).
   if (missing <= 0) return -1;
-  const bonus = c.world.get(c.hero, HeroStats)?.potionPct ?? 0;
+  const bonus = c.world.peek(c.hero, HeroStats)?.potionPct ?? 0;
   const pick = (allowRejuv: boolean): number => {
     let fit = -1;
     let fitAmt = -1;
