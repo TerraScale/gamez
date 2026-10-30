@@ -1342,6 +1342,6 @@ describe("determinism", () => {
 
   it("pins the hash after a fixed script", () => {
     // Wave A (T-auto): stairs-biased exploration, new town steps.
-    expect(scripted(1).hash()).toBe("999582954d3f1697");
+    expect(scripted(1).hash()).toBe("d7ecb2dc7135a88f");
   });
 });

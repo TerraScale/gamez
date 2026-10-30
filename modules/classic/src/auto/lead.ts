@@ -36,7 +36,6 @@ import {
 import { walkTo } from "./route.ts";
 import {
   inReach,
-  leaving,
   moveTo,
   nearestInteractable,
   purseScrolls,
@@ -146,11 +145,13 @@ export function downedStep(c: AutoCtx, allowTown: boolean): boolean {
 
 /**
  * Dungeon: waits (bounded) while a standing follower is more than
- * GATHER_TILES away. Not while leaving the level (the transition takes the
- * whole party along). True while waiting.
+ * GATHER_TILES away, also while walking to the stairs or the waypoint (the
+ * transition takes the whole party along, but a follower left far behind
+ * drifts past the 12-tile soft target on the way). Bounded by
+ * GATHER_WAIT_TICKS, then GATHER_COOLDOWN_TICKS. True while waiting.
  */
 export function gatherWait(c: AutoCtx): boolean {
-  if (!c.party || c.depth === 0 || leaving(c)) return false;
+  if (!c.party || c.depth === 0) return false;
   const m = mateOf(c);
   if (c.tick < m.gatherNext) return false;
   const far = aliveMembers(c.world).some((e) => e !== c.hero && tilesTo(c, e) > GATHER_TILES);

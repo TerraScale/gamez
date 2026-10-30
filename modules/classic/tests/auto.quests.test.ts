@@ -90,6 +90,6 @@ describe("Auto quests: determinism", () => {
   }, 120_000);
 
   it("pins the hash of the fixed script", () => {
-    expect(script(77).hash()).toBe("b5849d7d8d8d4544");
+    expect(script(77).hash()).toBe("192ccb1f6d5292d9");
   }, 120_000);
 });
