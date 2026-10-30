@@ -12,7 +12,13 @@
  *   POST /api/admin/tunables {values: {key: number}}
  */
 import { requireAdmin } from "../admin/auth.ts";
-import { cached, cacheKey, resetMetricsCache } from "../admin/metrics/cache.ts";
+import {
+  cached,
+  cacheKey,
+  METRICS_CACHE_MS,
+  resetMetricsCache,
+  TECH_CACHE_MS,
+} from "../admin/metrics/cache.ts";
 import { readEconomyDetails } from "../admin/metrics/economy.ts";
 import { readGameplay } from "../admin/metrics/gameplay.ts";
 import { readPlayer, searchPlayers } from "../admin/metrics/lookup.ts";
@@ -60,9 +66,17 @@ function depsOf(c: RouteContext, now: number): MetricsDeps {
   };
 }
 
-async function cachedJson(url: URL, now: number, load: () => Promise<unknown>): Promise<Response> {
+/** Sections whose reads are slow enough to cache longer than METRICS_CACHE_MS. */
+const SECTION_TTL: Partial<Record<string, number>> = { tech: TECH_CACHE_MS };
+
+async function cachedJson(
+  url: URL,
+  now: number,
+  load: () => Promise<unknown>,
+  ttlMs: number = METRICS_CACHE_MS,
+): Promise<Response> {
   const fresh = url.searchParams.get("fresh") === "1";
-  const { body, hit } = await cached(cacheKey(url), now, fresh, load);
+  const { body, hit } = await cached(cacheKey(url), now, fresh, load, ttlMs);
   return json(body, 200, { "x-admin-cache": hit ? "hit" : "miss" });
 }
 
@@ -101,17 +115,28 @@ export const adminMetricsRoutes: RouteHandler = async (c) => {
 
   if (isSection) {
     const range = parseRange(url.searchParams, now);
-    return cachedJson(url, now, () => SECTIONS[rest]!(deps, range, url));
+    return cachedJson(
+      url,
+      now,
+      () => SECTIONS[rest]!(deps, range, url),
+      SECTION_TTL[rest] ?? METRICS_CACHE_MS,
+    );
   }
 
   if (rest === "players/search") {
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 64);
     const cursor = url.searchParams.get("cursor");
-    return json(await searchPlayers(deps, q, cursor));
+    return cachedJson(url, now, () => searchPlayers(deps, q, cursor));
   }
 
   const accountId = decodeURIComponent(rest.slice("players/".length));
   if (!ACCOUNT_ID.test(accountId)) return apiError(400, "bad_request", "bad account id");
-  const detail = await readPlayer(deps, accountId, parseRange(url.searchParams, now));
-  return detail ? json(detail) : apiError(404, "not_found", "no such account");
+  const fresh = url.searchParams.get("fresh") === "1";
+  const range = parseRange(url.searchParams, now);
+  // A missing account is cached too (as null) so repeated lookups do not re-read D1.
+  const { body: detail, hit } = await cached(cacheKey(url), now, fresh, () =>
+    readPlayer(deps, accountId, range),
+  );
+  if (!detail) return apiError(404, "not_found", "no such account");
+  return json(detail, 200, { "x-admin-cache": hit ? "hit" : "miss" });
 };

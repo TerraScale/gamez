@@ -5,6 +5,11 @@
  * dashboard's "refresh" sends `fresh=1` to bypass (and refill) the cache.
  */
 export const METRICS_CACHE_MS = 30_000;
+/**
+ * The tech section reads Analytics Engine (the slowest source, p95 ~1.3 s in dev)
+ * and its numbers move slowly, so it lives longer. The refresh button still bypasses it.
+ */
+export const TECH_CACHE_MS = 300_000;
 export const METRICS_CACHE_MAX = 100;
 
 const cache = new Map<string, { at: number; body: unknown }>();
@@ -23,9 +28,10 @@ export async function cached<T>(
   now: number,
   fresh: boolean,
   load: () => Promise<T>,
+  ttlMs: number = METRICS_CACHE_MS,
 ): Promise<{ body: T; hit: boolean }> {
   const hit = cache.get(key);
-  if (!fresh && hit && now - hit.at < METRICS_CACHE_MS) return { body: hit.body as T, hit: true };
+  if (!fresh && hit && now - hit.at < ttlMs) return { body: hit.body as T, hit: true };
   const body = await load();
   cache.delete(key);
   cache.set(key, { at: now, body });
