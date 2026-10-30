@@ -105,6 +105,12 @@ export const JOIN_LIMIT: BucketSpec = { burst: 5, perSecond: 0.5 };
 
 /** Actor of server-made dispatches (offline progress). */
 export const SERVER_ACTOR = "server";
+/**
+ * Verified ticks (1 min at x1) before a refused offline grant is retried by
+ * the deferred grant (offline-idle.md §5.5): the owed time is kept, never
+ * dropped, and a persistent refusal is not retried on every segment.
+ */
+export const OFFLINE_RETRY_TICKS = 1_200;
 
 /** Where report rows go (the DO's Outbox, sharing the store's SQLite). */
 export interface ReportOutbox {
@@ -696,10 +702,28 @@ export class VerifiedHost {
       return null;
     }
     const owed = elapsed + rec.offlineDueMs;
-    this.#clearDue();
-    if (owed < offline.minMs) return null;
+    if (owed < offline.minMs) {
+      this.#clearDue();
+      return null;
+    }
     const tunables = await this.#offlineTunables();
-    return this.#grantOffline(sim, Math.min(owed, offline.capMs), tunables);
+    const grant = this.#grantOffline(sim, Math.min(owed, offline.capMs), tunables);
+    if (grant) this.#clearDue();
+    else this.#keepOwed(owed, now);
+    return grant;
+  }
+
+  /**
+   * A grant the sim refused (§5.5, no loss): the absence stays owed instead of
+   * being dropped. lastActiveAt moves to now (the time is in offlineDueMs, so
+   * it is never counted twice) and the deferred grant retries it after
+   * OFFLINE_RETRY_TICKS of verified play, or the next join adds it.
+   */
+  #keepOwed(owed: number, now: number): void {
+    const rec = this.#rec!;
+    rec.offlineDueMs = Math.max(0, Math.floor(owed));
+    rec.offlineDueTick = rec.verifiedTick + OFFLINE_RETRY_TICKS;
+    rec.lastActiveAt = now;
   }
 
   /**
@@ -718,6 +742,8 @@ export class VerifiedHost {
     if (offline && due >= offline.minMs && this.#safe(() => offline.eligible(sim.world), false)) {
       const tunables = await this.#offlineTunables();
       grant = this.#grantOffline(sim, Math.min(due, offline.capMs), tunables);
+      // Eligible but refused: still owed (retried later, never lost).
+      if (!grant) this.#keepOwed(due, now);
     }
     if (!grant) {
       this.#d.store.saveMeta(rec);

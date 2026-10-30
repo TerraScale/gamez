@@ -54,6 +54,8 @@ class Sock implements InstanceSocket {
 
 interface SetupOpts {
   offlineTunables?: () => Promise<Readonly<Record<string, number>>>;
+  /** Replaces the classic policy (a test double around it). */
+  policy?: typeof policy;
 }
 
 function setup(opts: SetupOpts = {}) {
@@ -65,7 +67,7 @@ function setup(opts: SetupOpts = {}) {
   const host = new VerifiedHost({
     name: "classic:acc",
     loaded,
-    policy,
+    policy: opts.policy ?? policy,
     store,
     sockets: () => sockets.filter((s) => s.open),
     now: () => clock.now,
@@ -391,6 +393,70 @@ describe("exit and return: one grant per absence (offline-idle.md §2, §5.2)", 
     env.clock.now += 2 * HOUR;
     const v2 = await env.join(env.connect(), { tick: v1.tick, hash: v1.hash, pending: false });
     expect(v2.offline?.elapsedMs, "the 2 h absence is granted").toBe(2 * HOUR);
+  }, 60_000);
+});
+
+describe("a refused grant is never lost (offline-idle.md §5.5)", () => {
+  /** The classic policy whose offline payload is refused by the sim while `refuse.on`. */
+  function refusingPolicy(refuse: { on: boolean }): typeof policy {
+    const offline = policy.offline!;
+    return {
+      ...policy,
+      offline: {
+        ...offline,
+        payload: (ms, tunables) => {
+          const p = offline.payload?.(ms, tunables) ?? { elapsedMs: ms };
+          return refuse.on ? { ...(p as object), refused: true } : p;
+        },
+      },
+    };
+  }
+
+  it("a join whose grant the sim refuses keeps the absence owed; the next join pays all of it", async () => {
+    const refuse = { on: false };
+    const { env, sock, c } = await started("idle", { policy: refusingPolicy(refuse) });
+    const resume = c.resume();
+    await env.leave(sock);
+    env.clock.now += HOUR;
+    refuse.on = true;
+    const s1 = env.connect();
+    const v1 = await env.join(s1, resume);
+    expect(v1.offline, "refused: no grant").toBeNull();
+    expect(env.rec.offlineDueMs, "the hour is still owed").toBe(HOUR);
+    expect(env.logs.some((l) => l.includes("offline grant refused"))).toBe(true);
+    refuse.on = false;
+    await env.leave(s1);
+    env.clock.now += 2 * HOUR;
+    const v2 = await env.join(env.connect(), { tick: v1.tick, hash: v1.hash, pending: false });
+    expect(v2.offline?.elapsedMs, "1 h owed + 2 h away, once").toBe(3 * HOUR);
+    expect(env.rec.offlineDueMs).toBe(0);
+    const again = await env.join(env.connect(), { tick: v2.tick, hash: v2.hash, pending: false });
+    expect(again.offline).toBeNull();
+  }, 60_000);
+
+  it("a refused grant is retried by the deferred grant after a minute of verified play", async () => {
+    const refuse = { on: false };
+    const { env, sock, c } = await started("idle", { policy: refusingPolicy(refuse) });
+    const resume = c.resume();
+    await env.leave(sock);
+    env.clock.now += HOUR;
+    refuse.on = true;
+    const s2 = env.connect();
+    const v1 = await env.join(s2, resume);
+    expect(v1.offline).toBeNull();
+    expect(v1.continued).toBe(true);
+    c.epoch = v1.epoch;
+    refuse.on = false;
+    // Less than OFFLINE_RETRY_TICKS of play: not retried yet.
+    await playFor(env, s2, c, 800);
+    expect(env.rec.offlineDueMs).toBe(HOUR);
+    env.clock.now += 400 * MS_PER_TICK;
+    const out = await env.send(s2, c.segment(400));
+    expect(out.map((m) => m.t)).toEqual(["verified", "resync"]);
+    const r = out[1] as Resync;
+    expect(r.code).toBe("offline");
+    expect(r.offline?.elapsedMs).toBe(HOUR);
+    expect(env.rec.offlineDueMs).toBe(0);
   }, 60_000);
 });
 
