@@ -34,6 +34,13 @@ gems from the payments stub.
   `{"event":"dev_admin_grant","accountId","kind","host","at"}` (Workers Logs keeps console
   output).
 
+**Verified (2026-10-30).** The production build
+(`.cloudflare/output/v0/workers/default/worker.config.json`) has no `DEV_ROUTES_ENABLED` binding
+and has both rate-limit bindings. A `vp dev --mode qaprobe` server whose `.dev.vars.qaprobe` lacked
+the key answered 404 for `/api/dev/{admin/self,economy/grant,grant,pass/xp}` on localhost. On that
+server, Google `/start` redirected with `provider_disabled`, `/api/store` listed the payments stub
+as disabled, and loopback guest mints were limited at 20/min.
+
 **Consequences.** Production can only run the stubs if someone uploads a `DEV_ROUTES_ENABLED`
 secret by hand. Tests: `tests/server/dev-routes-gate.test.ts` finds every `"/api/dev/..."` literal
 in the server sources and checks that each one answers 404 for GET and POST on localhost,

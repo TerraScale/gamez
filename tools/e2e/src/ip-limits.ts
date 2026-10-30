@@ -26,7 +26,11 @@ async function mintFrom(url: string, ip: string): Promise<Response> {
   return fetch(`${url}/api/guest`, { method: "POST", headers: { "cf-connecting-ip": ip } });
 }
 
-/** Opens /ws/chat from `ip` and resolves with the close code (1000 when it opened). */
+/**
+ * Opens /ws/chat from `ip`. Resolves 1000 once the channel's welcome frame
+ * arrives (accepted), else the server's close code. A refusal is an accepted
+ * upgrade closed at once, so the socket must not close itself on "open".
+ */
 function chatConnect(url: string, token: string, ip: string): Promise<number> {
   const wsUrl = `${url.replace(/^http/, "ws")}/ws/chat?token=${encodeURIComponent(token)}&channel=global`;
   // Node's WebSocket (undici) takes extra request headers in its init object.
@@ -36,15 +40,24 @@ function chatConnect(url: string, token: string, ip: string): Promise<number> {
   ) => WebSocket;
   const ws = new Ws(wsUrl, { headers: { "cf-connecting-ip": ip } });
   return new Promise((resolve) => {
+    let done = false;
+    const finish = (code: number) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(code);
+    };
     const timer = setTimeout(() => {
       ws.close();
-      resolve(-1);
+      finish(-1);
     }, 10_000);
-    ws.addEventListener("open", () => ws.close(1000, "e2e"));
-    ws.addEventListener("close", (ev) => {
-      clearTimeout(timer);
-      resolve(ev.code);
+    ws.addEventListener("message", (ev: MessageEvent<string>) => {
+      const t = (JSON.parse(String(ev.data)) as { t?: string }).t;
+      if (t !== "welcome") return;
+      ws.close(1000, "e2e");
+      finish(1000);
     });
+    ws.addEventListener("close", (ev) => finish(ev.code));
   });
 }
 
