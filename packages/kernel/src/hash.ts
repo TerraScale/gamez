@@ -112,6 +112,16 @@ export function canonicalJson(value: unknown): string {
   return parts.join("");
 }
 
+/**
+ * V8 turns an object built with computed-key stores (`obj[k] = v`) into a
+ * slow dictionary once it has more than 16 properties: every later property
+ * read is a hash lookup (about 7x slower) and every copy walks the
+ * dictionary (CombatStats has 27 fields, on every unit). A spread copy
+ * (`{ ...obj }`) has the same keys, order and values with fast properties,
+ * so bigger clones are rebuilt that way once (docs/bench/2026-10-sim-perf.md).
+ */
+const KEYED_MAX = 16;
+
 /** Fast-path failure: the slow, path-tracking walk then reports the real error. */
 const INVALID: unique symbol = Symbol("invalid");
 /** Deeper than this, the fast path gives up (and a cycle is reported by the slow path). */
@@ -150,7 +160,8 @@ function fastClone(v: unknown, depth: number): unknown {
         if (c === INVALID) return INVALID;
         obj[k] = c;
       }
-      return obj;
+      // ("__proto__" set the prototype above instead of a key: keep that object as it is.)
+      return keys.length > KEYED_MAX && !keys.includes("__proto__") ? { ...obj } : obj;
     }
     default:
       return INVALID;
@@ -222,8 +233,9 @@ export function cloneValue(value: unknown, owner: string, e: number, key: string
  * Deep copy of data that is already stored in the world, for the rollback
  * log. Stored data is plain JSON (it was validated on the way in), so it is
  * not validated again. Keys keep their order, so restoring the copy is exact.
- * A for-in copy is used because it stays fast when one call site sees many
- * object shapes (every component type goes through here).
+ * A for-in copy is the cheapest here: copies are dropped at commit and only
+ * become stored values again after a rollback (the source values are the
+ * fast-property clones of fastClone, which keeps for-in on its enum cache).
  */
 export function copyStored<T>(value: T): T {
   if (typeof value !== "object" || value === null) return value;

@@ -483,4 +483,15 @@ describe("cloneJson", () => {
     expect(Object.keys(out)).toEqual(["a", "b"]);
     expect(out.a).not.toBe(out.b);
   });
+
+  it("clones big objects (rebuilt for fast properties) with sorted keys and equal values", () => {
+    const src: Record<string, unknown> = { skip: undefined };
+    for (let i = 29; i >= 0; i--) src[`k${i}`] = i % 3 === 0 ? { n: i, list: [i] } : i;
+    src["7"] = "int-like";
+    const out = cloneJson(src) as Record<string, unknown>;
+    const keys = Object.keys(src).filter((k) => k !== "skip");
+    expect(Object.keys(out)).toEqual(Object.keys(Object.fromEntries(keys.sort().map((k) => [k, 0]))));
+    expect(out).toEqual(JSON.parse(JSON.stringify(src)));
+    expect(out.k3).not.toBe(src.k3);
+  });
 });
