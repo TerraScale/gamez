@@ -3,6 +3,7 @@
  * checking; everything else is re-exported from its implementation file.
  */
 import type { ComponentType, ModeSpec, ModuleSpec } from "./types.ts";
+import { componentHandle } from "./world.ts";
 
 /** Identity helpers that give modules and modes type checking. */
 export function defineModule(spec: ModuleSpec): ModuleSpec {
@@ -14,7 +15,7 @@ export function defineMode(spec: ModeSpec): ModeSpec {
 }
 
 export function defineComponent<T>(name: string): ComponentType<T> {
-  return { name } as ComponentType<T>;
+  return componentHandle<T>(name);
 }
 
 /** Mutable registry used during the data stages (`freeze()` deep-freezes and hashes it). */

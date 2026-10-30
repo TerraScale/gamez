@@ -36,6 +36,28 @@ export const ENTITY_COMPONENT = "kernel.entity";
 
 const byEntity = (a: [Entity, unknown], b: [Entity, unknown]) => a[0] - b[0];
 
+/**
+ * Hidden index of a component name (one per name in the process), set by
+ * defineComponent(). Worlds use it to find a component's table with an array
+ * load instead of a string-keyed Map lookup on every get/peek/has. Handles
+ * built by hand (`{ name }`) have none and use the Map.
+ */
+const COMPONENT_INDEX: unique symbol = Symbol("kernel.componentIndex");
+const indexByName = new Map<string, number>();
+type Indexed = { readonly [COMPONENT_INDEX]?: number };
+
+/** A component handle for `name` (see COMPONENT_INDEX). */
+export function componentHandle<T>(name: string): ComponentType<T> {
+  let index = indexByName.get(name);
+  if (index === undefined) {
+    index = indexByName.size;
+    indexByName.set(name, index);
+  }
+  const handle = { name } as ComponentType<T>;
+  Object.defineProperty(handle, COMPONENT_INDEX, { value: index });
+  return handle;
+}
+
 /** Undo-log marker: the key had no slot before the logged change. */
 const ABSENT: unique symbol = Symbol("absent");
 
@@ -62,6 +84,8 @@ export class WorldImpl implements World {
   private nextEntity = 1;
   private readonly alive = new Set<Entity>();
   private stores = new Map<string, Table<Entity>>();
+  /** Tables by COMPONENT_INDEX: a cache of `stores`, filled on first lookup. */
+  private byIndex: (Table<Entity> | undefined)[] = [];
   private resources: Table<string> = new Map();
 
   // ---- transaction state (see the file comment) ----
@@ -165,6 +189,17 @@ export class WorldImpl implements World {
     table.delete(key);
   }
 
+  /** The table of a component, or undefined when no value was ever stored. */
+  private tableOf(c: ComponentType<unknown>): Table<Entity> | undefined {
+    const index = (c as Indexed)[COMPONENT_INDEX];
+    if (index === undefined) return this.stores.get(c.name);
+    const cached = this.byIndex[index];
+    if (cached !== undefined) return cached;
+    const table = this.stores.get(c.name);
+    if (table !== undefined) this.byIndex[index] = table;
+    return table;
+  }
+
   create(): Entity {
     const e = this.nextEntity++;
     this.alive.add(e);
@@ -185,7 +220,7 @@ export class WorldImpl implements World {
     this.assertAlive(e, "add", c.name);
     this.assertNotReserved(c.name);
     const stored = cloneJson(value, () => `${c.name}[${e}]`);
-    let table = this.stores.get(c.name);
+    let table = this.tableOf(c);
     if (!table) {
       table = new Map();
       this.stores.set(c.name, table);
@@ -194,7 +229,7 @@ export class WorldImpl implements World {
   }
 
   update<T extends object>(e: Entity, c: ComponentType<T>, patch: Partial<T>): void {
-    const slot = this.stores.get(c.name)?.get(e);
+    const slot = this.tableOf(c)?.get(e);
     const current = slot?.value;
     if (current === undefined) {
       throw new Error(`world.update(${e}, "${c.name}"): entity has no such component`);
@@ -212,24 +247,24 @@ export class WorldImpl implements World {
 
   remove<T>(e: Entity, c: ComponentType<T>): void {
     this.assertNotReserved(c.name);
-    const table = this.stores.get(c.name);
+    const table = this.tableOf(c);
     if (table) this.drop(table, e);
   }
 
   has<T>(e: Entity, c: ComponentType<T>): boolean {
     return c.name === ENTITY_COMPONENT
       ? this.alive.has(e)
-      : (this.stores.get(c.name)?.has(e) ?? false);
+      : (this.tableOf(c)?.has(e) ?? false);
   }
 
   get<T>(e: Entity, c: ComponentType<T>): T | undefined {
     if (c.name === ENTITY_COMPONENT) return (this.alive.has(e) ? true : undefined) as T | undefined;
-    return this.live(this.stores.get(c.name)?.get(e)) as T | undefined;
+    return this.live(this.tableOf(c)?.get(e)) as T | undefined;
   }
 
   peek<T>(e: Entity, c: ComponentType<T>): Readonly<T> | undefined {
     if (c.name === ENTITY_COMPONENT) return (this.alive.has(e) ? true : undefined) as T | undefined;
-    return this.stores.get(c.name)?.get(e)?.value as T | undefined;
+    return this.tableOf(c)?.get(e)?.value as T | undefined;
   }
 
   read<T>(e: Entity, c: ComponentType<T>): T {
@@ -247,7 +282,7 @@ export class WorldImpl implements World {
         sets.push(this.alive);
         continue;
       }
-      const table = this.stores.get(c.name);
+      const table = this.tableOf(c);
       if (!table || table.size === 0) return [];
       sets.push(table);
     }
@@ -360,6 +395,7 @@ export class WorldImpl implements World {
     this.alive.clear();
     for (const e of alive) this.alive.add(e);
     this.stores = stores;
+    this.byIndex = [];
     this.resources = res;
   }
 

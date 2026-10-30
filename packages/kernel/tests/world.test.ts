@@ -17,6 +17,26 @@ describe("world", () => {
     expect(c).toBeGreaterThan(b);
   });
 
+  it("finds a component's values through any handle of the same name", () => {
+    const w = createWorld();
+    const e = w.create();
+    const again = defineComponent<{ x: number; y: number }>("t.pos");
+    const byHand = { name: "t.pos" } as typeof Pos;
+    w.add(e, byHand, { x: 1, y: 2 });
+    expect(w.peek(e, Pos)).toEqual({ x: 1, y: 2 });
+    w.update(e, again, { x: 3 });
+    expect(w.read(e, byHand)).toEqual({ x: 3, y: 2 });
+    expect(w.query(again)).toEqual([e]);
+    expect(Object.keys(Pos)).toEqual(["name"]);
+    // load() replaces every table: the cached lookups must follow.
+    const snap = w.snapshot();
+    w.remove(e, Pos);
+    (w as unknown as { load(s: typeof snap): void }).load(snap);
+    expect(w.peek(e, again)).toEqual({ x: 3, y: 2 });
+    w.update(e, Pos, { y: 9 });
+    expect(w.snapshot().components["t.pos"]).toEqual([[e, { x: 3, y: 9 }]]);
+  });
+
   it("adds, updates, removes and reads components", () => {
     const w = createWorld();
     const e = w.create();
