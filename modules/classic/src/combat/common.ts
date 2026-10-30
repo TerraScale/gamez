@@ -149,8 +149,8 @@ export function alliesInRadius(
 ): Entity[] {
   const out: Entity[] = [];
   for (const e of grid.query(x, y, r + MAX_BODY_RADIUS)) {
-    if (!isLiveUnit(world, e, depth) || world.read(e, Faction).team !== team) continue;
-    const p = world.read(e, Pos);
+    if (!isLiveUnit(world, e, depth) || world.peek(e, Faction)!.team !== team) continue;
+    const p = world.peek(e, Pos)!;
     const reach = r + bodyRadius(world, e);
     if ((p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) <= reach * reach) out.push(e);
   }

@@ -73,7 +73,7 @@ function sleepRangeOf(ctx: SimContext): number {
 
 function sleep(world: World, e: number): void {
   world.update(e, Ai, { state: "sleep", target: 0 });
-  const m = world.read(e, Mover);
+  const m = world.peek(e, Mover)!;
   if (m.goalX >= 0 || m.path.length > 0) {
     world.update(e, Mover, { goalX: -1, goalY: -1, path: [], moving: false });
   }
@@ -81,13 +81,13 @@ function sleep(world: World, e: number): void {
 
 /** Wakes the sleeping pack mates of a chasing monster. */
 function wakePack(world: World, e: number): void {
-  const pack = world.read(e, Monster).pack;
+  const pack = world.peek(e, Monster)!.pack;
   if (pack === 0) return;
-  const p = world.read(e, Pos);
+  const p = world.peek(e, Pos)!;
   for (const other of gridOf(world).query(p.x, p.y, PACK_WAKE_RANGE)) {
     if (other === e) continue;
-    const m = world.get(other, Monster);
+    const m = world.peek(other, Monster);
     if (m === undefined || m.pack !== pack) continue;
-    if (world.read(other, Ai).state === "sleep") world.update(other, Ai, { state: "idle" });
+    if (world.peek(other, Ai)!.state === "sleep") world.update(other, Ai, { state: "idle" });
   }
 }

@@ -271,7 +271,8 @@ function thinkOne(env: Env, e: Entity): void {
   const active = isActive(ai.state);
   const radius =
     proto.behaviour === "totem" ? Math.max(proto.aggroRange, cs.attackRange) : proto.aggroRange;
-  const key = String(e);
+  // A number key is the same property as String(e), without building the string.
+  const key: number = e;
   let last = env.aggro.last[key];
   // Combat engaged us (state chase without a memory entry): count it as contact now.
   if (last === undefined && active) last = tick;

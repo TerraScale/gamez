@@ -70,7 +70,7 @@ export function noteThreat(world: World, monster: Entity, tick: number): boolean
 export function threatLocked(aggro: AggroState, monster: Entity, tick: number): boolean {
   const t = aggro.threat;
   if (t === undefined) return false;
-  const key = String(monster);
+  const key: number = monster;
   const until = t[key];
   if (until === undefined) return false;
   if (until > tick) return true;

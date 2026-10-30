@@ -45,8 +45,26 @@ const cache = new Map<string, ClassicMap>();
 const CACHE_MAX = 6;
 const overrides = new WeakMap<World, Map<number, ClassicMap>>();
 
+/** The map of the last mapFor() call: every system asks for the same one many times a tick. */
+let last: { registry: FrozenRegistry; worldSeed: number; depth: number; map: ClassicMap } | null =
+  null;
+
 /** Memoised map for (seed, depth). Pure and shared across sims. */
 export function mapFor(registry: FrozenRegistry, worldSeed: number, depth: number): ClassicMap {
+  if (
+    last !== null &&
+    last.registry === registry &&
+    last.worldSeed === worldSeed &&
+    last.depth === depth
+  ) {
+    return last.map;
+  }
+  const map = cachedMap(registry, worldSeed, depth);
+  last = { registry, worldSeed, depth, map };
+  return map;
+}
+
+function cachedMap(registry: FrozenRegistry, worldSeed: number, depth: number): ClassicMap {
   const key = `${registry.hash}:${worldSeed}:${depth}`;
   const hit = cache.get(key);
   if (hit) {
