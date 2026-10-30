@@ -223,7 +223,8 @@ export function balanceOf(reg: FrozenRegistry): Partial<BalanceProto> & typeof F
 }
 
 export function configOf(world: World): AutoConfig {
-  return world.getResource<ControlState>(RES.control)?.config ?? DEFAULT_AUTO_CONFIG;
+  // Read-only (no rollback copy of the whole control state): callers never change it.
+  return world.peekResource<ControlState>(RES.control)?.config ?? DEFAULT_AUTO_CONFIG;
 }
 
 /** Everything one controller tick needs, gathered once. */

@@ -34,12 +34,17 @@ export function partyOf(world: World): PartyState | null {
   return partyStateOf(world);
 }
 
+/** Read-only party resource (no rollback copy) for the pure helpers below. */
+function peekParty(world: World): Readonly<PartyState> | null {
+  return world.peekResource<PartyState>(RES.party) ?? null;
+}
+
 /**
  * Members in slot order (existing entities only). Solo: [GameState.hero], or
  * [] before the hero exists. Returns a fresh array (safe to keep or sort).
  */
 export function partyMembers(world: World): Entity[] {
-  const p = partyStateOf(world);
+  const p = peekParty(world);
   if (p) return p.members.filter((e) => e !== 0 && world.exists(e));
   const hero = heroOf(world);
   return hero === 0 ? [] : [hero];
@@ -47,7 +52,7 @@ export function partyMembers(world: World): Entity[] {
 
 /** Number of members (0 before the first hero). */
 export function partySize(world: World): number {
-  const p = partyStateOf(world);
+  const p = peekParty(world);
   if (p) {
     let n = 0;
     for (const e of p.members) if (e !== 0 && world.exists(e)) n++;
@@ -59,7 +64,7 @@ export function partySize(world: World): number {
 /** True for a member of the party (solo: the hero). */
 export function isPartyHero(world: World, e: Entity): boolean {
   if (e === 0 || !world.exists(e)) return false;
-  const p = partyStateOf(world);
+  const p = peekParty(world);
   if (p) return p.members.includes(e);
   return e === heroOf(world);
 }

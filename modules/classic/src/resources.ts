@@ -409,14 +409,15 @@ export const stashOf = (w: World): StashState => need<StashState>(w, RES.stash);
  * uses party/shared.ts partyMembers() instead.
  */
 export function heroOf(w: World): Entity {
-  const g = w.getResource<GameState>(RES.game);
+  // Read-only: peekResource() takes no rollback copy (called many times per tick).
+  const g = w.peekResource<GameState>(RES.game);
   if (!g || g.hero === 0 || !w.exists(g.hero)) return 0;
   return g.hero;
 }
 
 /** Current area depth (0 town), or 0 when the area resource is missing. */
 export function currentDepth(w: World): number {
-  return w.getResource<AreaState>(RES.area)?.depth ?? 0;
+  return w.peekResource<AreaState>(RES.area)?.depth ?? 0;
 }
 
 /** Takes the next item uid (mutates GameState). */

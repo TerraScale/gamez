@@ -62,6 +62,42 @@ export function exploreAreaFor(world: World, map: ClassicMap): ExploreArea {
   return fresh;
 }
 
+/**
+ * The stored bitset that exploreAreaFor() would return without changing
+ * anything, read-only (no rollback copy of the whole ExploreState), or null
+ * when exploreAreaFor() would create or replace one.
+ */
+function peekExploreArea(world: World, map: ClassicMap): Readonly<ExploreArea> | null {
+  const state = world.peekResource<ExploreState>(RES.explore);
+  if (state === undefined) return null;
+  const words = Math.ceil((map.width * map.height) / 32);
+  const current = state.areas.find((a) => a.depth === map.depth);
+  return current && current.width === map.width && current.bits.length === words ? current : null;
+}
+
+/** True when revealAround() with the same arguments would set any bit. */
+function revealsAny(
+  area: Readonly<ExploreArea>,
+  map: ClassicMap,
+  tx: number,
+  ty: number,
+  radius: number,
+): boolean {
+  const r2 = radius * radius;
+  for (let dy = -radius; dy <= radius; dy++) {
+    const y = ty + dy;
+    if (y < 0 || y >= map.height) continue;
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > r2) continue;
+      const x = tx + dx;
+      if (x < 0 || x >= map.width) continue;
+      const i = tileKey(map.width, x, y);
+      if (((area.bits[i >> 5] ?? 0) & (1 << (i & 31))) === 0) return true;
+    }
+  }
+  return false;
+}
+
 /** Reveals the tiles within `radius` (tiles, circle) of (tx, ty). Returns the newly revealed walkable tiles. */
 export function revealAround(
   area: ExploreArea,
@@ -103,11 +139,17 @@ export const exploreSystem: SystemDef = {
     for (const hero of members) {
       if (!world.has(hero, Pos) || (party && world.has(hero, Dead))) continue;
       if (map === null) map = getAreaMap(world, ctx.registry);
-      if (area === null) area = exploreAreaFor(world, map);
-      const p = world.read(hero, Pos);
-      const sheet = world.get(hero, HeroStats);
+      const p = world.peek(hero, Pos)!;
+      const sheet = world.peek(hero, HeroStats);
       const bal = balanceOf(ctx.registry);
       const radius = clamp(sheet?.lightRadius ?? bal?.lightRadius ?? FALLBACK_LIGHT_RADIUS, 1, 24);
+      if (area === null) {
+        // Most ticks reveal nothing new: check read-only first, so the whole ExploreState
+        // (every level's bitset) is only taken live (rollback copy) when a bit changes.
+        const seen = peekExploreArea(world, map);
+        if (seen !== null && !revealsAny(seen, map, p.x >> 8, p.y >> 8, radius)) continue;
+        area = exploreAreaFor(world, map);
+      }
       revealAround(area, map, p.x >> 8, p.y >> 8, radius);
     }
   },

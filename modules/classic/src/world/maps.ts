@@ -11,7 +11,7 @@
 import type { FrozenRegistry, World } from "@gamez/kernel";
 import type { TileMap } from "@gamez/world";
 import type { TilePos } from "../fixed.ts";
-import { gameOf, RES, type AreaState } from "../resources.ts";
+import { RES, type AreaState, type GameState } from "../resources.ts";
 import type { Rect } from "../types.ts";
 import { generateArea } from "./generate.ts";
 
@@ -86,12 +86,14 @@ function cachedMap(registry: FrozenRegistry, worldSeed: number, depth: number): 
 export function getMap(world: World, registry: FrozenRegistry, depth: number): ClassicMap {
   const o = overrides.get(world)?.get(depth);
   if (o) return o;
-  return mapFor(registry, gameOf(world).worldSeed, depth);
+  const game = world.peekResource<GameState>(RES.game);
+  if (game === undefined) throw new Error(`classic: resource "${RES.game}" missing (module not loaded?)`);
+  return mapFor(registry, game.worldSeed, depth);
 }
 
 /** Map of the current area. */
 export function getAreaMap(world: World, registry: FrozenRegistry): ClassicMap {
-  const depth = world.getResource<AreaState>(RES.area)?.depth ?? 0;
+  const depth = world.peekResource<AreaState>(RES.area)?.depth ?? 0;
   return getMap(world, registry, depth);
 }
 
