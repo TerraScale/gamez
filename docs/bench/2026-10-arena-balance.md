@@ -39,30 +39,30 @@ module version changed.
 ## Results (1000 seeds per pair, row attacks column)
 
 | attacker \ defender | warrior-plain | warrior-bar | warrior-mend | rogue-plain | rogue-bar | rogue-mend | sorcerer-plain | sorcerer-bar | sorcerer-mend |
-|---|---|---|---|---|---|---|---|---|---|
-| warrior-plain | 40 | 14 | 12 | 100 | 99 | 97 | 100 | 100 | 100 |
-| warrior-bar | 86 | 40 | 33 | 100 | 100 | 100 | 100 | 100 | 100 |
-| warrior-mend | 88 | 63 | 41 | 100 | 100 | 100 | 100 | 100 | 100 |
-| rogue-plain | 0 | 0 | 0 | 34 | 11 | 4 | 100 | 100 | 100 |
-| rogue-bar | 1 | 0 | 0 | 69 | 40 | 42 | 100 | 100 | 100 |
-| rogue-mend | 1 | 0 | 0 | 68 | 57 | 40 | 100 | 100 | 100 |
-| sorcerer-plain | 0 | 0 | 0 | 0 | 0 | 0 | 40 | 17 | 18 |
-| sorcerer-bar | 0 | 0 | 0 | 0 | 0 | 0 | 83 | 43 | 30 |
-| sorcerer-mend | 0 | 0 | 0 | 0 | 0 | 0 | 82 | 40 | 40 |
+| ------------------- | ------------- | ----------- | ------------ | ----------- | --------- | ---------- | -------------- | ------------ | ------------- |
+| warrior-plain       | 40            | 14          | 12           | 100         | 99        | 97         | 100            | 100          | 100           |
+| warrior-bar         | 86            | 40          | 33           | 100         | 100       | 100        | 100            | 100          | 100           |
+| warrior-mend        | 88            | 63          | 41           | 100         | 100       | 100        | 100            | 100          | 100           |
+| rogue-plain         | 0             | 0           | 0            | 34          | 11        | 4          | 100            | 100          | 100           |
+| rogue-bar           | 1             | 0           | 0            | 69          | 40        | 42         | 100            | 100          | 100           |
+| rogue-mend          | 1             | 0           | 0            | 68          | 57        | 40         | 100            | 100          | 100           |
+| sorcerer-plain      | 0             | 0           | 0            | 0           | 0         | 0          | 40             | 17           | 18            |
+| sorcerer-bar        | 0             | 0           | 0            | 0           | 0         | 0          | 83             | 43           | 30            |
+| sorcerer-mend       | 0             | 0           | 0            | 0           | 0         | 0          | 82             | 40           | 40            |
 
 Overall win rate per build:
 
-| build | as attacker win % | as defender win % | overall % | draw % |
-|---|---|---|---|---|
-| warrior-plain | 73.5 | 73.8 | 73.6 | 2.2 |
-| warrior-bar | 84.4 | 87.0 | 85.7 | 0.0 |
-| warrior-mend | 87.9 | 90.5 | 89.2 | 0.0 |
-| rogue-plain | 38.9 | 40.5 | 39.7 | 6.7 |
-| rogue-bar | 50.2 | 47.4 | 48.8 | 7.5 |
-| rogue-mend | 51.7 | 50.6 | 51.1 | 7.2 |
-| sorcerer-plain | 8.3 | 8.6 | 8.4 | 1.9 |
-| sorcerer-bar | 17.3 | 18.6 | 17.9 | 3.6 |
-| sorcerer-mend | 18.1 | 20.1 | 19.1 | 3.4 |
+| build          | as attacker win % | as defender win % | overall % | draw % |
+| -------------- | ----------------- | ----------------- | --------- | ------ |
+| warrior-plain  | 73.5              | 73.8              | 73.6      | 2.2    |
+| warrior-bar    | 84.4              | 87.0              | 85.7      | 0.0    |
+| warrior-mend   | 87.9              | 90.5              | 89.2      | 0.0    |
+| rogue-plain    | 38.9              | 40.5              | 39.7      | 6.7    |
+| rogue-bar      | 50.2              | 47.4              | 48.8      | 7.5    |
+| rogue-mend     | 51.7              | 50.6              | 51.1      | 7.2    |
+| sorcerer-plain | 8.3               | 8.6               | 8.4       | 1.9    |
+| sorcerer-bar   | 17.3              | 18.6              | 17.9      | 3.6    |
+| sorcerer-mend  | 18.1              | 20.1              | 19.1      | 3.4    |
 
 ## What the table says, and what it does not
 
