@@ -114,13 +114,13 @@ export function scanFoes(c: AutoCtx, range: number = FIGHT_RANGE): Foe[] {
 export function foeOf(c: AutoCtx, e: Entity): Foe | null {
   const { world, reg } = c;
   if (e === 0 || !world.exists(e) || world.has(e, Dead)) return null;
-  if (world.get(e, Faction)?.team !== "monster") return null;
-  const life = world.get(e, Life);
+  if (world.peek(e, Faction)?.team !== "monster") return null;
+  const life = world.peek(e, Life);
   if (life && life.hp <= 0) return null;
-  if (world.get(e, Ai)?.state === "sleep") return null;
-  const p = world.get(e, Pos);
+  if (world.peek(e, Ai)?.state === "sleep") return null;
+  const p = world.peek(e, Pos);
   if (!p) return null;
-  const m = world.get(e, Monster);
+  const m = world.peek(e, Monster);
   const proto = m ? reg.get<MonsterProto>(KIND.monster, m.proto) : undefined;
   const behaviour = proto?.behaviour ?? "";
   return {
@@ -288,11 +288,11 @@ function isBasic(p: SkillProto): boolean {
 /** Known skills of the bar (deduplicated, in slot order). */
 export function barSkills(c: AutoCtx): SkillOption[] {
   const { world, reg } = c;
-  const bar = world.get(c.hero, SkillBar);
-  const book = world.get(c.hero, SkillBook);
+  const bar = world.peek(c.hero, SkillBar);
+  const book = world.peek(c.hero, SkillBook);
   if (!bar || !book) return [];
-  const stats = world.get(c.hero, CombatStats);
-  const allSkills = world.get(c.hero, HeroStats)?.allSkills ?? 0;
+  const stats = world.peek(c.hero, CombatStats);
+  const allSkills = world.peek(c.hero, HeroStats)?.allSkills ?? 0;
   const out: SkillOption[] = [];
   for (const id of bar.slots) {
     if (id === null || out.some((o) => o.id === id)) continue;
@@ -488,7 +488,7 @@ function skillElement(c: AutoCtx, p: SkillProto): Element | null {
 export function resistPenalty(c: AutoCtx, p: SkillProto, target: Entity): number {
   const el = skillElement(c, p);
   if (el === null || el === "phys") return 0;
-  const cs = c.world.get(target, CombatStats);
+  const cs = c.world.peek(target, CombatStats);
   if (!cs) return 0;
   return Math.max(0, Math.floor(resistOf(cs, el) / 20));
 }
@@ -658,7 +658,7 @@ export function chooseAction(
 
 /** True while a stun status is active on the hero. */
 export function isStunned(c: AutoCtx): boolean {
-  const s = c.world.get(c.hero, Statuses);
+  const s = c.world.peek(c.hero, Statuses);
   if (!s) return false;
   for (const x of s.list) {
     if (x.until <= c.tick) continue;

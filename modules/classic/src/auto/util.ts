@@ -277,7 +277,7 @@ export function purseGold(c: AutoCtx): number {
 /** Town portal scrolls in the shared purse (solo: the hero's Supplies). */
 export function purseScrolls(c: AutoCtx): number {
   const purse = c.party ? purseOf(c.world) : c.hero;
-  return c.world.get(purse, Supplies)?.tpScrolls ?? 0;
+  return c.world.peek(purse, Supplies)?.tpScrolls ?? 0;
 }
 
 /** True when the world holds a party of two or more members (party rules apply). */
@@ -292,7 +292,7 @@ export function isControlled(world: World, hero: Entity): boolean {
 
 export function makeAutoCtx(world: World, ctx: SimContext, hero: Entity): AutoCtx {
   const st = ensureAutoState(world, hero, ctx.tick);
-  const p = world.read(hero, Pos);
+  const p = world.peek(hero, Pos)!;
   return {
     world,
     ctx,
@@ -567,7 +567,7 @@ export function bagFits(
 }
 
 export function heroClass(world: World, reg: FrozenRegistry, hero: Entity): ClassProto | undefined {
-  const h = world.get(hero, Hero);
+  const h = world.peek(hero, Hero);
   return h ? reg.get<ClassProto>(KIND.class, h.classId) : undefined;
 }
 

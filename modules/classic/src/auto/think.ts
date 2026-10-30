@@ -181,7 +181,7 @@ function watchdog(c: AutoCtx): void {
 function fightingBoss(c: AutoCtx): boolean {
   const f = c.st.focus;
   if (c.st.plan !== "fight" || f === 0 || c.world.has(f, Dead)) return false;
-  return c.world.get(f, Monster)?.rarity === "boss";
+  return c.world.peek(f, Monster)?.rarity === "boss";
 }
 
 /**
@@ -220,7 +220,7 @@ function trackCaution(c: AutoCtx): void {
     st.deathDepth = c.depth;
     st.caution = Math.min(MAX_CAUTION, st.caution + 1);
   }
-  const level = c.world.get(c.hero, Level)?.level ?? 1;
+  const level = c.world.peek(c.hero, Level)?.level ?? 1;
   if (level > st.levelSeen) st.caution = Math.max(0, st.caution - (level - st.levelSeen));
   st.levelSeen = level;
   // Caution also wears off with time alive (a slow class levels slowly: 3 deaths used to
@@ -294,7 +294,7 @@ export function potionStep(
   inFight: boolean = foes.length > 0,
 ): void {
   if (c.depth === 0) return;
-  const belt = c.world.get(c.hero, Belt);
+  const belt = c.world.peek(c.hero, Belt);
   if (!belt || belt.readyAt > c.tick) return;
   if (lifePct(c) < c.cfg.lifePotionPct) {
     const slot = choosePotion(c, "life");
@@ -496,7 +496,7 @@ export function questTurnInWaiting(c: AutoCtx): boolean {
 export function questAcceptWaiting(c: AutoCtx): boolean {
   const qs = c.world.getResource<QuestState>(RES.quests);
   if (!qs) return false;
-  const level = c.world.get(c.hero, Level)?.level ?? 1;
+  const level = c.world.peek(c.hero, Level)?.level ?? 1;
   for (const [id, q] of c.reg.all<QuestProto>(KIND.quest)) {
     if (q.reqLevel > level || qs.completed.includes(id)) continue;
     if (q.after !== "" && !qs.completed.includes(q.after)) continue;

@@ -34,7 +34,13 @@ function mergeIsNoop(
   return true;
 }
 
-/** Plain JSON equality, including object key order (it changes hashes). */
+/**
+ * True when the stored nested value `a` equals the clone that update() would
+ * store for `b`, key order included (it changes hashes). The clone sorts
+ * object keys, so `b` may list its keys in any order; `a` must hold the same
+ * keys in ascending order (a stored value mutated in place may not, and then
+ * the write is not skipped).
+ */
 function jsonEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
@@ -45,17 +51,19 @@ function jsonEqual(a: unknown, b: unknown): boolean {
   }
   if (Array.isArray(b)) return false;
   const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
+  if (ka.length !== Object.keys(b).length) return false;
   for (let i = 0; i < ka.length; i++) {
     const k = ka[i]!;
-    if (k !== kb[i]) return false;
+    if (i > 0 && !(ka[i - 1]! < k)) return false;
+    if (!hasOwn.call(b, k)) return false;
     const vb = (b as Record<string, unknown>)[k];
     // A nested undefined is dropped by the clone, so it never equals a stored value.
     if (vb === undefined || !jsonEqual((a as Record<string, unknown>)[k], vb)) return false;
   }
   return true;
 }
+
+const hasOwn = Object.prototype.hasOwnProperty;
 
 /** Replaces the whole component value (for unions and lists where stale fields must go). */
 export function replace<T>(world: World, e: Entity, c: ComponentType<T>, value: T): void {

@@ -646,7 +646,7 @@ function healAllies(f: Fire, radius: number, amount: number): void {
 
 /** §20: an exploder that fired its onDeathSkill dies by its own hand (no credit). */
 function exploderRule(world: World, ctx: SimContext, e: Entity, skill: string): void {
-  const mon = world.get(e, Monster);
+  const mon = world.peek(e, Monster);
   if (!mon) return;
   const proto = ctx.registry.get<MonsterProto>(KIND.monster, mon.proto);
   if (proto?.behaviour === "exploder" && proto.onDeathSkill === skill) killUnit(world, ctx, e, e);

@@ -141,15 +141,15 @@ function chebTo(c: AutoCtx, x: number, y: number): number {
 
 /** The acting leader's current target: the target of its skill intent (auto or manual), or 0. */
 function leaderTarget(world: World, leader: Entity): Entity {
-  const intent = world.get(leader, Intent);
+  const intent = world.peek(leader, Intent);
   if (intent && intent.kind === "skill" && intent.target !== 0) return intent.target;
   return 0;
 }
 
 /** True while the leader fights: a skill intent, or its leader brain saw a foe in the last few ticks. */
 function leaderFighting(world: World, leader: Entity, tick: number): boolean {
-  if (world.get(leader, Intent)?.kind === "skill") return true;
-  const st = world.get(leader, AutoState);
+  if (world.peek(leader, Intent)?.kind === "skill") return true;
+  const st = world.peek(leader, AutoState);
   return st !== undefined && st.plan === "fight" && tick - st.foeAt < FIGHT_LINGER_TICKS;
 }
 
@@ -157,13 +157,13 @@ function leaderFighting(world: World, leader: Entity, tick: number): boolean {
 function attacking(c: AutoCtx): boolean {
   const f = c.st.focus;
   if (f === 0 || !c.world.exists(f) || c.world.has(f, Dead)) return false;
-  const cur = c.world.get(c.hero, Intent);
+  const cur = c.world.peek(c.hero, Intent);
   return cur !== undefined && cur.kind === "skill" && cur.source === "auto" && cur.target === f;
 }
 
 /** True when foe `e` is striking or charging a party member right now. */
 function attackingMember(world: World, e: Entity): boolean {
-  const ai = world.get(e, Ai);
+  const ai = world.peek(e, Ai);
   if (!ai || ai.target === 0) return false;
   if (ai.state !== "attack" && ai.state !== "charge") return false;
   return isPartyHero(world, ai.target);
@@ -378,7 +378,7 @@ function followerTodo(c: AutoCtx): void {
 export function followerTick(c: AutoCtx, leader: Entity, slot: number): void {
   const { world, st } = c;
   const area = world.getResource<AreaState>(RES.area)?.enteredAt ?? 0;
-  const prev = world.get(c.hero, AutoMate);
+  const prev = world.peek(c.hero, AutoMate);
   const m = mateOf(c);
   if (!prev || prev.area !== area) onFollowerArea(c);
   // A former leader: its travel commitment is not a follower's.

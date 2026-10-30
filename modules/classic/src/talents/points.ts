@@ -24,9 +24,9 @@ import { execLearnTalent, learnCheck, treeOfClass } from "./ops.ts";
 
 /** Grants the points of levels `hero` reached since Talents.levelSeen. Returns the points gained. */
 function grantPoints(world: World, ctx: SimContext, hero: Entity): number {
-  const lvl = world.get(hero, Level);
+  const lvl = world.peek(hero, Level);
   if (!lvl) return 0;
-  const before = world.get(hero, Talents);
+  const before = world.peek(hero, Talents);
   const seen = before?.levelSeen ?? 1;
   if (lvl.level <= seen) return 0;
   const bal = ctx.registry.get<BalanceProto>(KIND.balance, BALANCE_ID);

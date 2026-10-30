@@ -214,19 +214,19 @@ export function applyHeroStats(
   const res = computeHeroStats(registry, heroStatsInput(world, hero, tick));
   put(world, hero, CombatStats, res.combat);
   put(world, hero, HeroStats, res.sheet);
-  if (world.has(hero, Life)) {
-    const life = world.read(hero, Life);
-    world.update(hero, Life, {
-      max: res.sheet.lifeMax,
-      hp: Math.min(life.hp, res.sheet.lifeMax),
-    });
+  // Written only when they change (an equal write leaves the state as it is, but costs a
+  // rollback copy every tick).
+  const life = world.peek(hero, Life);
+  if (life !== undefined) {
+    const hp = Math.min(life.hp, res.sheet.lifeMax);
+    if (life.max !== res.sheet.lifeMax || life.hp !== hp)
+      world.update(hero, Life, { max: res.sheet.lifeMax, hp });
   }
-  if (world.has(hero, Mana)) {
-    const mana = world.read(hero, Mana);
-    world.update(hero, Mana, {
-      max: res.sheet.manaMax,
-      mp: Math.min(mana.mp, res.sheet.manaMax),
-    });
+  const mana = world.peek(hero, Mana);
+  if (mana !== undefined) {
+    const mp = Math.min(mana.mp, res.sheet.manaMax);
+    if (mana.max !== res.sheet.manaMax || mana.mp !== mp)
+      world.update(hero, Mana, { max: res.sheet.manaMax, mp });
   }
   return res;
 }

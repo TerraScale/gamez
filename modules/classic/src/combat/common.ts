@@ -340,7 +340,7 @@ export function makeHit(
 /** Extra projectiles from monster mods (volley). */
 export function extraProjectiles(world: World, registry: FrozenRegistry, caster: Entity): number {
   let n = 0;
-  for (const id of world.get(caster, Monster)?.mods ?? []) {
+  for (const id of world.peek(caster, Monster)?.mods ?? []) {
     n += registry.get<MonsterModProto>(KIND.monsterMod, id)?.extraProjectiles ?? 0;
   }
   return n;

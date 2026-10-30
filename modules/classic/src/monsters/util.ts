@@ -99,16 +99,16 @@ export function isLive(world: World, e: Entity): boolean {
 /** Live unit of the given team. */
 export function isEnemyOf(world: World, e: Entity, team: string): boolean {
   if (!isLive(world, e)) return false;
-  return world.get(e, Faction)?.team === team;
+  return world.peek(e, Faction)?.team === team;
 }
 
 export function bodyRadius(world: World, e: Entity): number {
-  return e === 0 ? 0 : (world.get(e, Body)?.radius ?? 0);
+  return e === 0 ? 0 : (world.peek(e, Body)?.radius ?? 0);
 }
 
 /** True when the skill's cooldown has passed (absent cooldown = ready). */
 export function skillReady(world: World, e: Entity, skill: string, tick: number): boolean {
-  const sb = world.get(e, SkillBook);
+  const sb = world.peek(e, SkillBook);
   if (!sb) return false;
   const cd = sb.cooldowns.find((c) => c.skill === skill);
   return cd === undefined || cd.readyAt <= tick;
@@ -135,7 +135,7 @@ export function orderCast(
 }
 
 export function isStunned(world: World, ctx: SimContext, e: Entity): boolean {
-  const st = world.get(e, Statuses);
+  const st = world.peek(e, Statuses);
   if (!st) return false;
   for (const s of st.list) {
     if (ctx.registry.get<StatusProto>(KIND.status, s.id)?.kind === "stun") return true;
@@ -147,7 +147,7 @@ export function isStunned(world: World, ctx: SimContext, e: Entity): boolean {
 export function liveMinionsOf(world: World, owner: Entity): number {
   let n = 0;
   for (const e of world.query(Summoned)) {
-    if (world.read(e, Summoned).owner === owner && !world.has(e, Dead)) n++;
+    if (world.peek(e, Summoned)!.owner === owner && !world.has(e, Dead)) n++;
   }
   return n;
 }

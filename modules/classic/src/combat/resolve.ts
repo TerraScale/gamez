@@ -237,7 +237,7 @@ function resolveOne(
 /** True when `source` is hero-side and `target` is a hero-team unit (a friendly hit). */
 function friendly(world: World, source: Entity, target: Entity): boolean {
   if (source === 0) return false;
-  return world.get(target, Faction)?.team === "hero" && isHeroSide(world, source);
+  return world.peek(target, Faction)?.team === "hero" && isHeroSide(world, source);
 }
 
 /**
