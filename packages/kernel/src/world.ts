@@ -402,6 +402,10 @@ export class WorldImpl implements World {
     return this.live(this.resources.get(key)) as T | undefined;
   }
 
+  peekResource<T>(key: string): Readonly<T> | undefined {
+    return this.resources.get(key)?.value as T | undefined;
+  }
+
   setResource<T>(key: string, value: T): void {
     if (value === undefined)
       throw new TypeError(`world.setResource("${key}", undefined): use deleteResource()`);

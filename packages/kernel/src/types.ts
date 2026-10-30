@@ -81,6 +81,11 @@ export interface World {
   query(...cs: ComponentType<unknown>[]): Entity[];
   /** Singleton state keyed by name (e.g. "steps.floor"). */
   getResource<T>(key: string): T | undefined;
+  /**
+   * Read-only view of a resource (undefined when absent): like peek(), it never logs a
+   * rollback copy. NEVER mutate the result; use getResource() for values you change.
+   */
+  peekResource<T>(key: string): Readonly<T> | undefined;
   setResource<T>(key: string, value: T): void;
   deleteResource(key: string): void;
   /** JSON-serialisable full state. */

@@ -71,6 +71,22 @@ describe("peek (read-only view, no rollback copy)", () => {
   });
 });
 
+describe("peekResource (read-only view)", () => {
+  it("returns the stored value and a later getResource() mutation still rolls back", () => {
+    const sim = simWith((w) => {
+      const seen = w.peekResource<Deep>("r.deep");
+      expect(seen).toBe(w.getResource<Deep>("r.deep"));
+      expect(w.peekResource("r.none")).toBeUndefined();
+      w.getResource<Deep>("r.deep")!.count = 9;
+      expect(w.peekResource<Deep>("r.deep")!.count).toBe(9);
+    }, populate);
+    const before = sim.hash();
+    expect(sim.dispatch("r.go", { fail: true }, null).ok).toBe(false);
+    expect(sim.hash()).toBe(before);
+    expect(sim.world.peekResource<Deep>("r.deep")!.count).toBe(0);
+  });
+});
+
 describe("field entries of update()", () => {
   it("restore patched fields, also after promotion, replacement and destroy", () => {
     const sim = simWith((w) => {
