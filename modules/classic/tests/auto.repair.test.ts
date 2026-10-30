@@ -125,7 +125,9 @@ describe("Idle repair trip (real content, wearGear cheat)", () => {
 describe("repair trips skip the post-town trip cooldown", () => {
   it("broken gear sends Idle to the smith while the cooldown still holds", () => {
     const sim = createSim(LOADED, { seed: 4242 });
-    expect(sim.dispatch(ACTION.newHero, { classId: "classic.warrior", name: "Mender" }, null).ok).toBe(true);
+    expect(
+      sim.dispatch(ACTION.newHero, { classId: "classic.warrior", name: "Mender" }, null).ok,
+    ).toBe(true);
     expect(sim.dispatch(ACTION.setControl, { mode: "idle" }, null).ok).toBe(true);
     expect(sim.dispatch(DEBUG_GRANT, { gold: 5_000 }, null).ok).toBe(true);
     const hero = heroOf(sim.world);
@@ -151,7 +153,10 @@ describe("repair trips skip the post-town trip cooldown", () => {
     expect(events).toContainEqual(
       expect.objectContaining({ type: "classic.auto.plan", plan: "toTown", note: "repair" }),
     );
-    expect(events.some((e) => e.type === "classic.repaired"), "repaired").toBe(true);
+    expect(
+      events.some((e) => e.type === "classic.repaired"),
+      "repaired",
+    ).toBe(true);
     // The repair trip starts inside the cooldown, not after it.
     expect(planAt, "repair trip started").toBeGreaterThan(brokeAt);
     expect(planAt, "repair trip started before the cooldown ends").toBeLessThan(tripAt);
