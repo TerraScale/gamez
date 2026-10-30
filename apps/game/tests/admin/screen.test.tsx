@@ -32,6 +32,7 @@ import {
   type AdminPrefs,
 } from "../../src/client/admin/kit/toolbar.tsx";
 import type { SectionContext, SectionDef } from "../../src/client/admin/kit/types.ts";
+import { parseRange } from "../../src/server/admin/metrics/range.ts";
 import { SECTIONS } from "../../src/client/admin/sections/index.ts";
 import {
   adminRequest,
@@ -587,6 +588,28 @@ describe("range and query", () => {
     expect(daysOf(r)).toBe(1);
     expect(daysOf(rangeOf({ ...defaultPrefs(NOW), preset: "7d" }, NOW))).toBe(7);
     expect(daysOf(rangeOf({ ...defaultPrefs(NOW), preset: "90d" }, NOW))).toBe(60);
+  });
+
+  it("7 d covers seven UTC days, today included, after the server aligns the range", () => {
+    const DAY = 86_400_000;
+    const r = rangeOf({ ...defaultPrefs(NOW), preset: "7d" }, NOW);
+    expect(r.from).toBe(Date.UTC(2026, 9, 22));
+    const served = parseRange(new URLSearchParams(queryOf(r)), NOW);
+    expect(served.from).toBe(Date.UTC(2026, 9, 22));
+    expect((served.to - served.from) / DAY).toBe(7);
+  });
+
+  it("30 d covers thirty UTC days, today included", () => {
+    const DAY = 86_400_000;
+    const r = rangeOf({ ...defaultPrefs(NOW), preset: "30d" }, NOW);
+    const served = parseRange(new URLSearchParams(queryOf(r)), NOW);
+    expect((served.to - served.from) / DAY).toBe(30);
+    expect(served.to).toBe(Date.UTC(2026, 9, 29));
+  });
+
+  it("keeps 24 h as a rolling day ending at the load time", () => {
+    const r = rangeOf({ ...defaultPrefs(NOW), preset: "24h" }, NOW);
+    expect(r.to - r.from).toBe(86_400_000);
   });
 
   it("adds bucket and fresh=1 (manual refresh) to the query", () => {

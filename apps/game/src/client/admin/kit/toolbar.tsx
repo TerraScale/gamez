@@ -135,6 +135,13 @@ export function rangeOf(prefs: AdminPrefs, anchor: number): RangeState {
   }
   const span = RANGE_PRESETS.find((p) => p.id === prefs.preset)?.ms ?? 7 * DAY_MS;
   const to = Math.ceil(anchor / 60_000) * 60_000;
+  // Day presets cover whole UTC days, counting today: the server aligns `from`
+  // down to a day, so a rolling span would reach one calendar day too far back
+  // ("7 d" covered 8 days). 24 h stays rolling.
+  if (span > DAY_MS && span % DAY_MS === 0) {
+    const today = Math.floor(anchor / DAY_MS) * DAY_MS;
+    return { from: today - (span / DAY_MS - 1) * DAY_MS, to, bucket: prefs.bucket };
+  }
   return { from: to - span, to, bucket: prefs.bucket };
 }
 
