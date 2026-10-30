@@ -68,7 +68,7 @@ export function componentHandle<T>(name: string): ComponentType<T> {
 /** Undo-log marker: the key had no slot before the logged change. */
 const ABSENT: unique symbol = Symbol("absent");
 
-const hasOwn = Object.prototype.hasOwnProperty;
+const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 /** Values that sim code can mutate in place. */
 const isMutable = (v: unknown): v is object => typeof v === "object" && v !== null;
@@ -208,10 +208,15 @@ export class WorldImpl implements World {
    * `target`. Returns false (nothing logged) when the patch deletes or adds a
    * key: the caller then logs the whole value.
    */
-  private logFields(slot: Slot, target: Record<string, unknown>, keys: string[], patch: object): boolean {
+  private logFields(
+    slot: Slot,
+    target: Record<string, unknown>,
+    keys: string[],
+    patch: object,
+  ): boolean {
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i]!;
-      if ((patch as Record<string, unknown>)[k] === undefined || !hasOwn.call(target, k)) return false;
+      if ((patch as Record<string, unknown>)[k] === undefined || !hasOwn(target, k)) return false;
     }
     let f = slot.fields;
     if (slot.fieldTxn !== this.txn) {
@@ -318,11 +323,7 @@ export class WorldImpl implements World {
     }
     const target = current as Record<string, unknown>;
     const keys = Object.keys(patch);
-    if (
-      this.txn !== 0 &&
-      slot!.txn !== this.txn &&
-      !this.logFields(slot!, target, keys, patch)
-    ) {
+    if (this.txn !== 0 && slot!.txn !== this.txn && !this.logFields(slot!, target, keys, patch)) {
       this.logValue(slot!, true);
     }
     for (let i = 0; i < keys.length; i++) {
@@ -340,9 +341,7 @@ export class WorldImpl implements World {
   }
 
   has<T>(e: Entity, c: ComponentType<T>): boolean {
-    return c.name === ENTITY_COMPONENT
-      ? this.alive.has(e)
-      : (this.tableOf(c)?.has(e) ?? false);
+    return c.name === ENTITY_COMPONENT ? this.alive.has(e) : (this.tableOf(c)?.has(e) ?? false);
   }
 
   get<T>(e: Entity, c: ComponentType<T>): T | undefined {

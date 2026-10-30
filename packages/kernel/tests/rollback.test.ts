@@ -490,7 +490,9 @@ describe("cloneJson", () => {
     src["7"] = "int-like";
     const out = cloneJson(src) as Record<string, unknown>;
     const keys = Object.keys(src).filter((k) => k !== "skip");
-    expect(Object.keys(out)).toEqual(Object.keys(Object.fromEntries(keys.sort().map((k) => [k, 0]))));
+    expect(Object.keys(out)).toEqual(
+      Object.keys(Object.fromEntries(keys.sort().map((k) => [k, 0]))),
+    );
     expect(out).toEqual(JSON.parse(JSON.stringify(src)));
     expect(out.k3).not.toBe(src.k3);
   });
