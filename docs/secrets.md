@@ -18,7 +18,8 @@ optional, and leaving it out disables or stubs the feature it enables. Never com
 | `APPLE_TEAM_ID`         | var           | no       | Reserved (Apple client-secret JWT)                                                                       |
 | `APPLE_KEY_ID`          | var           | no       | Reserved (Apple client-secret JWT)                                                                       |
 | `APPLE_PRIVATE_KEY`     | secret        | no       | Reserved (ES256 `.p8` key that signs the Apple client-secret JWT)                                        |
-| `OAUTH_STUB`            | var           | no       | `"1"`: local stub OAuth provider (and `/api/dev/*`) on any host. `"0"`: never. Unset: only on dev hosts  |
+| `DEV_ROUTES_ENABLED`    | dev only      | no       | `"1"`: dev-only stubs (`/api/dev/*`, stub OAuth, payments stub, dev admins) on dev hosts. **Never in production** |
+| `OAUTH_STUB`            | var           | no       | With `DEV_ROUTES_ENABLED=1`: `"1"` stubs on any host, `"0"` never. Unset: only on dev hosts              |
 | `ADMIN_ACCOUNT_IDS`     | var           | no       | Comma-separated account ids allowed on `/api/admin/*` (chat moderation review)                           |
 | `MODERATION`            | var           | no       | Chat moderation: `"llama-guard"` (default when `AI` is bound), `"stub"`, `"off"`                         |
 | `AI`                    | binding       | no       | Workers AI, used by chat moderation (Llama Guard). Not bound by default                                  |
@@ -98,16 +99,35 @@ other social logins are offered (phase 6).
 ### The local stub provider
 
 Used when a provider is unconfigured **and** `isDevHost` holds (`apps/game/src/server/http.ts`):
-`OAUTH_STUB === "1"`, or `OAUTH_STUB` unset and the host is `localhost`, `127.0.0.1`, `[::1]` or a
-tailnet `*.ts.net` name. `OAUTH_STUB=0` turns it off everywhere. Production hosts never match.
+`DEV_ROUTES_ENABLED === "1"` **and** (`OAUTH_STUB === "1"`, or `OAUTH_STUB` unset and the host is
+`localhost`, `127.0.0.1`, `[::1]` or a tailnet `*.ts.net` name). `OAUTH_STUB=0` turns it off
+everywhere. A host name alone never enables it (ADR 0012).
 
 `/start` redirects to `/api/auth/oauth/<provider>/stub`, a small form (subject, email, name). Its
 POST redirects to the callback with `code=stub:<base64url JSON>`, which carries the PKCE challenge;
 the callback checks it against the cookie's verifier and makes no network calls. Stub logins are
 stored as `<provider>:stub-<subject>`, so they never collide with real provider ids.
 
-**Never set `OAUTH_STUB=1` on a public deployment**: anyone could then sign in as any stub
-subject (and `/api/dev/*` would open).
+**Never set `DEV_ROUTES_ENABLED` (or `OAUTH_STUB=1`) on a public deployment**: anyone could then
+sign in as any stub subject, make themselves an admin and mint currency through `/api/dev/*`.
+
+### `DEV_ROUTES_ENABLED` (local dev only)
+
+The one switch for every dev-only stub: `/api/dev/*` (grants, dev admins, fixtures, metric
+seeding), the stub OAuth provider, the payments stub and dev-admin rights. Without `"1"` every
+`/api/dev/*` path answers 404 on every host, tailnet names included. `cloudflare.config.ts`
+declares it (`bindings.secret()`) only when the config is evaluated in a non-production,
+non-preview mode (`vp dev`), so local `.dev.vars` can set it. Production builds and deploys
+neither declare nor read it. `apps/game/.dev.vars.example` sets it to `1`. Every
+`POST /api/dev/admin/self` grant logs a `{"event":"dev_admin_grant",…}` line.
+
+## Per-IP rate limits (bindings, no secret)
+
+`GUEST_LIMITER` (20 `POST /api/guest` per IP per minute) and `CHAT_CONNECT_LIMITER` (60 `/ws/chat`
+upgrades per IP per minute) are Cloudflare Rate Limiting bindings in `cloudflare.config.ts`
+(`IP_LIMITS`). They need no secret or resource. Keys are salted IP hashes derived from
+`AUTH_SECRET`, so no raw IP is used as a key. With `DEV_ROUTES_ENABLED=1`, loopback and
+header-less callers are not counted, which keeps local e2e and bots working (ADR 0012).
 
 ## Admin and moderation
 
@@ -185,7 +205,7 @@ webhook is a no-op. Routes: `POST /api/pay/webhook/<provider>` (see the URLs bel
 | `ASAAS_ENV`                  | var    | no         | `production` selects the live API. Anything else (or unset) uses the sandbox                  |
 | `MERCADOPAGO_ACCESS_TOKEN`   | secret | for MP     | Checkout Pro preferences, payment lookup and refunds (`TEST-…` or `APP_USR-…`)                |
 | `MERCADOPAGO_WEBHOOK_SECRET` | secret | for MP     | Verifies `x-signature` (the "secret signature" of the MP webhook configuration)               |
-| `PAYMENTS_STUB`              | var    | no         | `"1"`: sandbox stub on any host. `"0"`: never. Unset: the stub on dev hosts only              |
+| `PAYMENTS_STUB`              | var    | no         | Needs `DEV_ROUTES_ENABLED=1`. `"1"`: stub on any host. `"0"`: never. Unset: dev hosts only    |
 | `PUBLIC_ORIGIN`              | var    | no         | Origin used for return URLs and webhook URLs (default: the request origin)                    |
 
 `AUTH_SECRET` also signs the stub's webhooks (see "Local stub" below).
@@ -263,8 +283,8 @@ it. Refund the payment in the provider's dashboard; its refund webhook moves the
 
 ### Local stub (sandbox)
 
-Enabled on localhost, `127.0.0.1`, `[::1]` and `*.ts.net` hosts with no configuration (or with
-`PAYMENTS_STUB=1`). `GET /api/store` lists it as `stub`. Checkout opens
+Enabled only with `DEV_ROUTES_ENABLED=1`, then on localhost, `127.0.0.1`, `[::1]` and `*.ts.net`
+hosts (or any host with `PAYMENTS_STUB=1`). `GET /api/store` lists it as `stub`. Checkout opens
 `/api/pay/stub/checkout?order=…&account=…`, a page with **Pay (sandbox)** and **Cancel**. Paying
 posts to `/api/pay/stub/complete`, which signs the webhook body with HMAC-SHA256 keyed by
 `AUTH_SECRET` (`x-stub-signature`) and runs the same verification as a real provider. Nothing
@@ -346,4 +366,5 @@ it labels client telemetry so Tech health shows version adoption.
 - Never commit real values, and never put them in `cloudflare.config.ts` as `text(...)` unless
   they are public (client ids).
 - Never invent keys in docs or tests: tests use obviously fake values (`gid`, `gs`).
-- Never enable the stub provider (`OAUTH_STUB=1`) on a public host.
+- Never enable the stub provider (`OAUTH_STUB=1`) on a public host, and never set
+  `DEV_ROUTES_ENABLED` outside local `.dev.vars`.
