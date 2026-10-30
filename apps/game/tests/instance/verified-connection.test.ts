@@ -439,7 +439,11 @@ describe("VerifiedClient", () => {
       JSON.stringify({ t: "verified", epoch: 9, seq: 2, tick: 5, hash: "x", creditMs: 0 }),
     );
     await net.flush();
-    await tick();
+    // Gzip unpacking is async and can outlast one macrotask under load, so wait
+    // (bounded) for the resync and its ack instead of a single tick.
+    for (let i = 0; i < 1000 && !(game.resyncs.length === 1 && game.acks.at(-1)?.seq === 2); i++) {
+      await tick();
+    }
     expect(game.resyncs).toHaveLength(1);
     expect(game.acks.at(-1)?.seq).toBe(2);
     expect(game.resyncs[0]!.epoch).toBe(9);
